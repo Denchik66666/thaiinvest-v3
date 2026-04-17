@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            Int           @id @default(autoincrement())
+  username      String        @unique
+  password      String
+  role          Role          @default(OWNER)
+  isSystemOwner Boolean       @default(false)
+  isArchived    Boolean       @default(false)
+  archivedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  investors     Investor[]    @relation("OwnerInvestors")
+  linkedInvestments Investor[] @relation("LinkedUserInvestments")
+  createdTopUpRequests BodyTopUpRequest[] @relation("TopUpRequestCreator")
+  decidedTopUpRequests BodyTopUpRequest[] @relation("TopUpRequestDecider")
+  rateHistory   RateHistory[]
+  auditLogs     AuditLog[]
+  investorAccount Investor?     @relation("InvestorAccount")
+  chatSent      ChatMessage[] @relation("ChatSent")
+  chatReceived  ChatMessage[] @relation("ChatReceived")
+}
+
+model ChatMessage {
+  id          Int       @id @default(autoincrement())
+  senderId    Int
+  recipientId Int
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  sender      User      @relation("ChatSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User      @relation("ChatReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt])
+  @@index([senderId, recipientId, createdAt])
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  INVESTOR
+}
+
+model Investor {
+  id             Int           @id @default(autoincrement())
+  ownerId        Int
+  owner          User          @relation("OwnerInvestors", fields: [ownerId], references: [id])
+  linkedUserId   Int?
+  linkedUser     User?         @relation("LinkedUserInvestments", fields: [linkedUserId], references: [id])
+  investorUserId Int?          @unique
+  investorUser   User?         @relation("InvestorAccount", fields: [investorUserId], references: [id])
+  name           String
+  handle         String?
+  phone          String?
+  body           Float
+  rate           Float
+  accrued        Float         @default(0)
+  paid           Float         @default(0)
+  entryDate      DateTime
+  activationDate DateTime
+  status         String
+  isPrivate      Boolean       @default(false)
+  isSystemOwner  Boolean       @default(false) // Признак, что этот инвестор в общей сети - на самом деле ВЫ
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  accruals       Accrual[]
+  payments       Payment[]
+  topUpRequests  BodyTopUpRequest[]
+}
+
+model BodyTopUpRequest {
+  id           Int      @id @default(autoincrement())
+  investorId   Int
+  investor     Investor @relation(fields: [investorId], references: [id])
+  amount       Float
+  status       String   @default("pending_investor")
+  comment      String?
+  createdById  Int
+  createdBy    User     @relation("TopUpRequestCreator", fields: [createdById], references: [id])
+  decidedById  Int?
+  decidedBy    User?    @relation("TopUpRequestDecider", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Accrual {
+  id         Int      @id @default(autoincrement())
+  investorId Int
+  investor   Investor @relation(fields: [investorId], references: [id])
+  cycleStart DateTime
+  cycleEnd   DateTime
+  bodyAmount Float
+  rate       Float
+  amount     Float
+  status     String
+  createdAt  DateTime @default(now())
+}
+
+model Payment {
+  id         Int       @id @default(autoincrement())
+  investorId Int
+  investor   Investor  @relation(fields: [investorId], references: [id])
+  type       String
+  amount     Float
+  status     String    @default("completed")
+  comment    String?
+  createdAt  DateTime  @default(now())
+  approvedAt DateTime?
+  acceptedAt DateTime?
+}
+
+model RateHistory {
+  id            Int      @id @default(autoincrement())
+  changedBy     Int
+  user          User     @relation(fields: [changedBy], references: [id])
+  oldRate       Float
+  newRate       Float
+  effectiveDate DateTime
+  comment       String?
+  createdAt     DateTime @default(now())
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   Int
+  oldValue   String?
+  newValue   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
