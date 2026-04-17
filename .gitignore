@@ -42,4 +42,10 @@ next-env.d.ts
 
 /src/generated/prisma
 
+# local debug and backup artifacts
+.cursor/debug-*.log
+backup_*.zip
+db_backup_*.json
+prisma/dev.db
+
 .vercel
