@@ -19,6 +19,7 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "@/lib/notify";
+import { notifyWithAttention } from "@/lib/attention-notify";
 import {
   persistAppTheme,
 } from "@/lib/app-theme";
@@ -106,41 +107,6 @@ export default function DashboardPage() {
   function toggleDarkMode() {
     const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
     persistAppTheme("theme-linear", !isDark);
-  }
-
-  function notifyWithAttention(kind: "success" | "error", message: string) {
-    if (kind === "error") toast.error(message);
-    else toast.success(message);
-
-    if (typeof window === "undefined") return;
-    try {
-      if (notifyPrefs.vibrationEnabled && "vibrate" in navigator) {
-        navigator.vibrate(kind === "error" ? [100, 80, 100] : [70]);
-      }
-    } catch {}
-
-    // Tiny WebAudio beep: graceful fallback (may be blocked by browser policy).
-    if (!notifyPrefs.soundEnabled) return;
-    try {
-      const Ctx = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
-        .AudioContext ??
-        (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = kind === "error" ? "square" : "sine";
-      o.frequency.value = kind === "error" ? 360 : 660;
-      g.gain.value = 0.0001;
-      o.connect(g);
-      g.connect(ctx.destination);
-      const t = ctx.currentTime;
-      g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-      o.start(t);
-      o.stop(t + 0.13);
-      window.setTimeout(() => void ctx.close(), 180);
-    } catch {}
   }
 
   const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
@@ -249,13 +215,13 @@ export default function DashboardPage() {
         const prev = prevMap[String(p.id)];
         if (!prev || prev === p.status) continue;
         if (p.status === "rejected") {
-          notifyWithAttention("error", `Заявка отклонена: ${inv.name}`);
+          notifyWithAttention("error", `Заявка отклонена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "approved_waiting_accept") {
-          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Отчёты» для решения.`);
+          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Отчёты» для решения.`, notifyPrefs);
         } else if (p.status === "completed") {
-          notifyWithAttention("success", `Выплата завершена: ${inv.name}`);
+          notifyWithAttention("success", `Выплата завершена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "expired") {
-          notifyWithAttention("error", `Срок заявки истёк: ${inv.name}`);
+          notifyWithAttention("error", `Срок заявки истёк: ${inv.name}`, notifyPrefs);
         }
       }
     }
