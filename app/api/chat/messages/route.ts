@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import { findInvestorSlotForUser, getFirstActiveOwner } from "@/lib/chat-network";
 
 const MAX_LEN = 2000;
 
@@ -99,12 +100,26 @@ export async function POST(request: NextRequest) {
       allowed = true;
     } else if (meUser.role === "INVESTOR" && recipient.role === "OWNER") {
       const inv = await prisma.investor.findFirst({
-        where: { investorUserId: me, ownerId: recipientId },
+        where: {
+          ownerId: recipientId,
+          OR: [{ investorUserId: me }, { linkedUserId: me }],
+        },
       });
-      allowed = Boolean(inv);
+      if (inv) {
+        allowed = true;
+      } else {
+        const slot = await findInvestorSlotForUser(prisma, me);
+        if (!slot) {
+          const fallbackOwner = await getFirstActiveOwner(prisma);
+          allowed = fallbackOwner?.id === recipientId;
+        }
+      }
     } else if (meUser.role === "OWNER" && recipient.role === "INVESTOR") {
       const inv = await prisma.investor.findFirst({
-        where: { investorUserId: recipientId, ownerId: me },
+        where: {
+          ownerId: me,
+          OR: [{ investorUserId: recipientId }, { linkedUserId: recipientId }],
+        },
       });
       allowed = Boolean(inv);
     }

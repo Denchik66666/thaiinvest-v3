@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import { findInvestorSlotForUser, getFirstActiveOwner } from "@/lib/chat-network";
 
 /** Список пользователей для выбора собеседника (в основном для SUPER_ADMIN). */
 export async function GET() {
@@ -21,16 +22,47 @@ export async function GET() {
     if (!me) return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
 
     if (me.role === "SUPER_ADMIN") {
-      const users = await prisma.user.findMany({
+      /**
+       * Раньше здесь были все OWNER/INVESTOR в базе — из‑за этого в чате появлялись
+       * e2e и прочие «технические» аккаунты, которых нет в вашем списке на главной.
+       * Список собеседников совпадает с кабинетом: владельцы сети + инвесторы из общей
+       * сети, привязанные к этому SUPER_ADMIN (`linkedUserId`).
+       */
+      const owners = await prisma.user.findMany({
         where: {
           isArchived: false,
           id: { not: me.id },
-          role: { in: ["OWNER", "INVESTOR"] },
+          role: "OWNER",
         },
         select: { id: true, username: true, role: true },
         orderBy: { username: "asc" },
+        take: 200,
+      });
+
+      const invRows = await prisma.investor.findMany({
+        where: {
+          isPrivate: false,
+          linkedUserId: me.id,
+          investorUserId: { not: null },
+        },
+        select: {
+          investorUser: { select: { id: true, username: true, role: true } },
+        },
         take: 300,
       });
+
+      const fromInvestors = invRows
+        .map((r) => r.investorUser)
+        .filter((u): u is NonNullable<(typeof invRows)[number]["investorUser"]> => u != null);
+
+      const seen = new Set<number>();
+      const users: Array<{ id: number; username: string; role: string }> = [];
+      for (const u of [...owners, ...fromInvestors]) {
+        if (u.id === me.id || seen.has(u.id)) continue;
+        seen.add(u.id);
+        users.push(u);
+      }
+      users.sort((a, b) => a.username.localeCompare(b.username, "ru"));
       return NextResponse.json({ success: true, users });
     }
 
@@ -65,18 +97,19 @@ export async function GET() {
     }
 
     if (me.role === "INVESTOR") {
-      const inv = await prisma.investor.findFirst({
-        where: { investorUserId: me.id },
-        select: { ownerId: true },
-      });
-      if (!inv) {
-        return NextResponse.json({ success: true, users: [] });
+      const inv = await findInvestorSlotForUser(prisma, me.id);
+      if (inv) {
+        const owner = await prisma.user.findUnique({
+          where: { id: inv.ownerId },
+          select: { id: true, username: true, role: true },
+        });
+        return NextResponse.json({ success: true, users: owner ? [owner] : [] });
       }
-      const owner = await prisma.user.findUnique({
-        where: { id: inv.ownerId },
-        select: { id: true, username: true, role: true },
+      const fallbackOwner = await getFirstActiveOwner(prisma);
+      return NextResponse.json({
+        success: true,
+        users: fallbackOwner ? [{ ...fallbackOwner, role: "OWNER" as const }] : [],
       });
-      return NextResponse.json({ success: true, users: owner ? [owner] : [] });
     }
 
     return NextResponse.json({ success: true, users: [] });

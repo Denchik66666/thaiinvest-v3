@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import { findInvestorSlotForUser, getFirstActiveOwner } from "@/lib/chat-network";
 
 export async function GET() {
   try {
@@ -24,19 +25,43 @@ export async function GET() {
       where: { recipientId: me, readAt: null },
     });
 
+    const lastUnreadRow = await prisma.chatMessage.findFirst({
+      where: { recipientId: me, readAt: null },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        createdAt: true,
+        body: true,
+        senderId: true,
+        sender: { select: { username: true } },
+      },
+    });
+
+    const lastUnread = lastUnreadRow
+      ? {
+          id: lastUnreadRow.id,
+          senderId: lastUnreadRow.senderId,
+          senderUsername: lastUnreadRow.sender.username,
+          bodyPreview:
+            lastUnreadRow.body.length > 100 ? `${lastUnreadRow.body.slice(0, 100)}…` : lastUnreadRow.body,
+          createdAt: lastUnreadRow.createdAt.toISOString(),
+        }
+      : null;
+
     let defaultPeer: { id: number; username: string } | null = null;
 
     if (user.role === "INVESTOR") {
-      const inv = await prisma.investor.findFirst({
-        where: { investorUserId: me },
-        select: { ownerId: true },
-      });
+      const inv = await findInvestorSlotForUser(prisma, me);
       if (inv) {
         const owner = await prisma.user.findUnique({
           where: { id: inv.ownerId },
           select: { id: true, username: true },
         });
         if (owner) defaultPeer = owner;
+      }
+      if (!defaultPeer) {
+        const fallbackOwner = await getFirstActiveOwner(prisma);
+        if (fallbackOwner) defaultPeer = fallbackOwner;
       }
     } else if (user.role === "OWNER") {
       const admin = await prisma.user.findFirst({
@@ -117,6 +142,7 @@ export async function GET() {
       success: true,
       defaultPeer,
       unreadTotal,
+      lastUnread,
       partners: partnersFiltered,
     });
   } catch (error) {

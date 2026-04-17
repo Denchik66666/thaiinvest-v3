@@ -230,7 +230,7 @@ export default function DashboardPage() {
     try {
       localStorage.setItem(key, JSON.stringify(currentMap));
     } catch {}
-  }, [user, myInvestors]);
+  }, [user, myInvestors, notifyPrefs]);
   const becomeMutation = useMutation({
     mutationFn: () =>
       apiClient.post("/api/investors/become-semen-investor", {

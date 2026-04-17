@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
+import { CHAT_CONTEXT_QUERY_KEY } from "@/lib/chat-context-query";
 import { Container } from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import { Text } from "@/components/ui/Text";
@@ -19,6 +20,13 @@ type ChatContext = {
   success: boolean;
   defaultPeer: { id: number; username: string } | null;
   unreadTotal: number;
+  lastUnread: {
+    id: number;
+    senderId: number;
+    senderUsername: string;
+    bodyPreview: string;
+    createdAt: string;
+  } | null;
   partners: Array<{ id: number; username: string; unreadCount: number; lastAt: string | null }>;
 };
 
@@ -43,11 +51,16 @@ function ChatPageInner() {
   const [draftPeer, setDraftPeer] = useState<number | null>(null);
   const [text, setText] = useState("");
 
-  const { data: ctx } = useQuery({
-    queryKey: ["chat-context"],
+  const {
+    data: ctx,
+    isPending: ctxPending,
+    isError: ctxError,
+    error: ctxQueryError,
+  } = useQuery({
+    queryKey: CHAT_CONTEXT_QUERY_KEY,
     queryFn: () => apiClient.get<ChatContext>("/api/chat/context"),
     enabled: !!user,
-    refetchInterval: 45_000,
+    staleTime: 0,
   });
 
   const { data: directory } = useQuery({
@@ -74,7 +87,7 @@ function ChatPageInner() {
   const markRead = useCallback(async () => {
     if (!resolvedPeer) return;
     await apiClient.patch("/api/chat/read", { peerId: resolvedPeer });
-    queryClient.invalidateQueries({ queryKey: ["chat-context"] });
+    queryClient.invalidateQueries({ queryKey: CHAT_CONTEXT_QUERY_KEY });
   }, [resolvedPeer, queryClient]);
 
   const partners = ctx?.partners;
@@ -106,7 +119,7 @@ function ChatPageInner() {
     onSuccess: () => {
       setText("");
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ["chat-context"] });
+      queryClient.invalidateQueries({ queryKey: CHAT_CONTEXT_QUERY_KEY });
     },
   });
 
@@ -192,9 +205,18 @@ function ChatPageInner() {
           </Card>
         ) : null}
 
-        {!resolvedPeer && user.role === "INVESTOR" ? (
+        {user.role === "INVESTOR" && ctxPending && !resolvedPeer ? (
+          <Card className="p-4 text-sm text-muted-foreground">Загрузка чата…</Card>
+        ) : null}
+        {user.role === "INVESTOR" && ctxError && !resolvedPeer ? (
+          <Card className="p-4 text-sm text-red-400">
+            {ctxQueryError instanceof Error ? ctxQueryError.message : "Не удалось загрузить чат"}
+          </Card>
+        ) : null}
+        {!resolvedPeer && user.role === "INVESTOR" && !ctxPending && !ctxError && ctx?.defaultPeer == null ? (
           <Card className="p-4 text-sm text-muted-foreground">
-            Не найден владелец сети для переписки. Обратитесь к администратору.
+            В системе нет активного владельца сети (OWNER) или не настроена связь инвестора с сетью. Обратитесь к
+            администратору.
           </Card>
         ) : null}
 

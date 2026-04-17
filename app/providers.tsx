@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppDialogsProvider } from "@/components/feedback/AppDialogsProvider";
-import GlobalLiveNotifier from "@/components/notifications/GlobalLiveNotifier";
 import AppThemeSync from "@/components/theme/AppThemeSync";
 
 declare module "@tanstack/react-query" {
@@ -40,7 +39,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AppThemeSync />
-      <GlobalLiveNotifier />
       <AppDialogsProvider>{children}</AppDialogsProvider>
     </QueryClientProvider>
   );

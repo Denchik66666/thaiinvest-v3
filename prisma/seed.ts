@@ -14,6 +14,11 @@ async function main() {
       password: "admin123",
       role: "OWNER",
     },
+    {
+      username: "Sega",
+      password: "admin123",
+      role: "INVESTOR",
+    },
   ];
 
   for (const user of users) {
@@ -33,6 +38,43 @@ async function main() {
       console.log(`✅ Пользователь ${user.username} создан`);
     } else {
       console.log(`ℹ️ Пользователь ${user.username} уже существует`);
+    }
+  }
+
+  const owner = await prisma.user.findFirst({
+    where: { username: "semen", role: "OWNER", isArchived: false },
+    select: { id: true },
+  });
+  const sega = await prisma.user.findFirst({
+    where: { username: "Sega", isArchived: false },
+    select: { id: true },
+  });
+  if (owner && sega) {
+    const linked = await prisma.investor.findFirst({
+      where: { investorUserId: sega.id },
+      select: { id: true },
+    });
+    if (!linked) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      await prisma.investor.create({
+        data: {
+          ownerId: owner.id,
+          investorUserId: sega.id,
+          name: "Sega",
+          body: 1,
+          rate: 0.01,
+          accrued: 0,
+          paid: 0,
+          entryDate: today,
+          activationDate: today,
+          status: "active",
+          isPrivate: false,
+        },
+      });
+      console.log("✅ Инвесторская позиция для Sega (чат с владельцем сети) создана");
+    } else {
+      console.log("ℹ️ У Sega уже есть позиция инвестора");
     }
   }
 }

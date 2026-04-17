@@ -66,7 +66,7 @@ model Investor {
   activationDate DateTime
   status         String
   isPrivate      Boolean       @default(false)
-  isSystemOwner  Boolean       @default(false) // Признак, что этот инвестор в общей сети - на самом деле ВЫ
+  isSystemOwner  Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   accruals       Accrual[]

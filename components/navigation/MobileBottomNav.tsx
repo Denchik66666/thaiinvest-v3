@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { apiClient } from "@/lib/api-client";
+import { CHAT_CONTEXT_QUERY_KEY, fetchChatContext } from "@/lib/chat-context-query";
 
 export type BottomNavKey = "home" | "finance" | "reports" | "chat" | "profile";
 
@@ -53,10 +53,10 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
   const { user } = useAuth();
 
   const { data: chatCtx } = useQuery({
-    queryKey: ["chat-context"],
-    queryFn: () => apiClient.get<{ unreadTotal: number }>("/api/chat/context"),
+    queryKey: CHAT_CONTEXT_QUERY_KEY,
+    queryFn: fetchChatContext,
     enabled: !!user,
-    refetchInterval: 45_000,
+    staleTime: 0,
   });
   const unread = chatCtx?.unreadTotal ?? 0;
 
