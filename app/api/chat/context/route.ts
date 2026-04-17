@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { findInvestorSlotForUser, getFirstActiveOwner } from "@/lib/chat-network";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -77,7 +79,7 @@ export async function GET() {
         OR: [{ senderId: me }, { recipientId: me }],
       },
       orderBy: { createdAt: "desc" },
-      take: 400,
+      take: 200,
       select: {
         senderId: true,
         recipientId: true,
@@ -90,42 +92,55 @@ export async function GET() {
       const other = m.senderId === me ? m.recipientId : m.senderId;
       peerIds.add(other);
     }
+    const peerIdList = [...peerIds];
 
-    const partners = await Promise.all(
-      [...peerIds].map(async (pid) => {
-        const u = await prisma.user.findUnique({
-          where: { id: pid },
-          select: { id: true, username: true },
-        });
-        if (!u) return null;
-        const unread = await prisma.chatMessage.count({
-          where: { senderId: pid, recipientId: me, readAt: null },
-        });
-        const last = await prisma.chatMessage.findFirst({
-          where: {
-            OR: [
-              { senderId: me, recipientId: pid },
-              { senderId: pid, recipientId: me },
-            ],
-          },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        });
-        return {
-          id: u.id,
-          username: u.username,
-          unreadCount: unread,
-          lastAt: last?.createdAt.toISOString() ?? null,
-        };
-      })
-    );
-
-    const partnersFiltered = partners.filter(Boolean) as Array<{
+    let partnersFiltered: Array<{
       id: number;
       username: string;
       unreadCount: number;
       lastAt: string | null;
-    }>;
+    }> = [];
+
+    if (peerIdList.length > 0) {
+      const [usersList, unreadGroups] = await Promise.all([
+        prisma.user.findMany({
+          where: { id: { in: peerIdList } },
+          select: { id: true, username: true },
+        }),
+        prisma.chatMessage.groupBy({
+          by: ["senderId"],
+          where: { recipientId: me, readAt: null, senderId: { in: peerIdList } },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const userById = new Map(usersList.map((u) => [u.id, u]));
+      const unreadBySender = new Map(unreadGroups.map((g) => [g.senderId, g._count._all]));
+
+      const lastAtByPeer = new Map<number, Date>();
+      for (const m of partnersRaw) {
+        const other = m.senderId === me ? m.recipientId : m.senderId;
+        if (!lastAtByPeer.has(other)) lastAtByPeer.set(other, m.createdAt);
+      }
+
+      partnersFiltered = peerIdList
+        .map((pid) => {
+          const u = userById.get(pid);
+          if (!u) return null;
+          return {
+            id: u.id,
+            username: u.username,
+            unreadCount: unreadBySender.get(pid) ?? 0,
+            lastAt: lastAtByPeer.get(pid)?.toISOString() ?? null,
+          };
+        })
+        .filter(Boolean) as Array<{
+        id: number;
+        username: string;
+        unreadCount: number;
+        lastAt: string | null;
+      }>;
+    }
 
     partnersFiltered.sort((a, b) => {
       const ta = a.lastAt ? +new Date(a.lastAt) : 0;
