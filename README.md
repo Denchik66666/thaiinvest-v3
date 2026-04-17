@@ -199,6 +199,20 @@ Removes local build artifacts:
 - `.next`
 - `tsconfig.tsbuildinfo`
 
+## Cursor agent: what you enable (so the agent can run DB/scripts locally)
+
+The agent only has your **workspace + terminal**. It cannot log into your Vercel/Supabase accounts.
+
+1. Copy `.env.example` → `.env` and set **`DIRECT_URL`** to a normal Postgres URL (Supabase **direct** connection on port `5432`). Prisma CLI/migrations (`prisma migrate deploy`) read this from `prisma.config.ts`. If `DIRECT_URL` is missing or only Accelerate is configured for CLI, migrations and local scripts will fail.
+2. Run once: `npx prisma migrate deploy` (and optionally `npx prisma db seed` — создаёт `admin`, `semen`, `Sega`).
+3. Тест оповещения в чате: по умолчанию пишет **от `Sega`**. Пример:  
+   `npm run chat:test-send -- --to admin "текст"`  
+   Опции: `--from Имя` (по умолчанию Sega), `--to Имя` (иначе первый из списка Denchik/admin/semen).
+
+Optional: enable **Playwright MCP** or **Chrome DevTools MCP** in Cursor + keep `npm run dev` running if you want browser-level checks on `localhost`.
+
+Russian checklist (same content): `Для анализа/Агент_сам_что_сделать.txt`.
+
 ## Notes
 
 - `node_modules` is the largest folder in local dev and this is expected.

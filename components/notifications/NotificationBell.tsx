@@ -78,14 +78,14 @@ export default function NotificationBell() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const investors = investorsData?.investors ?? [];
   const payments = useMemo(() => {
+    const investors = investorsData?.investors ?? [];
     const rows: Array<PaymentRow & { investor: InvestorRow }> = [];
     for (const inv of investors) {
       for (const p of inv.payments ?? []) rows.push({ ...p, investor: inv });
     }
     return rows;
-  }, [investors]);
+  }, [investorsData]);
 
   const ownerRequestedCount = payments.filter((p) => p.status === "requested").length;
   const superForceCount = payments.filter((p) => ["approved_waiting_accept", "expired", "disputed"].includes(p.status)).length;

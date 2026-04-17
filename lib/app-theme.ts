@@ -58,6 +58,6 @@ export function parseThemeSnapshot(snap: string): { theme: string; dark: boolean
   };
 }
 
-export function nextThemePreset(current: string): AppThemePreset {
+export function nextThemePreset(): AppThemePreset {
   return SINGLE_THEME_PRESET;
 }

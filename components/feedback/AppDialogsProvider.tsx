@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { Toaster, toast as sonnerToast } from "sonner";
 
+import GlobalLiveNotifier from "@/components/notifications/GlobalLiveNotifier";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { cn } from "@/lib/utils";
@@ -159,7 +160,10 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <AppDialogsContext.Provider value={value}>
-      {children}
+      {/*
+        Toaster должен монтироваться до GlobalLiveNotifier: иначе первый refetch чата
+        может вызвать toast до регистрации Sonner — всплывашки «не приходят».
+      */}
       <Toaster
         theme="dark"
         richColors
@@ -180,6 +184,8 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
           },
         }}
       />
+      <GlobalLiveNotifier />
+      {children}
       {portal}
     </AppDialogsContext.Provider>
   );
