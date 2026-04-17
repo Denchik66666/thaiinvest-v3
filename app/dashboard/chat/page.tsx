@@ -86,8 +86,12 @@ function ChatPageInner() {
 
   const markRead = useCallback(async () => {
     if (!resolvedPeer) return;
-    await apiClient.patch("/api/chat/read", { peerId: resolvedPeer });
-    queryClient.invalidateQueries({ queryKey: CHAT_CONTEXT_QUERY_KEY });
+    try {
+      await apiClient.patch("/api/chat/read", { peerId: resolvedPeer });
+      queryClient.invalidateQueries({ queryKey: CHAT_CONTEXT_QUERY_KEY });
+    } catch {
+      // Не роняем страницу из‑за «прочитано»; контекст чата обновится при следующем опросе
+    }
   }, [resolvedPeer, queryClient]);
 
   const partners = ctx?.partners;
