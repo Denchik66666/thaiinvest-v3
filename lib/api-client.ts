@@ -2,11 +2,27 @@
  * Базовый типизированный клиент для API запросов
  */
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
+  // Get token from cookies for server-side requests
+  const getToken = () => {
+    if (typeof document !== 'undefined') {
+      // Client-side - get from document cookie
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'token') return value;
+      }
+    }
+    return null;
+  };
+
+  const token = getToken();
+  
   const res = await fetch(url, {
     ...options,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...(token && { "Authorization": `Bearer ${token}` }),
       ...options?.headers,
     },
   });

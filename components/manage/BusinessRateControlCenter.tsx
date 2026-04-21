@@ -280,7 +280,6 @@ export function BusinessRateControlCenter({
                   }
                 }}
                 placeholder="Выбери дату"
-                highlightedDates={Array.from(changeDays)}
               />
             </div>
             <div>
@@ -387,7 +386,6 @@ export function BusinessRateControlCenter({
                               onChange={(v) => {
                                 setPlanEdit((p) => (p ? { ...p, effectiveDate: v } : p));
                               }}
-                              placeholder="Дата"
                               highlightedDates={Array.from(changeDays)}
                             />
                           </div>

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { PrismaClient } from "@prisma/client";
+import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
+import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween } from "@/lib/weekly";
+import { recalculateInvestorAccruedFromRateHistory } from "@/lib/business-rate-accrual-recalc";
 
 type InvestorTxClient = Pick<PrismaClient, "bodyTopUpRequest" | "payment" | "accrual" | "investor" | "user">;
 
@@ -19,6 +22,23 @@ function randomPassword(length = 10): string {
 
 function buildArchivedUsername(investorId: number) {
   return `archived_inv_${investorId}_${Date.now()}`;
+}
+
+// Схема валидации для редактирования инвестора
+const UpdateInvestorSchema = z.object({
+  name: z.string().min(1, "Имя обязательно").optional(),
+  handle: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  body: z.number().min(0, "Тело не может быть отрицательным").optional(),
+  rate: z.number().min(0, "Ставка не может быть отрицательной").optional(),
+  entryDate: z.string().datetime("Неверный формат даты").optional(),
+  activationDate: z.string().datetime("Неверный формат даты").optional(),
+});
+
+// Функция расчета процентов (как в создании)
+function calculateAccrued(body: number, rate: number, weeks: number): number {
+  const weeklyRate = (rate / 100) / 4     // упрощенно: месячная ÷ 4
+  return body * weeklyRate * weeks
 }
 
 async function generateUniqueInvestorUsername(baseName: string) {
@@ -270,6 +290,162 @@ export async function PATCH(
     });
   } catch (error) {
     console.error("PATCH INVESTOR CREDENTIALS ERROR:", error);
+    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("token")?.value;
+    if (!token) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+
+    const decoded = verifyToken(token);
+    if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
+    if (decoded.role !== "OWNER" && decoded.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+    }
+
+    const { id } = await context.params;
+    const investorId = Number(id);
+    if (!Number.isFinite(investorId)) {
+      return NextResponse.json({ error: "Некорректный ID инвестора" }, { status: 400 });
+    }
+
+    // Валидация входных данных
+    const bodyResult = UpdateInvestorSchema.safeParse(await request.json());
+    if (!bodyResult.success) {
+      return NextResponse.json({ error: bodyResult.error.issues[0]?.message ?? 'Некорректные данные' }, { status: 400 });
+    }
+
+    const updateData = bodyResult.data;
+
+    // Получаем текущего инвестора
+    const investor = await prisma.investor.findUnique({
+      where: { id: investorId },
+    });
+    if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
+    
+    // Проверка прав доступа
+    if (decoded.role === "OWNER" && investor.ownerId !== decoded.userId) {
+      return NextResponse.json({ error: "Недостаточно прав для этого инвестора" }, { status: 403 });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Подготовка данных для обновления
+    let finalUpdateData: any = {};
+    let shouldRecalculateAccrued = false;
+
+    // Обработка полей
+    if (updateData.name !== undefined) finalUpdateData.name = updateData.name;
+    if (updateData.handle !== undefined) finalUpdateData.handle = updateData.handle;
+    if (updateData.phone !== undefined) finalUpdateData.phone = updateData.phone;
+    if (updateData.body !== undefined) {
+      finalUpdateData.body = updateData.body;
+      shouldRecalculateAccrued = true;
+    }
+    if (updateData.rate !== undefined) {
+      finalUpdateData.rate = updateData.rate;
+      shouldRecalculateAccrued = true;
+    }
+
+    // Обработка дат
+    if (updateData.entryDate !== undefined) {
+      const entryDate = new Date(updateData.entryDate);
+      const activationDate = getNextMonday(entryDate);
+      const status = activationDate <= today ? 'active' : 'awaiting_activation';
+      
+      finalUpdateData.entryDate = entryDate;
+      finalUpdateData.activationDate = activationDate;
+      finalUpdateData.status = status;
+      shouldRecalculateAccrued = true;
+    }
+
+    if (updateData.activationDate !== undefined) {
+      const activationDate = new Date(updateData.activationDate);
+      const status = activationDate <= today ? 'active' : 'awaiting_activation';
+      
+      finalUpdateData.activationDate = activationDate;
+      finalUpdateData.status = status;
+      shouldRecalculateAccrued = true;
+    }
+
+    // Сохраняем старые значения для аудита
+    const oldValues = {
+      name: investor.name,
+      body: investor.body,
+      rate: investor.rate,
+      entryDate: investor.entryDate,
+      activationDate: investor.activationDate,
+      status: investor.status,
+    };
+
+    // Обновляем инвестора
+    const updatedInvestor = await prisma.$transaction(async (tx: InvestorTxClient) => {
+      const updated = await tx.investor.update({
+        where: { id: investorId },
+        data: finalUpdateData,
+      });
+
+      // Если нужно пересчитать начисленные проценты
+      if (shouldRecalculateAccrued && updated.status === 'active') {
+        const currentWeekMonday = getPreviousOrCurrentMonday(today);
+        const weeks = countFullWeeksBetween(updated.activationDate, currentWeekMonday);
+        
+        if (weeks > 0) {
+          const newAccrued = calculateAccrued(updated.body, updated.rate, weeks);
+          await tx.investor.update({
+            where: { id: investorId },
+            data: { accrued: newAccrued },
+          });
+          updated.accrued = newAccrued;
+        }
+      }
+
+      return updated;
+    });
+
+    // Логирование изменений
+    await logAction({
+      userId: decoded.userId,
+      action: "UPDATE_INVESTOR",
+      entityType: "Investor",
+      entityId: investorId,
+      oldValue: JSON.stringify(oldValues),
+      newValue: JSON.stringify({
+        name: updatedInvestor.name,
+        body: updatedInvestor.body,
+        rate: updatedInvestor.rate,
+        entryDate: updatedInvestor.entryDate,
+        activationDate: updatedInvestor.activationDate,
+        status: updatedInvestor.status,
+        accrued: updatedInvestor.accrued,
+      }),
+    });
+
+    // Запускаем полный пересчет для всех инвесторов (для синхронизации)
+    if (shouldRecalculateAccrued) {
+      try {
+        await recalculateInvestorAccruedFromRateHistory();
+      } catch (error) {
+        console.error("Ошибка при пересчете всех инвесторов:", error);
+        // Не прерываем операцию, так как основной инвестор обновлен
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      investor: updatedInvestor,
+      message: "Данные инвестора успешно обновлены и проценты пересчитаны",
+    });
+
+  } catch (error) {
+    console.error("PUT INVESTOR UPDATE ERROR:", error);
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

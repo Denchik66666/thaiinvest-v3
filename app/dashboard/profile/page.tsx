@@ -38,6 +38,7 @@ type AccountPatchResponse = {
 type TabKey = "data" | "settings" | "security";
 
 function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise<void> }) {
+  const router = useRouter();
   const initialNotifyPrefs = readNotificationPreferences();
   const [tab, setTab] = useState<TabKey>("data");
   const [username, setUsername] = useState(user.username);
@@ -83,6 +84,17 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Ошибка обновления");
+    },
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: () => apiClient.post("/api/auth/logout", {}),
+    onSuccess: () => {
+      toast.success("Вы вышли из аккаунта");
+      router.push("/login");
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Ошибка выхода");
     },
   });
 
@@ -205,6 +217,15 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
             </div>
             <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? "Сохраняем..." : "Сохранить"}
+            </Button>
+            <div className="h-px bg-border/60" />
+            <Button 
+              variant="outline" 
+              className="w-full border-red-500/40 text-red-400 hover:bg-red-500/10"
+              onClick={() => logoutMutation.mutate()} 
+              disabled={logoutMutation.isPending}
+            >
+              {logoutMutation.isPending ? "Выход..." : "Выйти из аккаунта"}
             </Button>
           </Card>
         ) : null}

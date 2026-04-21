@@ -202,8 +202,8 @@ export function DatePicker({
                 {hasDot ? (
                   <span
                     className={cn(
-                      "absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full",
-                      isSelected ? "bg-primary-foreground" : "bg-violet-500"
+                      "absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full shadow-sm",
+                      isSelected ? "bg-primary-foreground" : "bg-blue-500"
                     )}
                   />
                 ) : null}

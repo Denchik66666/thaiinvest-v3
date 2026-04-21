@@ -12,6 +12,9 @@ import {
 import { createPortal } from "react-dom";
 import { Toaster, toast as sonnerToast } from "sonner";
 
+// Check if we're in browser environment
+const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+
 import GlobalLiveNotifier from "@/components/notifications/GlobalLiveNotifier";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
@@ -94,7 +97,7 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
   const cancelLabel = confirmOpts?.cancelLabel ?? "Отмена";
 
   const portal =
-    confirmOpen && confirmOpts && typeof document !== "undefined"
+    confirmOpen && confirmOpts && isBrowser
       ? createPortal(
           <div
             className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
@@ -102,7 +105,7 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
           >
             <button
               type="button"
-              aria-label="Закрыть"
+              aria-label="Close"
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => finishConfirm(false)}
             />
@@ -115,28 +118,22 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
                 "bg-card/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl"
               )}
             >
-              <div
-                className={cn(
-                  "mb-4 flex h-11 w-11 items-center justify-center rounded-xl border",
-                  tone === "danger"
-                    ? "border-red-500/35 bg-red-500/10 text-red-400"
-                    : "border-primary/30 bg-primary/10 text-primary"
-                )}
-              >
-                {tone === "danger" ? (
-                  <span className="text-lg font-semibold leading-none">!</span>
-                ) : (
-                  <span className="text-lg leading-none">?</span>
+              <div className="mb-4">
+                <Text id="app-confirm-title" className="text-lg font-semibold text-foreground">
+                  {confirmOpts.title}
+                </Text>
+                {confirmOpts.description && (
+                  <Text className="text-sm text-muted-foreground mt-1">
+                    {confirmOpts.description}
+                  </Text>
                 )}
               </div>
-              <Text id="app-confirm-title" className="text-lg font-semibold tracking-tight text-foreground">
-                {confirmOpts.title}
-              </Text>
-              {confirmOpts.description ? (
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{confirmOpts.description}</p>
-              ) : null}
-              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => finishConfirm(false)}>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => finishConfirm(false)}
+                >
                   {cancelLabel}
                 </Button>
                 <Button

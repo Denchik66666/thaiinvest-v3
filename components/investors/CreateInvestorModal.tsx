@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Text } from "@/components/ui/Text";
 import { FormGroup } from "@/components/ui/FormGroup";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
 
@@ -277,12 +278,9 @@ export function CreateInvestorModal({
 
           <FormGroup>
             <Label>Дата входа *</Label>
-            <Input
-              type="date"
-              required
-              disabled={loading}
+            <DatePicker
               value={formData.entryDate}
-              onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, entryDate: v })}
             />
           </FormGroup>
 
