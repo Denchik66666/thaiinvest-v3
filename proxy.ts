@@ -1,39 +1,30 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { verifyToken } from '@/lib/auth'
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = [
-  '/dashboard',
-  '/api/investors',
-  '/api/payments',
-  '/api/dashboard',
-  '/api/system',
-  '/api/admin',
-]
+import { verifyToken } from "@/lib/auth";
 
+/**
+ * Next.js 16+: файл `middleware.ts` переименован в конвенцию **`proxy.ts`** (один из двух нельзя).
+ * Здесь защита кабинета: для `/dashboard/*` без валидного JWT в cookie `token` — редирект на `/login`.
+ * Проверка через `verifyToken` (`lib/auth.ts`); proxy по умолчанию в **Node.js runtime**.
+ */
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
-  const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
-  const token = request.cookies.get('token')?.value
-  const decoded = token ? verifyToken(token) : null
+  const { pathname } = request.nextUrl;
 
-  if (isProtected && !decoded) {
-    const loginUrl = new URL('/login', request.url)
-    return NextResponse.redirect(loginUrl)
+  if (!pathname.startsWith("/dashboard")) {
+    return NextResponse.next();
   }
 
-  return NextResponse.next()
+  const token = request.cookies.get("token")?.value;
+  const decoded = token ? verifyToken(token) : null;
+
+  if (!decoded) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/dashboard/:path*',
-    '/api/investors/:path*',
-    '/api/payments/:path*',
-    '/api/dashboard/:path*',
-    '/api/system/:path*',
-    '/api/admin/:path*',
-    '/login',
-    '/api/auth/login',
-  ],
-}
+  matcher: ["/dashboard/:path*"],
+};

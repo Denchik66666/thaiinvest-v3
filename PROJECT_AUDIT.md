@@ -55,7 +55,7 @@
 | **`docs/`** | Документация релиза и т.п. |
 | **`.cursor/rules/`** | Правила Cursor для агента. |
 | **`Для анализа/`** | Вспомогательные текстовые заметки (не часть приложения). |
-| **`proxy.ts`** | Логика «middleware-стиля» (проверка JWT cookie + редирект на `/login`). **В репозитории нет `middleware.ts`**, этот файл **нигде не импортируется** — см. раздел 7. |
+| **`proxy.ts`** | Конвенция Next.js **16+** (вместо устаревшего `middleware.ts`): до рендера для **`/dashboard/*`** проверяется cookie **`token`** через **`verifyToken`**; без валидного JWT — редирект на **`/login`**. |
 | **`next.config.ts`** | `allowedDevOrigins` и др. |
 | **`eslint.config.mjs`**, **`tsconfig.json`**, **`tailwind.config.ts`**, **`postcss.config.mjs`** | Конфигурация инструментов. |
 
@@ -127,7 +127,7 @@
 | **`/api/reports/feed`** | Объём данных зависит от **role** |
 | **`/api/dashboard/investors`** | Фильтр списка: OWNER — свои общие; INVESTOR — свой `investorUserId`; SUPER_ADMIN — полный список (как `network=all` в списке инвесторов) |
 | **`/api/investors/[id]/weekly-ledger`** | OWNER — только свои неприватные; INVESTOR — только своя привязка (`investorUserId` / `linkedUserId`); SUPER_ADMIN — без доп. 403 по роли |
-| **Чат** | **`lib/chat-peer-permission.ts`**: **`GET` и `POST /api/chat/messages`** проверяют допустимость пары пользователей; **`/api/chat/directory`** и **`/api/chat/context`** используют роль из БД для выборки списков |
+| **Чат** | **`lib/chat-peer-permission.ts`**: **`GET` и `POST /api/chat/messages`**, **`PATCH /api/chat/read`** — проверка пары с собеседником; **`/api/chat/directory`** и **`/api/chat/context`** используют роль из БД для выборки списков |
 
 ### 5.4 Клиент
 
@@ -135,7 +135,7 @@
 
 ### 5.5 Сетевой периметр
 
-- Файл **`proxy.ts`** не подключён как **`middleware.ts`**. Защита URL **`/dashboard/*`** на практике — **клиентский редирект** + **401 на API**. Имеет смысл либо подключить middleware, либо удалить/документировать `proxy.ts` как черновик.
+- **`proxy.ts`** (корень): серверный редирект неавторизованных с **`/dashboard/*`** на **`/login`** (см. `matcher` в файле). Дополнительно страницы дашборда делают клиентский редирект через **`useAuth`**. Файла **`middleware.ts`** в проекте **нет** — в Next 16 он конфликтует с **`proxy.ts`**.
 
 ---
 
@@ -190,7 +190,7 @@
 
 ## 8. Уже сделано (после прошлых аудитов)
 
-- **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; общая проверка **`canChatWithPeer`** для **`GET/POST /api/chat/messages`**.  
+- **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; **`canChatWithPeer`** для **`GET/POST /api/chat/messages`** и **`PATCH /api/chat/read`**; **`POST /api/auth/avatar`** — **`verifyToken`** перед **503**.  
 - **Единая тема:** удалён отдельный переключатель логина; **`ThemeToggle`** + **`AppThemeSync`** + **`lib/app-theme`**; логин на Tailwind для полей/кнопки; часть специфичных CSS логина убрана из `thai-design-system.css`.  
 - **Зависимости:** в манифесте нет неиспользуемых пакетов из старого списка (supabase / zustand / accelerate-extension).  
 - **TypeScript:** исправлены ошибки **`tsc --noEmit`** (body-topup, business-rate POST, reset credentials).  
@@ -202,8 +202,7 @@
 
 | Тема | Детали |
 |------|--------|
-| **`proxy.ts` без `middleware.ts`** | Нет серверного редиректа неавторизованных с `/dashboard` до загрузки JS; для жёсткой политики — добавить **`middleware.ts`** или удалить мёртвый код. |
-| **`POST /api/auth/avatar`** | Явный **503** — загрузка аватара не реализована. |
+| **`POST /api/auth/avatar`** | После **`verifyToken`** по-прежнему **503** — загрузка файла не реализована. |
 | **Зависимость `jose`** | В `package.json` есть, в основном коде auth не видна — проверить необходимость или удалить. |
 | **`console.error` в API** | Широко используется в `catch` — норм для отладки; при проде стоит согласовать структурированный логгер. |
 | **ESLint** | Полный `npm run lint` может по-прежнему ругаться на отдельные файлы (например `SuperAdminDatabaseResetSection`, `Select.tsx`, др.) — прогонять перед релизом и чинить точечно. |

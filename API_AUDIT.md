@@ -1,6 +1,6 @@
 # API_AUDIT — все HTTP-роуты ThaiInvest
 
-**Дата:** 2026-05-04 (актуализация: `middleware.ts`, `PATCH /api/chat/read`, `POST /api/auth/avatar`)  
+**Дата:** 2026-05-04 (актуализация: `proxy.ts` / дашборд, `PATCH /api/chat/read`, `POST /api/auth/avatar`)  
 **Базовый URL (локально):** `http://localhost:3000`  
 **Префикс API:** `/api/`
 
@@ -152,9 +152,7 @@
 
 ## Примечание по сетевому периметру
 
-**`middleware.ts`** (корень проекта, рядом с `app/`): для **`/dashboard/:path*`** проверяется cookie **`token`** через **`lib/middleware-verify-session.ts`** (проверка JWT на **`jose`**, без `jsonwebtoken`/Edge-несовместимых зависимостей). Без валидного токена — **редирект на `/login`**.
-
-**`proxy.ts`**: Next.js **не выполняет** этот файл как middleware; он **сохранён** в репозитории как справочная копия старой логики (в т.ч. список префиксов `/api/...`).
+**`proxy.ts`** (корень проекта, рядом с `app/`): в Next.js **16+** это актуальная конвенция вместо устаревшего `middleware.ts` (оба файла одновременно **запрещены**). Для **`/dashboard/:path*`** проверяется cookie **`token`** через **`verifyToken`** (`lib/auth.ts`); без валидного токена — **редирект на `/login`**. `matcher` ограничен только дашбордом.
 
 Защита **API** по-прежнему в **`verifyToken`** (и прочих проверках) внутри **`app/api/**/route.ts`**. Подробнее — `PROJECT_AUDIT.md`.
 

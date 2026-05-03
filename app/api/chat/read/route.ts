@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import { canChatWithPeer } from "@/lib/chat-peer-permission";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -20,6 +21,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const me = decoded.userId;
+
+    const allowed = await canChatWithPeer(prisma, me, peerId);
+    if (!allowed) {
+      return NextResponse.json({ error: "Недостаточно прав для переписки с этим пользователем" }, { status: 403 });
+    }
+
     const now = new Date();
 
     await prisma.chatMessage.updateMany({
