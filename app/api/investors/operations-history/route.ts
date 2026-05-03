@@ -9,8 +9,9 @@ import { buildWeeklyLedgerRows } from "@/lib/weekly-ledger-rows";
 import { isSameOpenWeekAsNow, openWeekDayProgress } from "@/lib/open-week-forecast";
 import type { FinanceOperationItem } from "@/types/finance-operations";
 
-function paymentSortAt(p: { acceptedAt: Date | null; approvedAt: Date | null; createdAt: Date }) {
-  return (p.acceptedAt ?? p.approvedAt ?? p.createdAt).toISOString();
+/** В ленте и сортировке — дата заявки (createdAt), не момент подтверждения. */
+function paymentSortAt(p: { createdAt: Date }) {
+  return p.createdAt.toISOString();
 }
 
 function parseInitialBodyFromAudit(newValue: string | null): number | null {
@@ -158,7 +159,7 @@ export async function GET() {
       acceptedAt: p.acceptedAt?.toISOString() ?? null,
     }));
 
-    const topUpItems: FinanceOperationItem[] = topUps.map((t) => ({
+    const topUpFromRequests: FinanceOperationItem[] = topUps.map((t) => ({
       kind: "topup" as const,
       id: `top:${t.id}`,
       sortAt: (t.decidedAt ?? t.createdAt).toISOString(),
@@ -172,23 +173,31 @@ export async function GET() {
       decidedAt: t.decidedAt?.toISOString() ?? null,
     }));
 
-    /** Создание позиции не создаёт BodyTopUpRequest — только запись в аудите / поля инвестора. */
-    const startItems: FinanceOperationItem[] = investors.map((inv) => {
+    /** Начальное тело при создании позиции — в ленте как пополнение (без BodyTopUpRequest). */
+    const topUpFromCreation: FinanceOperationItem[] = investors.map((inv) => {
       const auditJson = firstCreateAuditByInvestorId.get(inv.id) ?? null;
       const initialBody = parseInitialBodyFromAudit(auditJson) ?? inv.body;
       return {
-        kind: "position_start" as const,
-        id: `start:${inv.id}`,
+        kind: "topup" as const,
+        id: `top:initial:${inv.id}`,
         sortAt: inv.activationDate.toISOString(),
+        requestId: -inv.id,
         investorId: inv.id,
         positionName: inv.name,
         amount: initialBody,
+        status: "completed_at_creation",
+        comment: null,
+        createdAt: inv.createdAt.toISOString(),
+        decidedAt: inv.activationDate.toISOString(),
+        initialFromCreation: true,
         entryDate: inv.entryDate.toISOString(),
         activationDate: inv.activationDate.toISOString(),
       };
     });
 
-    const items = [...weekItems, ...paymentItems, ...topUpItems, ...startItems].sort((a, b) => {
+    const topUpItems = [...topUpFromRequests, ...topUpFromCreation];
+
+    const items = [...weekItems, ...paymentItems, ...topUpItems].sort((a, b) => {
       const ta = new Date(a.sortAt).getTime();
       const tb = new Date(b.sortAt).getTime();
       if (tb !== ta) return tb - ta;

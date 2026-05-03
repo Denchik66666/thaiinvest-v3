@@ -17,7 +17,6 @@ import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
-import { DatePicker } from "@/components/ui/DatePicker";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -192,7 +191,6 @@ export default function DashboardPage() {
     type: "interest" as "interest" | "body" | "close",
     amount: "",
     comment: "",
-    requestDate: new Date().toISOString().split("T")[0],
   });
   const [pageVisible, setPageVisible] = useState(true);
   const [barScrolled, setBarScrolled] = useState(false);
@@ -396,7 +394,7 @@ export default function DashboardPage() {
 
   const headlineLine1 = useMemo(() => {
     if (isInvestor) {
-      return `Мой кабинет · Неделя ${currentWeek.start} — ${currentWeek.end}`;
+      return `Мой кабинет · Отчётная неделя (пн–вс) ${currentWeek.start} — ${currentWeek.end}`;
     }
     if (isOwner) {
       return `Моя сеть · ${activeInvestorsCount} активных инвесторов`;
@@ -476,7 +474,6 @@ export default function DashboardPage() {
         type: withdrawForm.type,
         amount: withdrawForm.type === "close" ? undefined : parseAmountInput(withdrawForm.amount),
         comment: withdrawForm.comment.trim() || undefined,
-        requestDate: withdrawForm.requestDate,
       }),
     onSuccess: () => {
       setSelectedInvestorCardId(null);
@@ -485,7 +482,6 @@ export default function DashboardPage() {
         type: "interest",
         amount: "",
         comment: "",
-        requestDate: new Date().toISOString().split("T")[0],
       });
       queryClient.invalidateQueries({ queryKey: ["investors"] });
       queryClient.invalidateQueries({ queryKey: ["reports-investors"] });
@@ -525,8 +521,6 @@ export default function DashboardPage() {
 
   const weekStripDay = new Date().getDay();
   const currentDayIndex = weekStripDay === 0 ? 6 : weekStripDay - 1;
-  const nextPaymentDate =
-    currentWeek.nextPayout.replace(/^\S+\s*/, "").trim() || currentWeek.nextPayout;
 
   return (
     <Container>
@@ -620,8 +614,9 @@ export default function DashboardPage() {
                 whiteSpace: "nowrap",
                 marginLeft: 12,
               }}
+              title="По правилам цикла: выплаты в понедельник. Это не дата из заявки на вывод."
             >
-              Выплата ПН {nextPaymentDate}
+              След. выплата {currentWeek.nextPayout}
             </div>
           </div>
         </section>
@@ -1024,14 +1019,6 @@ export default function DashboardPage() {
                     </Text>
                   </div>
                 ) : null}
-                <div className="space-y-1">
-                  <Label>Дата вывода *</Label>
-                  <DatePicker
-                    value={withdrawForm.requestDate}
-                    onChange={(v) => setWithdrawForm((prev) => ({ ...prev, requestDate: v }))}
-                    placeholder="Выбери дату"
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label>Комментарий</Label>
                   <Input

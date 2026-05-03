@@ -6,6 +6,7 @@ import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { getNextMonday } from "@/lib/weekly";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -182,6 +183,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      /**
+       * Календарную дату в `createdAt` при создании заявки может задать только SUPER_ADMIN (Денис / платформа).
+       * INVESTOR — только запрос без выбора даты (момент отправки на сервере).
+       * OWNER (Семён) заявку здесь не создаёт; решает по ней в owner_approve / owner_reject.
+       */
+      const requestCalendarAt =
+        decoded.role === "SUPER_ADMIN" && parsed.requestDate
+          ? parseCalendarDateOnlyYmd(parsed.requestDate) ?? new Date(parsed.requestDate)
+          : undefined;
+
       const payment = await withDbRetry(() => prisma.payment.create({
         data: {
           investorId: parsed.investorId,
@@ -189,7 +200,7 @@ export async function POST(request: NextRequest) {
           amount,
           status: "requested",
           comment: parsed.comment ?? null,
-          createdAt: parsed.requestDate ? new Date(parsed.requestDate) : undefined,
+          ...(requestCalendarAt ? { createdAt: requestCalendarAt } : {}),
         },
       }));
 

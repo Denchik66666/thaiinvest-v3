@@ -32,6 +32,7 @@ export type FinanceOperationItem =
       kind: "topup";
       id: string;
       sortAt: string;
+      /** Для записи «тело при создании» без заявки используется `-investorId`. */
       requestId: number;
       investorId: number;
       positionName: string;
@@ -40,15 +41,8 @@ export type FinanceOperationItem =
       comment: string | null;
       createdAt: string;
       decidedAt: string | null;
-    }
-  | {
-      /** Старт позиции при создании инвестора (не BodyTopUpRequest). */
-      kind: "position_start";
-      id: string;
-      sortAt: string;
-      investorId: number;
-      positionName: string;
-      amount: number;
-      entryDate: string;
-      activationDate: string;
+      /** Начальное тело при создании позиции (не отдельная заявка BodyTopUpRequest). */
+      initialFromCreation?: boolean;
+      entryDate?: string;
+      activationDate?: string;
     };

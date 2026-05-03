@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
 import { withDbRetry } from "@/lib/db-retry";
+import { getCurrentBusinessRate } from "@/lib/business-rate";
 
 /**
  * Пересчитывает `Investor.accrued` по полной истории `RateHistory`
@@ -59,6 +60,8 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
     return rateHistory[pointer.idx]?.newRate;
   };
 
+  const openWeekBusinessSnap = await getCurrentBusinessRate(lastClosedWeekStart);
+
   const eps = 0.00001;
   for (const inv of investors) {
     let cursor = new Date(inv.activationDate);
@@ -93,7 +96,7 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
       const accruedAdded = body * (weeklyRatePercent / 100);
 
       const completedPaymentsInWeek = inv.payments.filter((payment) => {
-        const eventDate = payment.acceptedAt ?? payment.approvedAt ?? payment.createdAt;
+        const eventDate = payment.createdAt;
         return eventDate >= weekStart && eventDate < weekEnd;
       });
 
@@ -114,8 +117,26 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
     }
 
     const currentWeekStart = new Date(lastClosedWeekStart);
+    const weekMonSod = startOfDay(currentWeekStart);
+    const todaySod = startOfDay(now);
+    let daySpan = Math.floor((todaySod.getTime() - weekMonSod.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (daySpan < 1) daySpan = 1;
+    if (daySpan > 7) daySpan = 7;
+    const openWeekFrac = daySpan / 7;
+
+    let brOpen = openWeekBusinessSnap?.rate;
+    if (brOpen === undefined || brOpen === null) {
+      brOpen = resolveRate(currentWeekStart);
+    }
+    const appliedOpen = inv.isPrivate ? brOpen / 2 : brOpen;
+    const weeklyRatePercentOpen = appliedOpen / 4;
+    if (body > 0) {
+      accrued += body * (weeklyRatePercentOpen / 100) * openWeekFrac;
+    }
+
     const currentWeekPayments = inv.payments.filter((payment) => {
-      const eventDate = payment.acceptedAt ?? payment.approvedAt ?? payment.createdAt;
+      if (payment.status !== "completed") return false;
+      const eventDate = payment.createdAt;
       return eventDate >= currentWeekStart && eventDate <= now;
     });
 

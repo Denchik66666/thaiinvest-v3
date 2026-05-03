@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, CalendarRange, ChevronLeft, PlusCircle, UserPlus } from "lucide-react";
+import { Banknote, ChevronLeft, Percent, PlusCircle } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
@@ -62,6 +62,15 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatPaymentHistorySubline(item: Extract<FinanceOperationItem, { kind: "payment" }>) {
+  const st = paymentStatusShort(item.status);
+  const created = formatDateTime(item.createdAt);
+  if (item.status === "completed" && item.acceptedAt) {
+    return `${st} · заявка ${created} · завершено ${formatDateTime(item.acceptedAt)}`;
+  }
+  return `${st} · ${created}`;
+}
+
 function paymentTypeLabel(type: string) {
   if (type === "interest") return "Проценты";
   if (type === "body") return "Вывод тела";
@@ -78,6 +87,7 @@ function paymentStatusShort(status: string) {
     rejected: "Отклонено",
     expired: "Истекло",
     disputed: "Спор",
+    completed_at_creation: "При создании позиции",
   };
   return map[status] ?? status;
 }
@@ -150,7 +160,7 @@ export default function FinancePage() {
     return pickLatestWithdrawalRequest(investors);
   }, [investors, isError]);
 
-  const { data: opsData, isLoading: opsLoading, isFetching: opsFetching } = useQuery({
+  const { data: opsData, isLoading: opsLoading } = useQuery({
     queryKey: ["investors", "operations-history"] as const,
     queryFn: () => apiClient.get<{ items: FinanceOperationItem[] }>("/api/investors/operations-history"),
     enabled: !!user && user.role === "INVESTOR",
@@ -166,7 +176,8 @@ export default function FinancePage() {
     [filteredOps, showAllOps]
   );
 
-  const isHistoryLoading = isLoading || opsLoading || opsFetching;
+  /** Без isFetching: фоновый refetch по refetchInterval не должен снова показывать скелетон. */
+  const isHistoryLoading = isLoading || opsLoading;
 
   const totals = useMemo(
     () =>
@@ -181,6 +192,9 @@ export default function FinancePage() {
       ),
     [investors]
   );
+
+  /** Несколько позиций — в ленте и карточках показываем имя/OWNER, чтобы не путать строки. */
+  const showMultiPositionLabels = investors.length > 1;
 
   if (loading || !user) {
     return (
@@ -235,37 +249,9 @@ export default function FinancePage() {
               Ставка сети пока не задана — прогноз за неделю не считается.
             </Text>
           ) : null}
-        </Card>
-
-        <Card className="space-y-2.5 p-3 md:p-5">
-          <div className="flex items-center justify-between gap-2">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Мои позиции</Text>
-            <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/reports")}>
-              Отчёты
-            </Button>
-          </div>
-          {isLoading ? (
-            <Text className="text-sm text-muted-foreground">Загрузка...</Text>
-          ) : investors.length === 0 ? (
+          {!isLoading && investors.length === 0 ? (
             <Text className="text-sm text-muted-foreground">Пока нет инвестиций.</Text>
-          ) : (
-            <div className="space-y-1.5 md:space-y-2">
-              {investors.map((inv) => (
-                <button
-                  key={inv.id}
-                  type="button"
-                  onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                  className={cn(
-                    "thai-row-interactive w-full rounded-xl border border-border/40 p-2.5 text-left md:p-3",
-                    "thai-glass hover:border-primary/25"
-                  )}
-                >
-                  <Text className="font-semibold">{inv.name}</Text>
-                  <Text className="mt-1 text-xs text-muted-foreground">OWNER: {inv.owner.username}</Text>
-                </button>
-              ))}
-            </div>
-          )}
+          ) : null}
         </Card>
 
         {!isError && latestWithdrawalRequest ? getPaymentStatusBlock(latestWithdrawalRequest) : null}
@@ -386,7 +372,7 @@ export default function FinancePage() {
                           }}
                           aria-hidden
                         >
-                          <CalendarRange
+                          <Percent
                             className="h-[18px] w-[18px] shrink-0"
                             strokeWidth={2}
                             style={{
@@ -450,6 +436,9 @@ export default function FinancePage() {
                   }
 
                   if (item.kind === "topup") {
+                    const subline = item.initialFromCreation
+                      ? `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)} · акт. ${formatDate(item.activationDate ?? item.sortAt)}`
+                      : `${paymentStatusShort(item.status)} · ${formatDateTime(item.sortAt)}`;
                     return (
                       <div
                         key={item.id}
@@ -469,11 +458,16 @@ export default function FinancePage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
-                            Пополнение тела · {item.positionName}
+                            {showMultiPositionLabels
+                              ? `Пополнение тела · ${item.positionName}`
+                              : "Пополнение тела"}
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            {paymentStatusShort(item.status)} · {formatDateTime(item.sortAt)}
-                          </div>
+                          <div className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{subline}</div>
+                          {item.initialFromCreation ? (
+                            <Text className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                              Зачислено при создании позиции владельцем — это пополнение тела без отдельной заявки.
+                            </Text>
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-right">
                           <span
@@ -481,42 +475,6 @@ export default function FinancePage() {
                             style={{ color: "var(--thai-color-accrued)", WebkitTextFillColor: "var(--thai-color-accrued)" }}
                           >
                             +{formatAmount(item.amount)} ₿
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (item.kind === "position_start") {
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5 transition-colors duration-150 hover:bg-muted/15 active:bg-muted/25"
-                      >
-                        <div
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background/50 backdrop-blur-sm"
-                          aria-hidden
-                        >
-                          <UserPlus className="h-[18px] w-[18px] shrink-0 text-primary" strokeWidth={2} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
-                            Открытие позиции · {item.positionName}
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            Вход {formatDate(item.entryDate)} · активация {formatDate(item.activationDate)}
-                          </div>
-                          <Text className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                            Начальное тело при создании (не заявка «Пополнение»). Дальнейшие пополнения — отдельные
-                            строки.
-                          </Text>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <span
-                            className="text-[13px] font-semibold tabular-nums sm:text-sm"
-                            style={{ color: "var(--thai-color-text-primary)" }}
-                          >
-                            {formatAmount(item.amount)} ₿
                           </span>
                         </div>
                       </div>
@@ -547,12 +505,14 @@ export default function FinancePage() {
                           }}
                         />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
-                          {paymentTypeLabel(item.type)} · {item.positionName}
-                        </div>
-                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                          {paymentStatusShort(item.status)} · {formatDateTime(item.sortAt)}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
+                            {showMultiPositionLabels
+                              ? `${paymentTypeLabel(item.type)} · ${item.positionName}`
+                              : paymentTypeLabel(item.type)}
+                          </div>
+                        <div className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                          {formatPaymentHistorySubline(item)}
                         </div>
                       </div>
                       <div className="shrink-0 text-right leading-tight">

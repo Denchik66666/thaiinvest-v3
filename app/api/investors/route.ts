@@ -5,7 +5,8 @@ import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { CreateInvestorSchema } from '@/lib/schemas'
 import { logAction } from '@/lib/audit'
-import { countFullWeeksBetween, getNextMonday, getPreviousOrCurrentMonday } from '@/lib/weekly'
+import { getNextMonday, getPreviousOrCurrentMonday, startOfDay } from '@/lib/weekly'
+import { getCurrentBusinessRate } from '@/lib/business-rate'
 import { hashPassword } from '@/lib/auth'
 import { getPrivateInvestorCreateContext } from '@/lib/private-investor-create-context'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
@@ -48,12 +49,6 @@ type InvestorCreateTxClient = Pick<PrismaClient, 'user' | 'investor'>
 /* ================================
    ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 ================================ */
-
-// ретро‑расчёт процентов
-function calculateAccrued(body: number, rate: number, weeks: number): number {
-  const weeklyRate = (rate / 100) / 4     // упрощенно: месячная ÷ 4
-  return body * weeklyRate * weeks
-}
 
 function randomPassword(length = 10): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -375,7 +370,7 @@ export async function POST(request: NextRequest) {
           Проверка лимита Личной Сети + ставка (SUPER_ADMIN)
     ================================= */
 
-    let finalRate = rate
+    let finalRate: number | undefined = rate
 
     if (decoded.role === 'SUPER_ADMIN' && isPrivateNetwork) {
       const ctx = await getPrivateInvestorCreateContext(decoded.userId)
@@ -394,18 +389,52 @@ export async function POST(request: NextRequest) {
       }
 
       finalRate = ctx.privateAppliedRatePercent
+    } else {
+      const useAutoRate = rate === undefined || rate === null || rate === 0
+      if (useAutoRate) {
+        const snap = await getCurrentBusinessRate(startOfDay(entry))
+        if (!snap) {
+          const d = entry.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          return NextResponse.json(
+            {
+              error: `Ставка сети не задана на ${d}. Сначала задайте ставку в Управлении.`,
+            },
+            { status: 400 }
+          )
+        }
+        finalRate = snap.rate
+      } else {
+        finalRate = rate
+      }
     }
 
     /* ================================
-           РЕТРО-РАСЧЁТ ПРОЦЕНТОВ
+           РЕТРО-РАСЧЁТ ПРОЦЕНТОВ (по неделям и RateHistory)
     ================================= */
 
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000
     let accrued = 0
     if (status === 'active') {
       const currentWeekMonday = getPreviousOrCurrentMonday(today)
-      const weeks = countFullWeeksBetween(activationDate, currentWeekMonday)
-      if (weeks > 0) {
-        accrued = calculateAccrued(investorBody, finalRate, weeks)
+      let cursor = new Date(activationDate)
+      cursor.setHours(0, 0, 0, 0)
+      while (cursor.getTime() < currentWeekMonday.getTime()) {
+        const weekStart = new Date(cursor)
+        const snap = await getCurrentBusinessRate(weekStart)
+        if (!snap) {
+          const d = weekStart.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          return NextResponse.json(
+            {
+              error: `Ставка сети не задана на ${d}. Сначала задайте ставку в Управлении.`,
+            },
+            { status: 400 }
+          )
+        }
+        const businessRate = snap.rate
+        const appliedRate = isPrivateNetwork ? businessRate / 2 : businessRate
+        const weeklyRatePercent = appliedRate / 4
+        accrued += investorBody * (weeklyRatePercent / 100)
+        cursor = new Date(cursor.getTime() + oneWeekMs)
       }
     }
 

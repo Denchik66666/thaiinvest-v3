@@ -10,7 +10,6 @@ import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { Input } from "@/components/ui/Input";
-import { DatePicker } from "@/components/ui/DatePicker";
 import { InvestorCard } from "@/components/investors/InvestorCard";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -83,7 +82,6 @@ type LedgerResponse = {
 type PaymentForm = {
   type: "interest" | "body" | "close";
   amount: string;
-  requestDate: string;
   comment: string;
 };
 
@@ -99,7 +97,6 @@ export default function InvestorDetailPage() {
   const [form, setForm] = useState<PaymentForm>({
     type: "interest",
     amount: "",
-    requestDate: new Date().toISOString().split("T")[0],
     comment: "",
   });
 
@@ -163,10 +160,16 @@ export default function InvestorDetailPage() {
 
   const requestWithdrawMutation = useMutation({
     mutationFn: (data: PaymentForm) =>
-      apiClient.post(`/api/investors/${investorId}/request-withdraw`, data),
+      apiClient.post("/api/payments", {
+        action: "request",
+        investorId: Number(investorId),
+        type: data.type,
+        amount: data.type === "close" ? undefined : Number(String(data.amount).replace(/\s/g, "").replace(",", ".")),
+        comment: data.comment.trim() || undefined,
+      }),
     onSuccess: () => {
       toast.success("Заявка на вывод отправлена");
-      setForm({ type: "interest", amount: "", requestDate: new Date().toISOString().split("T")[0], comment: "" });
+      setForm({ type: "interest", amount: "", comment: "" });
       queryClient.invalidateQueries({ queryKey: ["investor", investorId] });
       queryClient.invalidateQueries({ queryKey: ["investor-ledger", investorId] });
       queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
@@ -450,10 +453,6 @@ export default function InvestorDetailPage() {
               </Text>
             )}
 
-            <div className="space-y-2">
-              <Label>Дата вывода</Label>
-              <DatePicker value={form.requestDate} onChange={(v) => setForm((p) => ({ ...p, requestDate: v }))} />
-            </div>
             <div className="space-y-2">
               <Label>Комментарий</Label>
               <Input

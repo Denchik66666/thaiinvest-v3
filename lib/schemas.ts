@@ -8,7 +8,11 @@ export const CreateInvestorSchema = z.object({
   handle: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   body: z.coerce.number().positive("Тело должно быть положительным"),
-  rate: z.coerce.number().min(0, "Ставка не может быть отрицательной"),
+  /** Не передан / пусто — сервер подставит ставку сети на дату входа (`getCurrentBusinessRate`). */
+  rate: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : v),
+    z.coerce.number().min(0, "Ставка не может быть отрицательной").optional()
+  ),
   entryDate: z.string().or(z.date()),
   isPrivate: z.boolean().default(false),
 });

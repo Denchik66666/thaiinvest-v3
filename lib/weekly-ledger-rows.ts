@@ -70,7 +70,7 @@ export function buildWeeklyLedgerRows(
 
     const completedPayments = investor.payments.filter((payment) => {
       if (payment.status !== "completed") return false;
-      const eventDate = payment.acceptedAt ?? payment.approvedAt ?? payment.createdAt;
+      const eventDate = payment.createdAt;
       return eventDate >= weekStart && eventDate < weekEnd;
     });
 
@@ -118,7 +118,7 @@ export function buildWeeklyLedgerRows(
 
   const currentWeekPayments = investor.payments.filter((payment) => {
     if (payment.status !== "completed") return false;
-    const eventDate = payment.acceptedAt ?? payment.approvedAt ?? payment.createdAt;
+    const eventDate = payment.createdAt;
     return eventDate >= currentWeekStart && eventDate <= now;
   });
 
