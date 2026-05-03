@@ -155,6 +155,7 @@ export default function InvestorDetailPage() {
     mutationFn: () => apiClient.delete(`/api/investors/${investorId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["investors"] });
+      queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
       toast.success("Инвестор удалён");
       router.push("/dashboard/investors");
     },
@@ -168,6 +169,7 @@ export default function InvestorDetailPage() {
       setForm({ type: "interest", amount: "", requestDate: new Date().toISOString().split("T")[0], comment: "" });
       queryClient.invalidateQueries({ queryKey: ["investor", investorId] });
       queryClient.invalidateQueries({ queryKey: ["investor-ledger", investorId] });
+      queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
     },
     onError: (err: Error) => {
       toast.error(err.message);

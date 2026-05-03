@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
+import { getPreviousOrCurrentMonday } from "@/lib/weekly";
+import { openWeekDayProgress, sumExpectedOpenWeekAccrualGross } from "@/lib/open-week-forecast";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
@@ -223,6 +225,17 @@ export default function DashboardPage() {
     refetchInterval: user?.role === "INVESTOR" ? 30_000 : false,
   });
 
+  const openWeekMondayIso = user?.role === "INVESTOR" ? getPreviousOrCurrentMonday(new Date()).toISOString() : "";
+  const { data: investorBusinessRate, isSuccess: investorBusinessRateFetched } = useQuery({
+    queryKey: ["system", "business-rate", openWeekMondayIso] as const,
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: { rate: number } | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(openWeekMondayIso)}`
+      ),
+    enabled: !!user && user.role === "INVESTOR",
+    staleTime: 60_000,
+  });
+
   const investors = useMemo(() => investorsData?.investors ?? [], [investorsData]);
   const myInvestors = useMemo(
     () =>
@@ -244,6 +257,15 @@ export default function DashboardPage() {
       { capital: 0, accrued: 0, paid: 0, due: 0 }
     );
   }, [myInvestors]);
+
+  const investorOpenWeek = openWeekDayProgress();
+  const investorForecastGross =
+    user?.role === "INVESTOR"
+      ? sumExpectedOpenWeekAccrualGross(
+          myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
+          investorBusinessRate?.current?.rate ?? null
+        )
+      : null;
 
   const networkStats = useMemo(() => {
     return investors.reduce(
@@ -621,6 +643,20 @@ export default function DashboardPage() {
                 valueStyle={{ color: "var(--thai-color-paid)" }}
               />
             </div>
+            {investorForecastGross != null && myInvestors.length > 0 ? (
+              <Text className="text-[11px] leading-snug text-muted-foreground">
+                Ожидается за текущую неделю (прогноз, до выплат): ≈ +
+                {investorForecastGross.toLocaleString("ru-RU", {
+                  maximumFractionDigits: 2,
+                  minimumFractionDigits: 0,
+                })}{" "}
+                ฿ · дней {investorOpenWeek.daySpan}/7
+              </Text>
+            ) : investorBusinessRateFetched && investorBusinessRate?.current == null && myInvestors.length > 0 ? (
+              <Text className="text-[11px] leading-snug text-muted-foreground">
+                Ставка сети пока не задана — прогноз за неделю не считается.
+              </Text>
+            ) : null}
           </div>
         ) : isOwner ? (
           <div className="grid gap-2">

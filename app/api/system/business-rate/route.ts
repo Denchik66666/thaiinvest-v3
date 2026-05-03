@@ -12,7 +12,7 @@ function parseDate(value?: string) {
   return date;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("token")?.value;
@@ -21,7 +21,11 @@ export async function GET() {
     const decoded = verifyToken(token);
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
-    const current = await withDbRetry(() => getCurrentBusinessRate(new Date()));
+    const atParam = request.nextUrl.searchParams.get("at");
+    const atParsed = atParam ? parseDate(atParam) : undefined;
+    const at = atParsed != null ? atParsed : new Date();
+
+    const current = await withDbRetry(() => getCurrentBusinessRate(at));
     return NextResponse.json({ success: true, current });
   } catch (error) {
     console.error("GET BUSINESS RATE ERROR:", error);

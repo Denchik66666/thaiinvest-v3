@@ -3,13 +3,16 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { ChevronLeft } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Banknote, CalendarRange, ChevronLeft, PlusCircle, UserPlus } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
 import { formatCurrency, cn } from "@/lib/utils";
+import { isSameOpenWeekAsNow, openWeekDayProgress, sumExpectedOpenWeekAccrualGross } from "@/lib/open-week-forecast";
+import type { FinanceOperationItem } from "@/types/finance-operations";
+import { getPreviousOrCurrentMonday } from "@/lib/weekly";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
@@ -32,30 +35,52 @@ type InvestorRow = {
   paid: number;
   due: number;
   status: string;
+  isPrivate: boolean;
   owner: { username: string };
   payments?: WithdrawalRequestPayment[] | null;
 };
 
-type WeeklyLedgerRow = {
-  weekStart: string;
-  weekEnd: string;
-  accruedAdded: number;
-  interestPaid: number;
-  bodyPaid: number;
-  closingPaid: number;
-};
+type OpFilter = "all" | "accrual" | "payout" | "request" | "topup";
 
-type WeeklyLedgerResponse = {
-  rows: WeeklyLedgerRow[];
-};
+function opMatchesFilter(item: FinanceOperationItem, f: OpFilter): boolean {
+  if (f === "all") return true;
+  if (f === "accrual") return item.kind === "week_accrual";
+  if (f === "topup") return item.kind === "topup";
+  if (f === "payout") return item.kind === "payment" && item.status === "completed";
+  if (f === "request") return item.kind === "payment" && item.status !== "completed";
+  return false;
+}
 
-/** Неделя для блока «История начислений» (агрегат по всем позициям за одну weekStart). */
-type HistoryWeek = {
-  weekStart: string;
-  weekEnd: string;
-  accrued: number;
-  paid: number;
-};
+function formatDateTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function paymentTypeLabel(type: string) {
+  if (type === "interest") return "Проценты";
+  if (type === "body") return "Вывод тела";
+  if (type === "close") return "Закрытие позиции";
+  return type;
+}
+
+function paymentStatusShort(status: string) {
+  const map: Record<string, string> = {
+    completed: "Выполнено",
+    requested: "На рассмотрении",
+    pending: "В очереди",
+    approved_waiting_accept: "Ожидает решения",
+    rejected: "Отклонено",
+    expired: "Истекло",
+    disputed: "Спор",
+  };
+  return map[status] ?? status;
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -67,30 +92,13 @@ function formatAmount(num: number) {
   return Number(num).toLocaleString("ru-RU");
 }
 
-function mergeLedgerWeeks(
-  results: { data?: WeeklyLedgerResponse; isPending: boolean }[]
-): HistoryWeek[] {
-  const map = new Map<string, HistoryWeek>();
-  for (const res of results) {
-    const rows = res.data?.rows;
-    if (!rows?.length) continue;
-    for (const r of rows) {
-      const paid = r.interestPaid + r.bodyPaid + r.closingPaid;
-      const prev = map.get(r.weekStart);
-      if (!prev) {
-        map.set(r.weekStart, {
-          weekStart: r.weekStart,
-          weekEnd: r.weekEnd,
-          accrued: r.accruedAdded,
-          paid,
-        });
-      } else {
-        prev.accrued += r.accruedAdded;
-        prev.paid += paid;
-      }
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime());
+function formatNetworkWeeklyRate(p: number | undefined) {
+  if (p == null || Number.isNaN(p)) return null;
+  const s = new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(p);
+  return `${s}% / нед`;
 }
 
 export default function FinancePage() {
@@ -119,26 +127,47 @@ export default function FinancePage() {
 
   const investors = useMemo(() => data?.investors ?? [], [data?.investors]);
 
+  const openWeekMondayIso = getPreviousOrCurrentMonday(new Date()).toISOString();
+
+  const { data: businessRateRes, isSuccess: businessRateFetched } = useQuery({
+    queryKey: ["system", "business-rate", openWeekMondayIso] as const,
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: { rate: number } | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(openWeekMondayIso)}`
+      ),
+    enabled: !!user && user.role === "INVESTOR",
+    staleTime: 60_000,
+  });
+
+  const openWeekProgress = openWeekDayProgress();
+  const forecastGross = sumExpectedOpenWeekAccrualGross(
+    investors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
+    businessRateRes?.current?.rate ?? null
+  );
+
   const latestWithdrawalRequest = useMemo(() => {
     if (isError) return null;
     return pickLatestWithdrawalRequest(investors);
   }, [investors, isError]);
 
-  const ledgerQueries = useQueries({
-    queries: investors.map((inv) => ({
-      queryKey: ["investors", inv.id, "weekly-ledger"] as const,
-      queryFn: () => apiClient.get<WeeklyLedgerResponse>(`/api/investors/${inv.id}/weekly-ledger`),
-      enabled: !!user && user.role === "INVESTOR" && investors.length > 0,
-    })),
+  const { data: opsData, isLoading: opsLoading, isFetching: opsFetching } = useQuery({
+    queryKey: ["investors", "operations-history"] as const,
+    queryFn: () => apiClient.get<{ items: FinanceOperationItem[] }>("/api/investors/operations-history"),
+    enabled: !!user && user.role === "INVESTOR",
+    refetchInterval: 30_000,
   });
 
-  const mergedWeeks = mergeLedgerWeeks(ledgerQueries);
+  const allOps = useMemo(() => opsData?.items ?? [], [opsData?.items]);
+  const [opFilter, setOpFilter] = useState<OpFilter>("all");
+  const filteredOps = useMemo(() => allOps.filter((i) => opMatchesFilter(i, opFilter)), [allOps, opFilter]);
+  const [showAllOps, setShowAllOps] = useState(false);
+  const visibleOps = useMemo(
+    () => (showAllOps ? filteredOps : filteredOps.slice(0, 40)),
+    [filteredOps, showAllOps]
+  );
 
-  const [showAllWeeks, setShowAllWeeks] = useState(false);
-  const visibleWeeks = showAllWeeks ? mergedWeeks : mergedWeeks.slice(0, 8);
+  const isHistoryLoading = isLoading || opsLoading || opsFetching;
 
-  const isHistoryLoading =
-    isLoading || (investors.length > 0 && ledgerQueries.some((q) => q.isPending || q.isFetching));
   const totals = useMemo(
     () =>
       investors.reduce(
@@ -196,6 +225,16 @@ export default function FinancePage() {
             <Stat title="Выплачено" value={formatCurrency(totals.paid)} valueStyle={{ color: "var(--thai-color-paid)" }} />
             <Stat title="К выплате" value={formatCurrency(totals.due)} valueStyle={{ color: "var(--thai-color-due)" }} />
           </div>
+          {investors.length > 0 && forecastGross != null ? (
+            <Text className="text-[11px] leading-snug text-muted-foreground">
+              Ожидается за текущую неделю (прогноз, до выплат): ≈ +{formatAmount(forecastGross)} ₿ · дней{" "}
+              {openWeekProgress.daySpan}/7
+            </Text>
+          ) : businessRateFetched && businessRateRes?.current == null && investors.length > 0 ? (
+            <Text className="text-[11px] leading-snug text-muted-foreground">
+              Ставка сети пока не задана — прогноз за неделю не считается.
+            </Text>
+          ) : null}
         </Card>
 
         <Card className="space-y-2.5 p-3 md:p-5">
@@ -236,106 +275,312 @@ export default function FinancePage() {
             marginTop: 16,
             display: "flex",
             flexDirection: "column",
-            gap: 8,
+            gap: 10,
           }}
         >
           <div
-            style={{
-              fontSize: 11,
-              color: "var(--thai-color-text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              padding: "0 4px",
-              marginBottom: 4,
-            }}
+            className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between"
+            style={{ paddingLeft: 2, paddingRight: 2 }}
           >
-            История начислений
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--thai-color-text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.14em",
+                fontWeight: 600,
+              }}
+            >
+              История операций
+            </span>
+            {!isHistoryLoading && allOps.length > 0 ? (
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {allOps.length} шт. · фильтр: {filteredOps.length}
+              </span>
+            ) : null}
           </div>
 
-          {isHistoryLoading
-            ? [1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: "var(--thai-color-card-bg)",
-                    border: "1px solid var(--thai-color-card-border)",
-                    borderRadius: 12,
-                    padding: "14px 16px",
-                    height: 58,
-                    animation: "thai-shimmer 1.5s ease infinite",
-                    backgroundSize: "200% 100%",
-                    backgroundImage:
-                      "linear-gradient(90deg, transparent 40%, var(--thai-color-card-bg) 50%, transparent 60%)",
-                  }}
-                />
-              ))
-            : visibleWeeks.map((week) => (
-                <div
-                  key={week.weekStart}
-                  style={{
-                    background: "var(--thai-color-card-bg)",
-                    border: "1px solid var(--thai-color-card-border)",
-                    borderRadius: 12,
-                    padding: "14px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    animation: "thai-fade-in-up 0.3s ease forwards",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: "var(--thai-color-text-primary)",
-                        fontWeight: 500,
-                        marginBottom: 3,
-                      }}
-                    >
-                      {formatDate(week.weekStart)} — {formatDate(week.weekEnd)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--thai-color-text-muted)",
-                      }}
-                    >
-                      {week.paid > 0 ? "Выплачено" : "Не выплачено"}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div
-                      data-finance-history="accrued"
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 600,
-                        color: "var(--thai-color-accrued)",
-                        WebkitTextFillColor: "var(--thai-color-accrued)",
-                        marginBottom: 2,
-                      }}
-                    >
-                      +{formatAmount(week.accrued)} ₿
-                    </div>
-                    {week.paid > 0 ? (
-                      <div
-                        data-finance-history="paid"
-                        style={{
-                          fontSize: 12,
-                          color: "var(--thai-color-paid)",
-                          WebkitTextFillColor: "var(--thai-color-paid)",
-                        }}
-                      >
-                        выпл. {formatAmount(week.paid)} ₿
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+          <div className="flex flex-wrap gap-2 px-0.5">
+            {(
+              [
+                ["all", "Все"],
+                ["accrual", "Начисления"],
+                ["payout", "Выплаты"],
+                ["request", "Заявки"],
+                ["topup", "Пополнения"],
+              ] as const
+            ).map(([id, label]) => (
+              <Button
+                key={id}
+                type="button"
+                size="sm"
+                variant={opFilter === id ? "primary" : "outline"}
+                className="rounded-lg text-xs"
+                onClick={() => {
+                  setOpFilter(id);
+                  setShowAllOps(false);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
 
-          {!isHistoryLoading && mergedWeeks.length > 8 ? (
+          {isHistoryLoading ? (
+            <div
+              className="overflow-hidden rounded-2xl border"
+              style={{
+                borderColor: "var(--thai-color-card-border)",
+                background: "var(--thai-color-card-bg)",
+              }}
+            >
+              <div className="divide-y divide-border/35">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2.5 sm:px-3.5">
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-muted/35" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="h-3.5 max-w-[11rem] rounded-md bg-muted/35" />
+                      <div className="h-2.5 max-w-[14rem] rounded-md bg-muted/25" />
+                    </div>
+                    <div className="shrink-0 space-y-1.5 text-right">
+                      <div className="ml-auto h-3.5 w-14 rounded-md bg-muted/35" />
+                      <div className="ml-auto h-2.5 w-12 rounded-md bg-muted/25" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : visibleOps.length > 0 ? (
+            <div
+              className="overflow-hidden rounded-2xl border shadow-sm"
+              style={{
+                borderColor: "var(--thai-color-card-border)",
+                background: "color-mix(in srgb, var(--thai-color-card-bg) 92%, transparent)",
+                animation: "thai-fade-in-up 0.28s ease forwards",
+              }}
+            >
+              <div className="divide-y divide-border/35">
+                {visibleOps.map((item) => {
+                  if (item.kind === "week_accrual") {
+                    const settled = item.paidTotal > 0;
+                    const rateLabel = formatNetworkWeeklyRate(item.networkRatePercent);
+                    const isOpenWeek = isSameOpenWeekAsNow(item.weekStart);
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5",
+                          "transition-colors duration-150 hover:bg-muted/15 active:bg-muted/25",
+                          item.syntheticOpen ? "bg-muted/10" : undefined
+                        )}
+                      >
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background/50 backdrop-blur-sm"
+                          style={{
+                            borderColor: settled
+                              ? "color-mix(in srgb, var(--thai-color-paid) 45%, transparent)"
+                              : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
+                            boxShadow: settled
+                              ? "inset 0 0 0 1px color-mix(in srgb, var(--thai-color-paid) 12%, transparent)"
+                              : "inset 0 0 0 1px color-mix(in srgb, var(--thai-color-due) 10%, transparent)",
+                          }}
+                          aria-hidden
+                        >
+                          <CalendarRange
+                            className="h-[18px] w-[18px] shrink-0"
+                            strokeWidth={2}
+                            style={{
+                              color: settled ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                              opacity: 0.92,
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-semibold tabular-nums tracking-tight text-foreground sm:text-sm">
+                            Начисление за неделю · {formatDate(item.weekStart)} — {formatDate(item.weekEnd)}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] leading-snug">
+                            {rateLabel ? (
+                              <span className="text-muted-foreground">Сеть {rateLabel}</span>
+                            ) : (
+                              <span className="text-muted-foreground">Ставка сети —</span>
+                            )}
+                            <span className="px-1 text-border/80">·</span>
+                            <span
+                              className="font-medium"
+                              style={{ color: settled ? "var(--thai-color-paid)" : "var(--thai-color-due)" }}
+                            >
+                              {settled ? "Есть выплаты за неделю" : "Без выплат за неделю"}
+                            </span>
+                          </div>
+                          {(item.syntheticOpen || (isOpenWeek && item.accrued === 0)) ? (
+                            <Text className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                              Неделя не закончена — +0 в ленте до ПН; прогноз см. «Твои показатели».
+                            </Text>
+                          ) : null}
+                        </div>
+                        <div className="shrink-0 text-right leading-tight">
+                          <div
+                            data-finance-history="accrued"
+                            className="text-[13px] font-semibold tabular-nums sm:text-sm"
+                            style={{
+                              color: "var(--thai-color-accrued)",
+                              WebkitTextFillColor: "var(--thai-color-accrued)",
+                            }}
+                          >
+                            +{formatAmount(item.accrued)} ₿
+                          </div>
+                          {item.paidTotal > 0 ? (
+                            <div
+                              data-finance-history="paid"
+                              className="mt-0.5 text-[11px] font-medium tabular-nums"
+                              style={{
+                                color: "var(--thai-color-paid)",
+                                WebkitTextFillColor: "var(--thai-color-paid)",
+                              }}
+                            >
+                              выпл. {formatAmount(item.paidTotal)} ₿
+                            </div>
+                          ) : (
+                            <div className="mt-0.5 text-[10px] font-medium text-muted-foreground">без выплат</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (item.kind === "topup") {
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5 transition-colors duration-150 hover:bg-muted/15 active:bg-muted/25"
+                      >
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background/50 backdrop-blur-sm"
+                          style={{
+                            borderColor: "color-mix(in srgb, var(--thai-color-accrued) 40%, transparent)",
+                          }}
+                          aria-hidden
+                        >
+                          <PlusCircle
+                            className="h-[18px] w-[18px] shrink-0 text-[var(--thai-color-accrued)]"
+                            strokeWidth={2}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
+                            Пополнение тела · {item.positionName}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {paymentStatusShort(item.status)} · {formatDateTime(item.sortAt)}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span
+                            className="text-[13px] font-semibold tabular-nums sm:text-sm"
+                            style={{ color: "var(--thai-color-accrued)", WebkitTextFillColor: "var(--thai-color-accrued)" }}
+                          >
+                            +{formatAmount(item.amount)} ₿
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (item.kind === "position_start") {
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5 transition-colors duration-150 hover:bg-muted/15 active:bg-muted/25"
+                      >
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background/50 backdrop-blur-sm"
+                          aria-hidden
+                        >
+                          <UserPlus className="h-[18px] w-[18px] shrink-0 text-primary" strokeWidth={2} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
+                            Открытие позиции · {item.positionName}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            Вход {formatDate(item.entryDate)} · активация {formatDate(item.activationDate)}
+                          </div>
+                          <Text className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                            Начальное тело при создании (не заявка «Пополнение»). Дальнейшие пополнения — отдельные
+                            строки.
+                          </Text>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span
+                            className="text-[13px] font-semibold tabular-nums sm:text-sm"
+                            style={{ color: "var(--thai-color-text-primary)" }}
+                          >
+                            {formatAmount(item.amount)} ₿
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const isOut = item.status === "completed";
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5 transition-colors duration-150 hover:bg-muted/15 active:bg-muted/25"
+                    >
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background/50 backdrop-blur-sm"
+                        style={{
+                          borderColor: isOut
+                            ? "color-mix(in srgb, var(--thai-color-paid) 45%, transparent)"
+                            : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
+                        }}
+                        aria-hidden
+                      >
+                        <Banknote
+                          className="h-[18px] w-[18px] shrink-0"
+                          strokeWidth={2}
+                          style={{
+                            color: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                            opacity: 0.92,
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-semibold text-foreground sm:text-sm">
+                          {paymentTypeLabel(item.type)} · {item.positionName}
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {paymentStatusShort(item.status)} · {formatDateTime(item.sortAt)}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right leading-tight">
+                        <div
+                          className="text-[13px] font-semibold tabular-nums sm:text-sm"
+                          style={{
+                            color: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                            WebkitTextFillColor: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                          }}
+                        >
+                          {isOut ? "−" : ""}
+                          {formatAmount(item.amount)} ₿
+                        </div>
+                        {!isOut ? (
+                          <div className="mt-0.5 text-[10px] font-medium text-muted-foreground">заявка</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {!isHistoryLoading && filteredOps.length > 40 ? (
             <button
               type="button"
-              onClick={() => setShowAllWeeks(!showAllWeeks)}
+              onClick={() => setShowAllOps(!showAllOps)}
               style={{
                 width: "100%",
                 padding: "12px",
@@ -354,13 +599,13 @@ export default function FinancePage() {
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              {showAllWeeks
-                ? "↑ Скрыть · показать только последние 8"
-                : `↓ Показать все · ещё ${mergedWeeks.length - 8} недель`}
+              {showAllOps
+                ? "↑ Скрыть · показать только последние 40"
+                : `↓ Показать все · ещё ${filteredOps.length - 40} операций`}
             </button>
           ) : null}
 
-          {!isHistoryLoading && mergedWeeks.length === 0 ? (
+          {!isHistoryLoading && filteredOps.length === 0 ? (
             <div
               style={{
                 padding: "32px 16px",
@@ -369,7 +614,9 @@ export default function FinancePage() {
                 fontSize: 14,
               }}
             >
-              История начислений появится после первой недели
+              {allOps.length === 0
+                ? "Операций пока нет — начисления по неделям, выплаты, заявки и пополнения появятся здесь."
+                : "Нет операций в выбранном фильтре."}
             </div>
           ) : null}
         </div>
