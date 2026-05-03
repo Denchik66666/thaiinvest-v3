@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { countFullWeeksBetween, getNextMonday, getPreviousOrCurrentMonday } from "@/lib/weekly";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 const BecomeSemenInvestorSchema = z.object({
   name: z.string().min(2, "Имя должно содержать минимум 2 символа"),
@@ -38,13 +39,13 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, body, rate, entryDate, allowMultiple } = parsed.data;
-    const owner = await prisma.user.findFirst({ where: { role: "OWNER" } });
+    const owner = await withDbRetry(() => prisma.user.findFirst({ where: { role: "OWNER" } }));
     if (!owner) return NextResponse.json({ error: "OWNER не найден" }, { status: 400 });
 
     if (!allowMultiple) {
-      const existing = await prisma.investor.count({
+      const existing = await withDbRetry(() => prisma.investor.count({
         where: { linkedUserId: decoded.userId, isPrivate: false, ownerId: owner.id },
-      });
+      }));
       if (existing > 0) {
         return NextResponse.json(
           { error: "У тебя уже есть привязанный инвестор у Семёна. Для второго передай allowMultiple=true." },
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
       if (weeks > 0) accrued = calculateAccrued(body, rate, weeks);
     }
 
-    const investor = await prisma.investor.create({
+    const investor = await withDbRetry(() => prisma.investor.create({
       data: {
         ownerId: owner.id,
         linkedUserId: decoded.userId,
@@ -80,19 +81,26 @@ export async function POST(request: NextRequest) {
         status,
         isPrivate: false,
       },
-    });
+    }));
 
-    await logAction({
-      userId: decoded.userId,
-      action: "BECOME_SEMEN_INVESTOR",
-      entityType: "Investor",
-      entityId: investor.id,
-      newValue: JSON.stringify(investor),
-    });
+    try {
+      await withDbRetry(() => logAction({
+        userId: decoded.userId,
+        action: "BECOME_SEMEN_INVESTOR",
+        entityType: "Investor",
+        entityId: investor.id,
+        newValue: JSON.stringify(investor),
+      }));
+    } catch (auditError) {
+      console.error("Become Semen investor audit error:", auditError);
+    }
 
     return NextResponse.json({ success: true, investor });
   } catch (error) {
     console.error("Become Semen investor error:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите запрос" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

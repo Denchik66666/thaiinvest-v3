@@ -3,10 +3,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, UserRound } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { CHAT_CONTEXT_QUERY_KEY } from "@/lib/chat-context-query";
+import { cn } from "@/lib/utils";
 import { Container } from "@/components/ui/Container";
 import { Card } from "@/components/ui/Card";
 import { Text } from "@/components/ui/Text";
@@ -14,6 +16,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import ThemeToggle from "@/components/ThemeToggle";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 
 type ChatContext = {
@@ -134,8 +138,11 @@ function ChatPageInner() {
   if (authLoading || !user) {
     return (
       <Container>
-        <div className="flex min-h-screen items-center justify-center">
-          <Text>Загрузка...</Text>
+        <div className="thai-dashboard-root flex min-h-screen items-center justify-center py-16">
+          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <Text className="text-foreground">Загрузка…</Text>
+          </div>
         </div>
       </Container>
     );
@@ -145,25 +152,44 @@ function ChatPageInner() {
 
   return (
     <Container>
-      <div className="min-h-screen py-4 pb-28 md:py-8 md:pb-28 space-y-3">
+      <div className="thai-dashboard-root min-h-screen space-y-3 py-4 pb-28 md:space-y-4 md:py-8 md:pb-28">
         <div className={DASHBOARD_STICKY_BAR_CLASS}>
           <button
             type="button"
-            onClick={() => router.push("/dashboard/profile")}
-            className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-1 hover:bg-muted/50 transition"
+            onClick={() => router.push("/dashboard")}
+            className="thai-glass flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-medium transition hover:brightness-[1.03] dark:hover:brightness-110"
           >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={34} />
-            <span className="truncate text-sm font-medium">{user.username}</span>
+            <ChevronLeft className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+            <span className="truncate">Главная</span>
           </button>
+          <div className="ml-auto flex items-center gap-2">
+            <NotificationBell />
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/profile")}
+              className="thai-glass flex h-10 w-10 items-center justify-center rounded-xl transition hover:brightness-[1.03] dark:hover:brightness-110"
+              aria-label="Профиль"
+              title="Профиль"
+            >
+              <UserRound className="h-4 w-4 opacity-80" />
+            </button>
+          </div>
         </div>
 
-        <Text className="text-xs text-muted-foreground px-0.5">Внутренний чат</Text>
+        <div className="flex items-center gap-2 px-0.5">
+          <UserAvatar name={user.username} src={user.avatarUrl} size={36} />
+          <div className="min-w-0">
+            <Text className="truncate text-sm font-semibold text-foreground">{user.username}</Text>
+            <Text className="text-xs text-muted-foreground">Внутренний чат</Text>
+          </div>
+        </div>
 
         {showPicker ? (
-          <Card className="p-3">
-            <label className="text-xs font-medium text-muted-foreground">Собеседник</label>
+          <Card className="space-y-2 p-3 md:p-4">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Собеседник</label>
             <select
-              className="mt-1 w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+              className="mt-1 w-full rounded-xl border border-border/50 bg-background/80 px-3 py-2.5 text-sm outline-none backdrop-blur-sm transition focus:border-primary/45 focus:ring-2 focus:ring-primary/25"
               value={resolvedPeer ?? ""}
               onChange={(e) => {
                 const v = Number(e.target.value);
@@ -193,7 +219,7 @@ function ChatPageInner() {
                       setDraftPeer(p.id);
                       router.push(`/dashboard/chat?peer=${p.id}`);
                     }}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-xs hover:bg-muted/30"
+                    className="inline-flex items-center gap-1 rounded-full border border-border/45 bg-muted/10 px-2 py-0.5 text-xs transition hover:bg-muted/25"
                   >
                     <UserAvatar name={p.username} size={22} />
                     {p.username}
@@ -225,8 +251,8 @@ function ChatPageInner() {
         ) : null}
 
         {resolvedPeer ? (
-          <Card className="flex flex-col p-0 overflow-hidden min-h-[45vh]">
-            <div className="border-b border-border/60 px-3 py-2 flex items-center gap-2">
+          <Card className="flex min-h-[45vh] flex-col overflow-hidden p-0">
+            <div className="flex items-center gap-2 border-b border-border/45 bg-muted/5 px-3 py-2.5">
               <UserAvatar
                 name={(partners ?? []).find((p) => p.id === resolvedPeer)?.username ?? "?"}
                 size={32}
@@ -240,7 +266,7 @@ function ChatPageInner() {
                 <div className="text-xs text-muted-foreground">Переписка</div>
               </div>
             </div>
-            <div className="flex-1 max-h-[50vh] overflow-y-auto px-3 py-3 space-y-2">
+            <div className="max-h-[50vh] flex-1 space-y-2 overflow-y-auto px-3 py-3">
               {(messagesData?.messages ?? []).length === 0 ? (
                 <Text className="text-sm text-muted-foreground">Пока нет сообщений — напишите первым.</Text>
               ) : (
@@ -249,11 +275,12 @@ function ChatPageInner() {
                   return (
                     <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
                       <div
-                        className={
+                        className={cn(
+                          "max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm",
                           mine
-                            ? "max-w-[85%] rounded-2xl rounded-br-sm bg-primary/90 px-3 py-2 text-sm text-primary-foreground"
-                            : "max-w-[85%] rounded-2xl rounded-bl-sm border border-border/60 bg-card/80 px-3 py-2 text-sm"
-                        }
+                            ? "rounded-br-sm bg-primary text-primary-foreground"
+                            : "thai-glass rounded-bl-sm"
+                        )}
                       >
                         {!mine ? (
                           <div className="text-xs font-medium text-muted-foreground mb-0.5">{m.senderUsername}</div>
@@ -275,7 +302,7 @@ function ChatPageInner() {
               <div ref={bottomRef} />
             </div>
             <form
-              className="border-t border-border/60 p-2 flex gap-2"
+              className="flex gap-2 border-t border-border/45 bg-muted/5 p-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 sendMutation.mutate();
@@ -307,16 +334,19 @@ function ChatPageInner() {
 
 export default function ChatPage() {
   return (
-    <Suspense
-      fallback={
-        <Container>
-          <div className="flex min-h-screen items-center justify-center pb-28">
-            <Text>Загрузка...</Text>
-          </div>
-        </Container>
-      }
-    >
-      <ChatPageInner />
-    </Suspense>
+    <Container>
+      <div className="thai-dashboard-root flex min-h-screen flex-col items-center justify-center gap-3 pb-28 text-center">
+        <div className="thai-panel-muted max-w-md space-y-3">
+          <Text className="text-base font-semibold text-foreground">Чат временно отключён</Text>
+          <Text className="text-sm text-muted-foreground">
+            Раздел остановлен на время стабилизации базы данных.
+          </Text>
+          <Button onClick={() => window.location.assign("/dashboard")} className="w-full">
+            На главную
+          </Button>
+        </div>
+        <MobileBottomNav active="home" />
+      </div>
+    </Container>
   );
 }

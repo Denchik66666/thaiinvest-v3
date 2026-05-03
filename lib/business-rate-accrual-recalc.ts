@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
+import { withDbRetry } from "@/lib/db-retry";
 
 /**
  * Пересчитывает `Investor.accrued` по полной истории `RateHistory`
@@ -10,38 +11,42 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
   const lastClosedWeekStart = getPreviousOrCurrentMonday(now);
   const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
-  const rateHistory = await prisma.rateHistory.findMany({
-    orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
-    select: { effectiveDate: true, newRate: true },
-  });
+  const rateHistory = await withDbRetry(() =>
+    prisma.rateHistory.findMany({
+      orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+      select: { effectiveDate: true, newRate: true },
+    })
+  );
 
-  const investors = await prisma.investor.findMany({
-    where: {
-      status: { not: "closed" },
-      activationDate: { lte: lastClosedWeekStart },
-    },
-    select: {
-      id: true,
-      body: true,
-      activationDate: true,
-      isPrivate: true,
-      rate: true,
-      accrued: true,
-      payments: {
-        where: { status: "completed" },
-        select: {
-          id: true,
-          investorId: true,
-          type: true,
-          amount: true,
-          createdAt: true,
-          approvedAt: true,
-          acceptedAt: true,
-          status: true,
+  const investors = await withDbRetry(() =>
+    prisma.investor.findMany({
+      where: {
+        status: { not: "closed" },
+        activationDate: { lte: lastClosedWeekStart },
+      },
+      select: {
+        id: true,
+        body: true,
+        activationDate: true,
+        isPrivate: true,
+        rate: true,
+        accrued: true,
+        payments: {
+          where: { status: "completed" },
+          select: {
+            id: true,
+            investorId: true,
+            type: true,
+            amount: true,
+            createdAt: true,
+            approvedAt: true,
+            acceptedAt: true,
+            status: true,
+          },
         },
       },
-    },
-  });
+    })
+  );
 
   const resolveBusinessRateAt = (weekStart: Date, pointer: { idx: number }) => {
     if (!rateHistory.length) return undefined;
@@ -128,7 +133,7 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
     }
 
     if (Math.abs((inv.accrued ?? 0) - accrued) > eps) {
-      await prisma.investor.update({ where: { id: inv.id }, data: { accrued } });
+      await withDbRetry(() => prisma.investor.update({ where: { id: inv.id }, data: { accrued } }));
     }
   }
 }
@@ -141,14 +146,16 @@ export async function getBusinessRateBeforeEffectiveMonday(
   const before = startOfDay(effectiveMonday);
   before.setDate(before.getDate() - 1);
 
-  const row = await prisma.rateHistory.findFirst({
-    where: {
-      effectiveDate: { lte: before },
-      ...(excludeRateHistoryId != null ? { id: { not: excludeRateHistoryId } } : {}),
-    },
-    orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
-    select: { newRate: true },
-  });
+  const row = await withDbRetry(() =>
+    prisma.rateHistory.findFirst({
+      where: {
+        effectiveDate: { lte: before },
+        ...(excludeRateHistoryId != null ? { id: { not: excludeRateHistoryId } } : {}),
+      },
+      orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
+      select: { newRate: true },
+    })
+  );
   return row?.newRate ?? null;
 }
 

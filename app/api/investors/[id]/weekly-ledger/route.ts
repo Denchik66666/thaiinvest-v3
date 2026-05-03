@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 type LedgerRow = {
   weekStart: string;
@@ -35,13 +36,15 @@ export async function GET(
       return NextResponse.json({ error: "Некорректный investorId" }, { status: 400 });
     }
 
-    const investor = await prisma.investor.findUnique({
-      where: { id: investorId },
-      include: {
-        payments: true,
-        owner: { select: { id: true, username: true, role: true } },
-      },
-    });
+    const investor = await withDbRetry(() =>
+      prisma.investor.findUnique({
+        where: { id: investorId },
+        include: {
+          payments: true,
+          owner: { select: { id: true, username: true, role: true } },
+        },
+      })
+    );
     if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
     if (decoded.role === "OWNER") {
       if (investor.ownerId !== decoded.userId) {
@@ -51,14 +54,23 @@ export async function GET(
         return NextResponse.json({ error: "Недостаточно прав для просмотра личной сети" }, { status: 403 });
       }
     }
+    if (
+      decoded.role === "INVESTOR" &&
+      investor.investorUserId !== decoded.userId &&
+      investor.linkedUserId !== decoded.userId
+    ) {
+      return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+    }
 
     const now = new Date();
     const lastClosedWeekStart = getPreviousOrCurrentMonday(now);
 
-    const rateHistory = await prisma.rateHistory.findMany({
-      orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
-      select: { effectiveDate: true, newRate: true },
-    });
+    const rateHistory = await withDbRetry(() =>
+      prisma.rateHistory.findMany({
+        orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+        select: { effectiveDate: true, newRate: true },
+      })
+    );
 
     const resolveBusinessRateForWeek = (weekStart: Date) => {
       if (!rateHistory.length) return investor.rate;
@@ -195,6 +207,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("WEEKLY_LEDGER_ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите запрос" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

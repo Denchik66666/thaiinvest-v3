@@ -8,6 +8,8 @@ import { hashPassword, verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween } from "@/lib/weekly";
 import { recalculateInvestorAccruedFromRateHistory } from "@/lib/business-rate-accrual-recalc";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
 
 type InvestorTxClient = Pick<PrismaClient, "bodyTopUpRequest" | "payment" | "accrual" | "investor" | "user">;
 
@@ -74,14 +76,16 @@ export async function GET(
       return NextResponse.json({ error: "Некорректный ID инвестора" }, { status: 400 });
     }
 
-    const investor = await prisma.investor.findUnique({
-      where: { id: investorId },
-      include: {
-        owner: { select: { id: true, username: true, role: true } },
-        investorUser: { select: { id: true, username: true } },
-        payments: { orderBy: { createdAt: "desc" } },
-      },
-    });
+    const investor = await withDbRetry(() =>
+      prisma.investor.findUnique({
+        where: { id: investorId },
+        include: {
+          owner: { select: { id: true, username: true, role: true } },
+          investorUser: { select: { id: true, username: true } },
+          payments: { orderBy: { createdAt: "desc" } },
+        },
+      })
+    );
     if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
 
     if (decoded.role === "OWNER") {
@@ -93,33 +97,37 @@ export async function GET(
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
 
-    const topUpRequests = await prisma.bodyTopUpRequest.findMany({
-      where: { investorId },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-      select: {
-        id: true,
-        amount: true,
-        status: true,
-        comment: true,
-        createdAt: true,
-        decidedAt: true,
-      },
-    });
-
-    const actions = await prisma.auditLog.findMany({
-      where: {
-        entityType: "Investor",
-        entityId: investorId,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      include: {
-        user: {
-          select: { username: true, role: true },
+    const topUpRequests = await withDbRetry(() =>
+      prisma.bodyTopUpRequest.findMany({
+        where: { investorId },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          comment: true,
+          createdAt: true,
+          decidedAt: true,
         },
-      },
-    });
+      })
+    );
+
+    const actions = await withDbRetry(() =>
+      prisma.auditLog.findMany({
+        where: {
+          entityType: "Investor",
+          entityId: investorId,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          user: {
+            select: { username: true, role: true },
+          },
+        },
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -136,6 +144,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("GET INVESTOR DETAIL ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите запрос" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
@@ -158,7 +169,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Некорректный ID инвестора" }, { status: 400 });
     }
 
-    const investor = await prisma.investor.findUnique({ where: { id: investorId } });
+    const investor = await withDbRetry(() => prisma.investor.findUnique({ where: { id: investorId } }));
     if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
     if (investor.isSystemOwner) {
       return NextResponse.json({ error: "Системного инвестора удалять нельзя" }, { status: 400 });
@@ -168,7 +179,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Только SUPER_ADMIN может удалять инвесторов" }, { status: 403 });
     }
 
-    await prisma.$transaction(async (tx: InvestorTxClient) => {
+    await withDbRetry(() => prisma.$transaction(async (tx: InvestorTxClient) => {
       await tx.bodyTopUpRequest.deleteMany({ where: { investorId } });
       await tx.payment.deleteMany({ where: { investorId } });
       await tx.accrual.deleteMany({ where: { investorId } });
@@ -184,19 +195,28 @@ export async function DELETE(
           },
         });
       }
-    });
+    }));
 
-    await logAction({
-      userId: decoded.userId,
-      action: "DELETE_INVESTOR",
-      entityType: "Investor",
-      entityId: investorId,
-      oldValue: JSON.stringify(investor),
-    });
+    try {
+      await withDbRetry(() =>
+        logAction({
+          userId: decoded.userId,
+          action: "DELETE_INVESTOR",
+          entityType: "Investor",
+          entityId: investorId,
+          oldValue: JSON.stringify(investor),
+        })
+      );
+    } catch (auditError) {
+      console.error("DELETE INVESTOR AUDIT ERROR:", auditError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE INVESTOR ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
@@ -222,10 +242,12 @@ export async function PATCH(
       return NextResponse.json({ error: "Некорректный ID инвестора" }, { status: 400 });
     }
 
-    const investor = await prisma.investor.findUnique({
-      where: { id: investorId },
-      include: { investorUser: true },
-    });
+    const investor = await withDbRetry(() =>
+      prisma.investor.findUnique({
+        where: { id: investorId },
+        include: { investorUser: true },
+      })
+    );
     if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
     if (decoded.role === "OWNER" && investor.ownerId !== decoded.userId) {
       return NextResponse.json({ error: "Недостаточно прав для этого инвестора" }, { status: 403 });
@@ -233,24 +255,34 @@ export async function PATCH(
 
     const nextPassword = randomPassword(10);
 
-    if (investor.investorUserId && investor.investorUser) {
-      await prisma.user.update({
-        where: { id: investor.investorUserId },
-        data: { password: hashPassword(nextPassword) },
-      });
+    const linkedInvestorUser = investor.investorUser;
+    if (investor.investorUserId && linkedInvestorUser) {
+      const userId = linkedInvestorUser.id;
+      await withDbRetry(() =>
+        prisma.user.update({
+          where: { id: userId },
+          data: { password: hashPassword(nextPassword) },
+        })
+      );
 
-      await logAction({
-        userId: decoded.userId,
-        action: "RESET_INVESTOR_CREDENTIALS",
-        entityType: "Investor",
-        entityId: investorId,
-        newValue: JSON.stringify({ investorUserId: investor.investorUserId }),
-      });
+      try {
+        await withDbRetry(() =>
+          logAction({
+            userId: decoded.userId,
+            action: "RESET_INVESTOR_CREDENTIALS",
+            entityType: "Investor",
+            entityId: investorId,
+            newValue: JSON.stringify({ investorUserId: investor.investorUserId }),
+          })
+        );
+      } catch (auditError) {
+        console.error("RESET INVESTOR CREDENTIALS AUDIT ERROR:", auditError);
+      }
 
       return NextResponse.json({
         success: true,
         credentials: {
-          username: investor.investorUser.username,
+          username: linkedInvestorUser.username,
           password: nextPassword,
         },
       });
@@ -258,7 +290,7 @@ export async function PATCH(
 
     const username = await generateUniqueInvestorUsername(investor.name);
 
-    await prisma.$transaction(async (tx: InvestorTxClient) => {
+    await withDbRetry(() => prisma.$transaction(async (tx: InvestorTxClient) => {
       const investorUser = await tx.user.create({
         data: {
           username,
@@ -271,15 +303,21 @@ export async function PATCH(
         where: { id: investorId },
         data: { investorUserId: investorUser.id },
       });
-    });
+    }));
 
-    await logAction({
-      userId: decoded.userId,
-      action: "ISSUE_INVESTOR_CREDENTIALS",
-      entityType: "Investor",
-      entityId: investorId,
-      newValue: JSON.stringify({ username }),
-    });
+    try {
+      await withDbRetry(() =>
+        logAction({
+          userId: decoded.userId,
+          action: "ISSUE_INVESTOR_CREDENTIALS",
+          entityType: "Investor",
+          entityId: investorId,
+          newValue: JSON.stringify({ username }),
+        })
+      );
+    } catch (auditError) {
+      console.error("ISSUE INVESTOR CREDENTIALS AUDIT ERROR:", auditError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -290,6 +328,9 @@ export async function PATCH(
     });
   } catch (error) {
     console.error("PATCH INVESTOR CREDENTIALS ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
@@ -324,9 +365,11 @@ export async function PUT(
     const updateData = bodyResult.data;
 
     // Получаем текущего инвестора
-    const investor = await prisma.investor.findUnique({
-      where: { id: investorId },
-    });
+    const investor = await withDbRetry(() =>
+      prisma.investor.findUnique({
+        where: { id: investorId },
+      })
+    );
     if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
     
     // Проверка прав доступа
@@ -386,7 +429,7 @@ export async function PUT(
     };
 
     // Обновляем инвестора
-    const updatedInvestor = await prisma.$transaction(async (tx: InvestorTxClient) => {
+    const updatedInvestor = await withDbRetry(() => prisma.$transaction(async (tx: InvestorTxClient) => {
       const updated = await tx.investor.update({
         where: { id: investorId },
         data: finalUpdateData,
@@ -408,34 +451,35 @@ export async function PUT(
       }
 
       return updated;
-    });
+    }));
 
     // Логирование изменений
-    await logAction({
-      userId: decoded.userId,
-      action: "UPDATE_INVESTOR",
-      entityType: "Investor",
-      entityId: investorId,
-      oldValue: JSON.stringify(oldValues),
-      newValue: JSON.stringify({
-        name: updatedInvestor.name,
-        body: updatedInvestor.body,
-        rate: updatedInvestor.rate,
-        entryDate: updatedInvestor.entryDate,
-        activationDate: updatedInvestor.activationDate,
-        status: updatedInvestor.status,
-        accrued: updatedInvestor.accrued,
-      }),
-    });
+    try {
+      await withDbRetry(() =>
+        logAction({
+          userId: decoded.userId,
+          action: "UPDATE_INVESTOR",
+          entityType: "Investor",
+          entityId: investorId,
+          oldValue: JSON.stringify(oldValues),
+          newValue: JSON.stringify({
+            name: updatedInvestor.name,
+            body: updatedInvestor.body,
+            rate: updatedInvestor.rate,
+            entryDate: updatedInvestor.entryDate,
+            activationDate: updatedInvestor.activationDate,
+            status: updatedInvestor.status,
+            accrued: updatedInvestor.accrued,
+          }),
+        })
+      );
+    } catch (auditError) {
+      console.error("UPDATE INVESTOR AUDIT ERROR:", auditError);
+    }
 
-    // Запускаем полный пересчет для всех инвесторов (для синхронизации)
+    // Запускаем полный пересчет для всех инвесторов в фоне (не блокируем API).
     if (shouldRecalculateAccrued) {
-      try {
-        await recalculateInvestorAccruedFromRateHistory();
-      } catch (error) {
-        console.error("Ошибка при пересчете всех инвесторов:", error);
-        // Не прерываем операцию, так как основной инвестор обновлен
-      }
+      scheduleBusinessRateRecalc();
     }
 
     return NextResponse.json({
@@ -446,6 +490,9 @@ export async function PUT(
 
   } catch (error) {
     console.error("PUT INVESTOR UPDATE ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

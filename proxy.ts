@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 
-const PROTECTED_PREFIXES = ['/dashboard', '/api/investors', '/api/payments', '/api/dashboard', '/api/system']
+const PROTECTED_PREFIXES = [
+  '/dashboard',
+  '/api/investors',
+  '/api/payments',
+  '/api/dashboard',
+  '/api/system',
+  '/api/admin',
+]
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -19,5 +26,14 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/investors/:path*', '/api/payments/:path*', '/api/dashboard/:path*', '/api/system/:path*', '/login', '/api/auth/login'],
+  matcher: [
+    '/dashboard/:path*',
+    '/api/investors/:path*',
+    '/api/payments/:path*',
+    '/api/dashboard/:path*',
+    '/api/system/:path*',
+    '/api/admin/:path*',
+    '/login',
+    '/api/auth/login',
+  ],
 }

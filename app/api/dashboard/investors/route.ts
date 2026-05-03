@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
+import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
 
 type DashboardPaymentRow = {
   amount: number
@@ -32,20 +33,26 @@ export async function GET() {
       return NextResponse.json({ error: 'Неверный токен' }, { status: 401 })
     }
 
-    const whereClause: { isPrivate?: boolean } = {}
+    // Те же границы списка, что и GET /api/investors (без утечки «чужих» инвесторов).
+    let whereClause: { isPrivate?: boolean; ownerId?: number; investorUserId?: number } = {}
     if (decoded.role === 'OWNER') {
-      whereClause.isPrivate = false
+      whereClause = { isPrivate: false, ownerId: decoded.userId }
+    } else if (decoded.role === 'INVESTOR') {
+      whereClause = { investorUserId: decoded.userId }
     }
+    // SUPER_ADMIN: без фильтра — полный доступ (как network=all в /api/investors).
 
-    const investors = await prisma.investor.findMany({
-      where: whereClause,
-      include: {
-        payments: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+    const investors = await withDbRetry(() =>
+      prisma.investor.findMany({
+        where: whereClause,
+        include: {
+          payments: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+    )
 
     const typedInvestors = investors as DashboardInvestorRow[]
     const result = typedInvestors.map((investor) => {
@@ -70,6 +77,9 @@ export async function GET() {
     return NextResponse.json({ investors: result })
   } catch (error) {
     console.error('Dashboard investors error:', error)
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: 'Временная ошибка БД, повторите запрос' }, { status: 503 })
+    }
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
   }
 }

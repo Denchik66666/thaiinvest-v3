@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 type TopUpAction = "investor_accept" | "investor_reject" | "owner_cancel";
 type TopUpTxClient = Pick<PrismaClient, "investor" | "bodyTopUpRequest">;
@@ -27,12 +28,14 @@ export async function GET() {
     const decoded = verifyToken(token);
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
-    const where =
+    const where: Prisma.BodyTopUpRequestWhereInput =
       decoded.role === "OWNER"
         ? { investor: { ownerId: decoded.userId, isPrivate: false } }
-        : { investor: { OR: [{ linkedUserId: decoded.userId }, { investorUserId: decoded.userId }], isPrivate: false } };
+        : decoded.role === "SUPER_ADMIN"
+          ? {}
+          : { investor: { OR: [{ linkedUserId: decoded.userId }, { investorUserId: decoded.userId }], isPrivate: false } };
 
-    const requests = await prisma.bodyTopUpRequest.findMany({
+    const requests = await withDbRetry(() => prisma.bodyTopUpRequest.findMany({
       where,
       include: {
         investor: {
@@ -50,11 +53,14 @@ export async function GET() {
         decidedBy: { select: { id: true, username: true, role: true } },
       },
       orderBy: { createdAt: "desc" },
-    });
+    }));
 
     return NextResponse.json({ requests });
   } catch (error) {
     console.error("TOPUP REQUESTS GET ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите запрос" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
@@ -72,32 +78,37 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    if (!isObject(body) || typeof body.investorId !== "number" || typeof body.amount !== "number") {
+    if (!isObject(body)) {
+      return NextResponse.json({ error: "Некорректные данные запроса" }, { status: 400 });
+    }
+    const investorId = body.investorId;
+    const amount = body.amount;
+    if (typeof investorId !== "number" || typeof amount !== "number") {
       return NextResponse.json({ error: "Некорректные данные запроса" }, { status: 400 });
     }
 
     const comment = typeof body.comment === "string" ? body.comment.trim() : null;
-    if (body.amount <= 0) return NextResponse.json({ error: "Сумма должна быть больше 0" }, { status: 400 });
+    if (amount <= 0) return NextResponse.json({ error: "Сумма должна быть больше 0" }, { status: 400 });
 
-    const investor = await prisma.investor.findFirst({
-      where: { id: body.investorId, ownerId: decoded.userId, isPrivate: false },
-    });
+    const investor = await withDbRetry(() => prisma.investor.findFirst({
+      where: { id: investorId, ownerId: decoded.userId, isPrivate: false },
+    }));
     if (!investor) return NextResponse.json({ error: "Инвестор не найден в общей сети OWNER" }, { status: 404 });
     if (!investor.linkedUserId && !investor.investorUserId) {
       return NextResponse.json({ error: "У инвестора нет привязки к аккаунту для подтверждения запроса" }, { status: 400 });
     }
 
-    const pending = await prisma.bodyTopUpRequest.count({
+    const pending = await withDbRetry(() => prisma.bodyTopUpRequest.count({
       where: { investorId: investor.id, status: "pending_investor" },
-    });
+    }));
     if (pending > 0) {
       return NextResponse.json({ error: "У инвестора уже есть активный запрос на пополнение" }, { status: 409 });
     }
 
-    const topUpRequest = await prisma.bodyTopUpRequest.create({
+    const topUpRequest = await withDbRetry(() => prisma.bodyTopUpRequest.create({
       data: {
         investorId: investor.id,
-        amount: body.amount,
+        amount,
         status: "pending_investor",
         comment,
         createdById: decoded.userId,
@@ -116,19 +127,26 @@ export async function POST(request: NextRequest) {
         },
         createdBy: { select: { id: true, username: true, role: true } },
       },
-    });
+    }));
 
-    await logAction({
-      userId: decoded.userId,
-      action: "BODY_TOPUP_REQUEST_CREATE",
-      entityType: "BodyTopUpRequest",
-      entityId: topUpRequest.id,
-      newValue: JSON.stringify(topUpRequest),
-    });
+    try {
+      await withDbRetry(() => logAction({
+        userId: decoded.userId,
+        action: "BODY_TOPUP_REQUEST_CREATE",
+        entityType: "BodyTopUpRequest",
+        entityId: topUpRequest.id,
+        newValue: JSON.stringify(topUpRequest),
+      }));
+    } catch (auditError) {
+      console.error("TOPUP REQUESTS POST AUDIT ERROR:", auditError);
+    }
 
     return NextResponse.json({ success: true, request: topUpRequest });
   } catch (error) {
     console.error("TOPUP REQUESTS POST ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }
@@ -143,17 +161,21 @@ export async function PATCH(request: NextRequest) {
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
     const body = await request.json();
-    if (!isObject(body) || typeof body.requestId !== "number") {
+    if (!isObject(body)) {
+      return NextResponse.json({ error: "Некорректные данные запроса" }, { status: 400 });
+    }
+    const requestId = body.requestId;
+    if (typeof requestId !== "number") {
       return NextResponse.json({ error: "Некорректные данные запроса" }, { status: 400 });
     }
     const action = parseAction(body.action);
     if (!action) return NextResponse.json({ error: "Некорректное действие" }, { status: 400 });
     const comment = typeof body.comment === "string" ? body.comment.trim() : undefined;
 
-    const existing = await prisma.bodyTopUpRequest.findUnique({
-      where: { id: body.requestId },
+    const existing = await withDbRetry(() => prisma.bodyTopUpRequest.findUnique({
+      where: { id: requestId },
       include: { investor: true },
-    });
+    }));
     if (!existing) return NextResponse.json({ error: "Запрос не найден" }, { status: 404 });
     if (existing.status !== "pending_investor") {
       return NextResponse.json({ error: "Запрос уже обработан" }, { status: 400 });
@@ -164,7 +186,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
       }
 
-      const updated = await prisma.bodyTopUpRequest.update({
+      const updated = await withDbRetry(() => prisma.bodyTopUpRequest.update({
         where: { id: existing.id },
         data: {
           status: "cancelled_by_owner",
@@ -172,15 +194,19 @@ export async function PATCH(request: NextRequest) {
           decidedById: decoded.userId,
           decidedAt: new Date(),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "BODY_TOPUP_REQUEST_CANCEL",
-        entityType: "BodyTopUpRequest",
-        entityId: updated.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "BODY_TOPUP_REQUEST_CANCEL",
+          entityType: "BodyTopUpRequest",
+          entityId: updated.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("TOPUP REQUESTS CANCEL AUDIT ERROR:", auditError);
+      }
 
       return NextResponse.json({ success: true, request: updated });
     }
@@ -194,7 +220,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === "investor_reject") {
-      const updated = await prisma.bodyTopUpRequest.update({
+      const updated = await withDbRetry(() => prisma.bodyTopUpRequest.update({
         where: { id: existing.id },
         data: {
           status: "rejected_by_investor",
@@ -202,20 +228,24 @@ export async function PATCH(request: NextRequest) {
           decidedById: decoded.userId,
           decidedAt: new Date(),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "BODY_TOPUP_REQUEST_REJECT",
-        entityType: "BodyTopUpRequest",
-        entityId: updated.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "BODY_TOPUP_REQUEST_REJECT",
+          entityType: "BodyTopUpRequest",
+          entityId: updated.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("TOPUP REQUESTS REJECT AUDIT ERROR:", auditError);
+      }
 
       return NextResponse.json({ success: true, request: updated });
     }
 
-    const result = await prisma.$transaction(async (tx: TopUpTxClient) => {
+    const result = await withDbRetry(() => prisma.$transaction(async (tx: TopUpTxClient) => {
       const investor = await tx.investor.findUnique({ where: { id: existing.investorId } });
       if (!investor) throw new Error("INVESTOR_NOT_FOUND");
 
@@ -235,19 +265,26 @@ export async function PATCH(request: NextRequest) {
       });
 
       return { updatedInvestor, updatedRequest };
-    });
+    }));
 
-    await logAction({
-      userId: decoded.userId,
-      action: "BODY_TOPUP_REQUEST_ACCEPT",
-      entityType: "BodyTopUpRequest",
-      entityId: existing.id,
-      newValue: JSON.stringify(result.updatedRequest),
-    });
+    try {
+      await withDbRetry(() => logAction({
+        userId: decoded.userId,
+        action: "BODY_TOPUP_REQUEST_ACCEPT",
+        entityType: "BodyTopUpRequest",
+        entityId: existing.id,
+        newValue: JSON.stringify(result.updatedRequest),
+      }));
+    } catch (auditError) {
+      console.error("TOPUP REQUESTS ACCEPT AUDIT ERROR:", auditError);
+    }
 
     return NextResponse.json({ success: true, request: result.updatedRequest, investor: result.updatedInvestor });
   } catch (error) {
     console.error("TOPUP REQUESTS PATCH ERROR:", error);
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

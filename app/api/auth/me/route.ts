@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
+import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
 
 export async function GET() {
   try {
@@ -17,15 +18,17 @@ export async function GET() {
       return NextResponse.json({ error: 'Неверный токен' }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        isSystemOwner: true,
-      },
-    })
+    const user = await withDbRetry(() =>
+      prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: {
+          id: true,
+          username: true,
+          role: true,
+          isSystemOwner: true,
+        },
+      })
+    )
 
     if (!user) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 })
@@ -40,6 +43,9 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Auth check error:', error)
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: 'Временная ошибка БД, повторите запрос' }, { status: 503 })
+    }
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
   }
 }

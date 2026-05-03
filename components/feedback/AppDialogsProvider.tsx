@@ -15,7 +15,6 @@ import { Toaster, toast as sonnerToast } from "sonner";
 // Check if we're in browser environment
 const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
 
-import GlobalLiveNotifier from "@/components/notifications/GlobalLiveNotifier";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { cn } from "@/lib/utils";
@@ -181,7 +180,8 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
           },
         }}
       />
-      <GlobalLiveNotifier />
+      {/* Временный режим стабилизации БД: отключаем фоновые chat polling-запросы. */}
+      {null}
       {children}
       {portal}
     </AppDialogsContext.Provider>

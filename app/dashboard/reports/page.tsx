@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
+import ThemeToggle from "@/components/ThemeToggle";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import {
   dedupeBusinessRateHistory,
@@ -22,8 +23,6 @@ import {
   pastRecentMilestones,
   type BusinessRateHistoryRow,
 } from "@/lib/business-rate-history-display";
-import { persistAppTheme } from "@/lib/app-theme";
-
 type PaymentRow = {
   id: number;
   type: "interest" | "body" | "close";
@@ -113,24 +112,19 @@ function chipToneByCount(count: number) {
 }
 
 function queueSubtitleByCount(count: number, emptyLabel: string) {
-  if (count <= 0) return `🟢 ${emptyLabel}`;
-  if (count <= 3) return `🟡 ${count} ожидают решения`;
-  return `🔴 ${count} ожидают решения`;
+  if (count <= 0) return emptyLabel;
+  if (count <= 3) return `${count} в очереди`;
+  return `${count} в очереди — нужен приоритет`;
 }
 
 function ReportsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const investorFilter = searchParams.get("investor");
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const toggleDarkMode = () => {
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    persistAppTheme("theme-linear", !isDark);
-  };
-
   const network = user?.role === "OWNER" ? "common" : "all";
   const { data } = useQuery({
     queryKey: ["reports-investors", network],
@@ -284,17 +278,36 @@ function ReportsPageInner() {
   });
 
   const financePath = user?.role === "INVESTOR" ? "/dashboard" : "/dashboard/manage";
+  const financeLabel = user?.role === "INVESTOR" ? "К финансам" : "К управлению";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const showOwnerWithdrawQueue = user?.role === "OWNER" || isSuperAdmin;
   const showRateBlock = user?.role === "OWNER" || isSuperAdmin;
   const showAuditBlock = user?.role === "OWNER" || isSuperAdmin;
 
+  useEffect(() => {
+    if (!authLoading && !user) router.replace("/login");
+  }, [authLoading, user, router]);
+
+  if (authLoading || !user) {
+    return (
+      <Container>
+        <div className="thai-dashboard-root flex min-h-screen items-center justify-center py-16">
+          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <Text className="text-foreground">Загрузка…</Text>
+          </div>
+        </div>
+      </Container>
+    );
+  }
+
   return (
     <Container>
-      <div className="min-h-screen space-y-4 py-4 pb-28 md:space-y-5 md:py-8 md:pb-28">
+      <div className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28">
         <div className={DASHBOARD_STICKY_BAR_CLASS}>
           <div className="min-w-0 flex-1">
-            <Text className="text-sm font-semibold">Отчёты</Text>
+            <div className="thai-hero-accent mb-2" aria-hidden />
+            <Text className="text-sm font-semibold tracking-tight">Отчёты</Text>
             <Text className="text-xs text-muted-foreground">Журналы, истории и уведомления по данным</Text>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {showOwnerWithdrawQueue ? (
@@ -317,23 +330,15 @@ function ReportsPageInner() {
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => router.push(financePath)}>
-              К финансам
+              {financeLabel}
             </Button>
             <NotificationBell />
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              aria-label="Переключить дневную и ночную тему"
-              title="Светлая/тёмная тема"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/70 text-xl transition hover:bg-muted/60"
-            >
-              🇹🇭
-            </button>
+            <ThemeToggle />
           </div>
         </div>
 
         {investorFilter ? (
-          <Card className="border border-primary/25 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <Card className="border-primary/25 bg-primary/8 p-3 text-xs text-muted-foreground">
             Фильтр по инвестору #{investorFilter}: очереди выплат, аудит и связанные блоки.{" "}
             <button type="button" className="font-medium text-primary underline" onClick={() => router.push("/dashboard/reports")}>
               Сбросить
@@ -341,23 +346,49 @@ function ReportsPageInner() {
           </Card>
         ) : null}
 
+        <div className="thai-panel-muted grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/investors")}
+            className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+          >
+            <Text className="text-sm font-semibold text-foreground">Инвесторы</Text>
+            <Text className="mt-1 text-xs text-muted-foreground">Открыть карточки и фильтры инвесторов</Text>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/manage")}
+            className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+          >
+            <Text className="text-sm font-semibold text-foreground">Управление</Text>
+            <Text className="mt-1 text-xs text-muted-foreground">Создание инвесторов и системные настройки</Text>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/profile")}
+            className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+          >
+            <Text className="text-sm font-semibold text-foreground">Профиль</Text>
+            <Text className="mt-1 text-xs text-muted-foreground">Безопасность и параметры аккаунта</Text>
+          </button>
+        </div>
+
         {showOwnerWithdrawQueue ? (
           <CollapsibleSection
             title="Заявки на вывод (решение OWNER)"
             subtitle={
               investorFilter && ownerPendingFiltered.length === 0
-                ? "🟢 Нет по выбранному инвестору"
+                ? "Нет по выбранному инвестору"
                 : queueSubtitleByCount(ownerPendingFiltered.length, "Нет активных")
             }
             defaultOpen={ownerPendingFiltered.length > 0}
-            className="bg-card/30"
           >
             {ownerPendingFiltered.length === 0 ? (
               <div className="py-4 text-sm text-muted-foreground">Нет заявок на стадии «запрошено».</div>
             ) : (
               <div className="space-y-2">
                 {ownerPendingFiltered.slice(0, 24).map((p) => (
-                  <div key={p.id} className="rounded-xl border border-border/60 bg-card/70 p-3">
+                  <div key={p.id} className="thai-glass rounded-xl p-2.5 md:p-3">
                     <div className="flex items-center justify-between gap-2">
                       <Text className="font-semibold">{p.investorName}</Text>
                       <Text className="text-xs text-muted-foreground">{formatPaymentStatus(p.status)}</Text>
@@ -396,18 +427,17 @@ function ReportsPageInner() {
             title="Принудительные решения"
             subtitle={
               investorFilter && forceFiltered.length === 0
-                ? "🟢 Нет по фильтру"
+                ? "Нет по фильтру"
                 : queueSubtitleByCount(forceFiltered.length, "Пусто")
             }
             defaultOpen={forceFiltered.length > 0}
-            className="bg-card/30"
           >
             {forceFiltered.length === 0 ? (
               <div className="py-4 text-sm text-muted-foreground">Нет заявок для принудительного решения.</div>
             ) : (
               <div className="space-y-2">
                 {forceFiltered.slice(0, 24).map((p) => (
-                  <div key={p.id} className="rounded-xl border border-border/60 bg-card/70 p-3">
+                  <div key={p.id} className="thai-glass rounded-xl p-2.5 md:p-3">
                     <div className="flex items-center justify-between gap-2">
                       <Text className="font-semibold">{p.investorName}</Text>
                       <Text className="text-xs text-muted-foreground">{formatPaymentStatus(p.status)}</Text>
@@ -440,7 +470,7 @@ function ReportsPageInner() {
           </CollapsibleSection>
         ) : null}
 
-        <CollapsibleSection title="Сводка" subtitle="По текущим инвесторам в выборке" defaultOpen className="bg-card/30">
+        <CollapsibleSection title="Сводка" subtitle="По текущим инвесторам в выборке" defaultOpen>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             <InfoCell label="Тело" value={formatCurrency(summary.body)} />
             <InfoCell label="Начислено" value={formatCurrency(summary.accrued)} />
@@ -449,7 +479,7 @@ function ReportsPageInner() {
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="История выплат" subtitle="С фильтром по дате" defaultOpen className="bg-card/30">
+        <CollapsibleSection title="История выплат" subtitle="С фильтром по дате" defaultOpen>
           <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
             <DatePicker value={from} onChange={setFrom} placeholder="От" />
             <DatePicker value={to} onChange={setTo} placeholder="До" />
@@ -468,7 +498,7 @@ function ReportsPageInner() {
           ) : (
             <div className="max-h-[50vh] space-y-2 overflow-auto">
               {paymentRows.slice(0, 120).map((row) => (
-                <div key={row.id} className="rounded-xl border border-border/60 bg-card/70 p-3">
+                <div key={row.id} className="thai-glass rounded-xl p-2.5 md:p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <Text className="font-semibold">{row.investorName}</Text>
@@ -522,7 +552,6 @@ function ReportsPageInner() {
             title="Ставка сети — журнал"
             subtitle={feedPending ? "Загрузка…" : `${rateJournal.length} записей (дубликаты скрыты)`}
             defaultOpen={false}
-            className="bg-card/30"
           >
             {ratePastLine.length ? (
               <p className="mb-2 text-[11px] text-muted-foreground">
@@ -566,7 +595,6 @@ function ReportsPageInner() {
                 )
           }
           defaultOpen={false}
-          className="bg-card/30"
         >
           {feedPending ? (
             <Text className="text-sm text-muted-foreground">Загрузка…</Text>
@@ -575,7 +603,7 @@ function ReportsPageInner() {
           ) : (
             <div className="max-h-[55vh] space-y-2 overflow-y-auto">
               {topUpRowsFiltered.map((item) => (
-                <div key={item.id} className="rounded-xl border border-border/60 bg-card/70 p-3 text-sm">
+                <div key={item.id} className="thai-glass rounded-xl p-2.5 text-sm md:p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Text className="font-semibold">{item.investor.name}</Text>
                     <Text className="text-xs text-muted-foreground">{formatTopUpStatus(item.status)}</Text>
@@ -630,14 +658,13 @@ function ReportsPageInner() {
             title="Журнал действий"
             subtitle={feedPending ? "Загрузка…" : `${auditRows.length} записей`}
             defaultOpen={false}
-            className="bg-card/30"
           >
             {!auditRows.length ? (
               <Text className="text-sm text-muted-foreground">Нет записей аудита.</Text>
             ) : (
               <ul className="max-h-[55vh] space-y-2 overflow-y-auto text-[11px] leading-snug">
                 {auditRows.map((a) => (
-                  <li key={a.id} className="rounded-lg border border-border/50 bg-background/30 px-2.5 py-2">
+                  <li key={a.id} className="thai-glass rounded-lg px-2.5 py-2">
                     <div className="font-medium text-foreground">{formatAuditAction(a.action)}</div>
                     <div className="text-muted-foreground">
                       {formatAuditEntity(a.entityType, a.entityId)} · {a.user.username} ·{" "}
@@ -667,8 +694,11 @@ export default function DashboardReportsPage() {
     <Suspense
       fallback={
         <Container>
-          <div className="flex min-h-[40vh] items-center justify-center py-8">
-            <Text className="text-sm text-muted-foreground">Загрузка отчётов…</Text>
+          <div className="thai-dashboard-root flex min-h-[40vh] items-center justify-center py-8">
+            <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <Text className="text-sm text-muted-foreground">Загрузка отчётов…</Text>
+            </div>
           </div>
         </Container>
       }
@@ -680,7 +710,7 @@ export default function DashboardReportsPage() {
 
 function InfoCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card/70 p-3">
+    <div className="thai-glass rounded-xl p-3">
       <Text className="text-xs text-muted-foreground">{label}</Text>
       <Text className="mt-0.5 text-sm font-semibold">{value}</Text>
     </div>

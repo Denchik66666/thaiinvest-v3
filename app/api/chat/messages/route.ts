@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
-import { findInvestorSlotForUser, getFirstActiveOwner } from "@/lib/chat-network";
+import { canChatWithPeer } from "@/lib/chat-peer-permission";
 
 const MAX_LEN = 2000;
 
@@ -22,6 +22,11 @@ export async function GET(request: NextRequest) {
     }
 
     const me = decoded.userId;
+    const allowedRead = await canChatWithPeer(prisma, me, peerId);
+    if (!allowedRead) {
+      return NextResponse.json({ error: "Недостаточно прав для переписки с этим пользователем" }, { status: 403 });
+    }
+
     const messages = await prisma.chatMessage.findMany({
       where: {
         OR: [
@@ -90,39 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Получатель не найден" }, { status: 404 });
     }
 
-    const meUser = await prisma.user.findUnique({ where: { id: me }, select: { role: true } });
-    if (!meUser) return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
-
-    let allowed = false;
-    if (meUser.role === "SUPER_ADMIN") {
-      allowed = true;
-    } else if (meUser.role === "OWNER" && recipient.role === "SUPER_ADMIN") {
-      allowed = true;
-    } else if (meUser.role === "INVESTOR" && recipient.role === "OWNER") {
-      const inv = await prisma.investor.findFirst({
-        where: {
-          ownerId: recipientId,
-          OR: [{ investorUserId: me }, { linkedUserId: me }],
-        },
-      });
-      if (inv) {
-        allowed = true;
-      } else {
-        const slot = await findInvestorSlotForUser(prisma, me);
-        if (!slot) {
-          const fallbackOwner = await getFirstActiveOwner(prisma);
-          allowed = fallbackOwner?.id === recipientId;
-        }
-      }
-    } else if (meUser.role === "OWNER" && recipient.role === "INVESTOR") {
-      const inv = await prisma.investor.findFirst({
-        where: {
-          ownerId: me,
-          OR: [{ investorUserId: recipientId }, { linkedUserId: recipientId }],
-        },
-      });
-      allowed = Boolean(inv);
-    }
+    const allowed = await canChatWithPeer(prisma, me, recipientId);
 
     if (!allowed) {
       return NextResponse.json({ error: "Недостаточно прав для переписки с этим пользователем" }, { status: 403 });

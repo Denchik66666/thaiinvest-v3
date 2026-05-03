@@ -3,7 +3,7 @@
   "version": "3.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
     "build": "prisma generate && next build",
     "build:vercel": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",

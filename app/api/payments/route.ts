@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { getNextMonday } from "@/lib/weekly";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -118,9 +119,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (parsed.action === "request") {
-      const investor = await prisma.investor.findUnique({
+      const investor = await withDbRetry(() => prisma.investor.findUnique({
         where: { id: parsed.investorId },
-      });
+      }));
       if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
 
       // Request can be created only by investor side:
@@ -134,12 +135,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Недостаточно прав для запроса вывода" }, { status: 403 });
       }
 
-      const pending = await prisma.payment.findMany({
+      const pending = await withDbRetry(() => prisma.payment.findMany({
         where: {
           investorId: parsed.investorId,
           status: { in: ["requested", "approved_waiting_accept"] },
         },
-      });
+      }));
 
       const pendingInterest = pending.filter((p) => p.type === "interest").reduce((sum, p) => sum + p.amount, 0);
       const pendingBody = pending.filter((p) => p.type === "body").reduce((sum, p) => sum + p.amount, 0);
@@ -181,7 +182,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const payment = await prisma.payment.create({
+      const payment = await withDbRetry(() => prisma.payment.create({
         data: {
           investorId: parsed.investorId,
           type: parsed.type,
@@ -190,23 +191,27 @@ export async function POST(request: NextRequest) {
           comment: parsed.comment ?? null,
           createdAt: parsed.requestDate ? new Date(parsed.requestDate) : undefined,
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_REQUEST",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(payment),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_REQUEST",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(payment),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT REQUEST AUDIT ERROR:", auditError);
+      }
 
       return NextResponse.json({ success: true, payment });
     }
 
-    const payment = await prisma.payment.findUnique({
+    const payment = await withDbRetry(() => prisma.payment.findUnique({
       where: { id: parsed.paymentId },
       include: { investor: true },
-    });
+    }));
     if (!payment) return NextResponse.json({ error: "Заявка не найдена" }, { status: 404 });
 
     const isManager = decoded.role === "OWNER" || decoded.role === "SUPER_ADMIN";
@@ -222,22 +227,26 @@ export async function POST(request: NextRequest) {
       }
 
       const nextStatus = parsed.action === "owner_approve" ? "approved_waiting_accept" : "rejected";
-      const updated = await prisma.payment.update({
+      const updated = await withDbRetry(() => prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: nextStatus,
           approvedAt: parsed.action === "owner_approve" ? new Date() : null,
           comment: mergeComment(payment.comment, parsed.comment),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: parsed.action === "owner_approve" ? "PAYMENT_APPROVE" : "PAYMENT_REJECT",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: parsed.action === "owner_approve" ? "PAYMENT_APPROVE" : "PAYMENT_REJECT",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT OWNER DECISION AUDIT ERROR:", auditError);
+      }
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -253,21 +262,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка не в статусе ожидания подтверждения" }, { status: 400 });
       }
 
-      const updated = await prisma.payment.update({
+      const updated = await withDbRetry(() => prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: "disputed",
           comment: mergeComment(payment.comment, parsed.comment ?? "Инвестор не согласен"),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_DISPUTE",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_DISPUTE",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT DISPUTE AUDIT ERROR:", auditError);
+      }
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -289,14 +302,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка не в статусе ожидания подтверждения" }, { status: 400 });
       }
       if (isExpired) {
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: "expired" } });
+        await withDbRetry(() => prisma.payment.update({ where: { id: payment.id }, data: { status: "expired" } }));
         return NextResponse.json(
           { error: "Срок подтверждения истек. Требуется принудительное решение SUPER_ADMIN." },
           { status: 400 }
         );
       }
 
-      const updated = await prisma.$transaction(async (tx: PaymentTxClient) => {
+      const updated = await withDbRetry(() => prisma.$transaction(async (tx: PaymentTxClient) => {
         const freshInvestor = await tx.investor.findUnique({ where: { id: payment.investorId } });
         if (!freshInvestor) throw new Error("INVESTOR_NOT_FOUND");
 
@@ -331,15 +344,19 @@ export async function POST(request: NextRequest) {
             comment: mergeComment(payment.comment, parsed.comment),
           },
         });
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_ACCEPT",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_ACCEPT",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT ACCEPT AUDIT ERROR:", auditError);
+      }
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -352,24 +369,28 @@ export async function POST(request: NextRequest) {
       }
 
       if (parsed.action === "force_reject") {
-        const updated = await prisma.payment.update({
+        const updated = await withDbRetry(() => prisma.payment.update({
           where: { id: payment.id },
           data: {
             status: "rejected",
             comment: mergeComment(payment.comment, parsed.comment ?? "Force reject by SUPER_ADMIN"),
           },
-        });
-        await logAction({
-          userId: decoded.userId,
-          action: "PAYMENT_FORCE_REJECT",
-          entityType: "Payment",
-          entityId: payment.id,
-          newValue: JSON.stringify(updated),
-        });
+        }));
+        try {
+          await withDbRetry(() => logAction({
+            userId: decoded.userId,
+            action: "PAYMENT_FORCE_REJECT",
+            entityType: "Payment",
+            entityId: payment.id,
+            newValue: JSON.stringify(updated),
+          }));
+        } catch (auditError) {
+          console.error("PAYMENT FORCE REJECT AUDIT ERROR:", auditError);
+        }
         return NextResponse.json({ success: true, payment: updated });
       }
 
-      const updated = await prisma.$transaction(async (tx: PaymentTxClient) => {
+      const updated = await withDbRetry(() => prisma.$transaction(async (tx: PaymentTxClient) => {
         const freshInvestor = await tx.investor.findUnique({ where: { id: payment.investorId } });
         if (!freshInvestor) throw new Error("INVESTOR_NOT_FOUND");
 
@@ -401,21 +422,28 @@ export async function POST(request: NextRequest) {
             comment: mergeComment(payment.comment, parsed.comment ?? "Force approve by SUPER_ADMIN"),
           },
         });
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_FORCE_APPROVE",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_FORCE_APPROVE",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT FORCE APPROVE AUDIT ERROR:", auditError);
+      }
       return NextResponse.json({ success: true, payment: updated });
     }
 
     return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
   } catch (err) {
     console.error("PAYMENT API ERROR:", err);
+    if (isTransientDbError(err)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

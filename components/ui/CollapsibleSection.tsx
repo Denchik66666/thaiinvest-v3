@@ -24,11 +24,11 @@ export function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className={cn("rounded-xl border border-border/60 bg-card/40 overflow-hidden", className)}>
+    <div className={cn("thai-glass overflow-hidden rounded-2xl", className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/20 transition"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-muted/15"
       >
         <div className="min-w-0">
           <div className="text-xs font-semibold tracking-wide text-muted-foreground">{title}</div>

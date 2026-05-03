@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface AuthUser {
   id: number;
@@ -10,47 +11,30 @@ export interface AuthUser {
   avatarUrl?: string | null;
 }
 
+export const AUTH_ME_QUERY_KEY = ["auth", "me"] as const;
+
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: AUTH_ME_QUERY_KEY,
+    queryFn: async (): Promise<AuthUser | null> => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { user: AuthUser };
+      return data.user ?? null;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/auth/me", { cache: "no-store" });
-    if (!res.ok) {
-      setUser(null);
-      return;
-    }
-    const data = await res.json();
-    setUser(data.user);
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
+  }, [queryClient]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const run = async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error("UNAUTHORIZED");
-        }
-
-        const data = await res.json();
-        if (!isMounted) return;
-        setUser(data.user);
-        setLoading(false);
-      } catch {
-        if (!isMounted) return;
-        setUser(null);
-        setLoading(false);
-      }
-    };
-
-    run();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  return { user, loading, refresh };
+  return {
+    user: query.data ?? null,
+    loading: query.isPending,
+    refresh,
+  };
 }

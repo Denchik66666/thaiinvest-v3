@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { Container } from "@/components/ui/Container";
@@ -17,7 +16,7 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import { persistAppTheme } from "@/lib/app-theme";
+import ThemeToggle from "@/components/ThemeToggle";
 
 import { CreateInvestorModal } from "@/components/investors/CreateInvestorModal";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
@@ -98,11 +97,6 @@ export default function DashboardManagePage() {
     if (!amount) return "";
     return `${amount.toLocaleString("ru-RU")} ฿`;
   };
-  const toggleDarkMode = () => {
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    persistAppTheme("theme-linear", !isDark);
-  };
-
   const { data: privateCreateCtxData, isLoading: loadingPrivateCreateCtx } = useQuery({
     queryKey: ["investors-private-create-context"],
     queryFn: () =>
@@ -270,47 +264,50 @@ export default function DashboardManagePage() {
     }
   }, [authLoading, user, router]);
 
-  if (authLoading) return <div className="flex items-center justify-center min-h-screen"><Text>Загрузка...</Text></div>;
+  if (authLoading) {
+    return (
+      <Container>
+        <div className="thai-dashboard-root flex min-h-screen items-center justify-center py-16">
+          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <Text className="text-foreground">Загрузка…</Text>
+          </div>
+        </div>
+      </Container>
+    );
+  }
   if (!user) return null;
 
   const createDisabled = createMutation.isPending || !systemReady;
   return (
-        <Container>
-      <div className="min-h-screen py-4 pb-28 md:py-8 md:pb-28 space-y-4 md:space-y-5">
+    <Container>
+      <div className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28">
         <div className={DASHBOARD_STICKY_BAR_CLASS}>
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
-            className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-muted/60 transition"
+            className="thai-glass flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110"
           >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={36} />
-            <span className="truncate text-base font-semibold">{user.username}</span>
+            <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
+            <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
             <span className="text-muted-foreground" aria-hidden>
               ›
             </span>
           </button>
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              onClick={() => apiClient.post("/api/auth/logout", {}).then(() => (window.location.href = "/login"))}
-              variant="outline"
-              size="sm"
-            >
-              Выйти
-            </Button>
             <NotificationBell />
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              aria-label="Переключить дневную и ночную тему"
-              title="Светлая/тёмная тема"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/70 text-xl transition hover:bg-muted/60"
-            >
-              🇹🇭
-            </button>
+            <ThemeToggle />
           </div>
         </div>
 
-        <Card className="p-3 md:p-4">
+        <div className="thai-glass space-y-2.5 rounded-2xl p-2.5 md:p-4">
+          <div className="flex flex-col gap-1.5">
+            <div className="thai-hero-accent" aria-hidden />
+            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Управление</Text>
+            <Text className="text-base font-semibold tracking-tight text-foreground">
+              Центр операционных действий
+            </Text>
+          </div>
           {isSuperAdmin && (
             <div className="mb-3">
               <CollapsibleSection
@@ -318,7 +315,7 @@ export default function DashboardManagePage() {
                 subtitle={systemReady ? "Готова к учёту" : "Требуется настройка"}
                 defaultOpen={!systemReady}
               >
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                <div className="rounded-xl border border-border/50 bg-muted/15 p-2.5 backdrop-blur-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
@@ -341,7 +338,7 @@ export default function DashboardManagePage() {
                   </div>
 
                   {showReadinessDetails && (
-                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-2">
                       {checklistItems.map((item) => (
                         <div
                           key={item.key}
@@ -363,7 +360,7 @@ export default function DashboardManagePage() {
             </div>
           )}
 
-          <Text className="text-xs font-semibold text-muted-foreground mb-2">Действия</Text>
+          <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Действия</Text>
           {!loadingReadiness && !systemReady && (
             <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
               <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -378,7 +375,7 @@ export default function DashboardManagePage() {
               ) : null}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
             <Button onClick={() => setShowModal(true)} size="sm" className="w-full" disabled={createDisabled}>
               Создать инвестора
             </Button>
@@ -391,15 +388,41 @@ export default function DashboardManagePage() {
               Список инвесторов
             </Button>
           </div>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/investors")}
+              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+            >
+              <Text className="text-sm font-semibold text-foreground">Реестр инвесторов</Text>
+              <Text className="mt-1 text-xs text-muted-foreground">Поиск, фильтры и контроль статусов</Text>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/reports")}
+              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+            >
+              <Text className="text-sm font-semibold text-foreground">Отчёты и очереди</Text>
+              <Text className="mt-1 text-xs text-muted-foreground">Выводы, пополнения тела, аудит действий</Text>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/profile")}
+              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
+            >
+              <Text className="text-sm font-semibold text-foreground">Профиль и безопасность</Text>
+              <Text className="mt-1 text-xs text-muted-foreground">Учётная запись и админ-безопасность</Text>
+            </button>
+          </div>
           <div className="mt-2">
             <Text className="text-xs text-muted-foreground">
               Цикл: {currentWeek.start} - {currentWeek.end} | Выплата: {currentWeek.nextPayout}
             </Text>
           </div>
-        </Card>
+        </div>
 
         {(user.role === "OWNER" || user.role === "SUPER_ADMIN") && (
-          <Card className="space-y-3 p-3 md:p-4">
+          <div className="thai-glass space-y-2.5 rounded-2xl p-2.5 md:p-4">
             <Text className="text-xs font-semibold text-muted-foreground">Центр управления ставкой</Text>
             <BusinessRateControlCenter
               current={businessRateData?.current ?? null}
@@ -418,33 +441,33 @@ export default function DashboardManagePage() {
               planBusyRowId={planBusyRowId}
               planActionError={planActionError}
             />
-          </Card>
+          </div>
         )}
 
-        <Card className="border border-border/60 bg-card/40 p-3 md:p-4">
+        <div className="thai-glass rounded-2xl p-2.5 md:p-4">
           <Text className="text-sm text-muted-foreground">
             Детальная информация по инвесторам доступна в разделе{" "}
             <button
               type="button"
-              className="font-medium text-primary underline"
+              className="font-medium text-primary underline transition hover:opacity-90"
               onClick={() => router.push("/dashboard/investors")}
             >
               Инвесторы
             </button>
             .
           </Text>
-        </Card>
+        </div>
 
         {latestCredentials ? (
-          <Card className="p-3 md:p-4">
+          <div className="thai-glass rounded-2xl p-2.5 md:p-4">
             <Text className="text-xs font-semibold text-muted-foreground mb-2">
               Доступ инвестора
             </Text>
-            <div className="rounded-xl border border-border/60 bg-card/70 p-3 text-sm">
+            <div className="rounded-xl border border-border/50 bg-muted/10 p-2.5 text-sm backdrop-blur-sm md:p-3">
               <div>Логин: <span className="font-semibold">{latestCredentials.username}</span></div>
               <div className="mt-1">Пароль: <span className="font-semibold">{latestCredentials.password}</span></div>
             </div>
-          </Card>
+          </div>
         ) : null}
 
         <CreateInvestorModal
@@ -468,7 +491,7 @@ export default function DashboardManagePage() {
           }
         />
 
-        <MobileBottomNav active="finance" />
+        <MobileBottomNav active="manage" />
       </div>
     </Container>
   );

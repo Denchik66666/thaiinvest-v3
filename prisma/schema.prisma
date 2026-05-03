@@ -25,6 +25,22 @@ model User {
   investorAccount Investor?     @relation("InvestorAccount")
   chatSent      ChatMessage[] @relation("ChatSent")
   chatReceived  ChatMessage[] @relation("ChatReceived")
+  dbResetLockout DatabaseResetLockout?
+}
+
+/** Singleton: пароль для полного сброса БД (хэш), задаётся SUPER_ADMIN в профиле */
+model DatabaseResetConfig {
+  id           Int      @id @default(1)
+  passwordHash String?
+  updatedAt    DateTime @updatedAt
+}
+
+/** Блокировка ввода пароля сброса после 3 неверных попыток (15 мин) */
+model DatabaseResetLockout {
+  userId      Int       @id
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ChatMessage {

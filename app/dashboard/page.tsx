@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
+import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
-import { Card } from "@/components/ui/Card";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -20,9 +20,9 @@ import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "@/lib/notify";
 import { notifyWithAttention } from "@/lib/attention-notify";
-import {
-  persistAppTheme,
-} from "@/lib/app-theme";
+import ThemeToggle from "@/components/ThemeToggle";
+import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
+import { StatusBadge } from "@/components/investors/InvestorsTable";
 import {
   readNotificationPreferences,
   subscribeNotificationPreferences,
@@ -77,6 +77,24 @@ function getCurrentWeek() {
   return { start: format(monday), end: format(sunday), nextPayout: format(nextMonday) };
 }
 
+function DashboardAuthSkeleton() {
+  return (
+    <Container>
+      <div className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28">
+        <div className={DASHBOARD_STICKY_BAR_CLASS}>
+          <div className="h-11 max-w-[220px] flex-1 rounded-xl bg-muted/45 animate-pulse" />
+          <div className="ml-auto flex items-center gap-2">
+            <div className="h-10 w-10 rounded-full bg-muted/45 animate-pulse" />
+            <div className="h-9 w-[5.5rem] rounded-xl bg-muted/45 animate-pulse" />
+          </div>
+        </div>
+        <div className="thai-glass h-64 rounded-2xl bg-muted/25 animate-pulse md:h-72" />
+        <div className="thai-glass h-40 rounded-2xl bg-muted/25 animate-pulse" />
+      </div>
+    </Container>
+  );
+}
+
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -104,11 +122,6 @@ export default function DashboardPage() {
     readNotificationPreferences
   );
 
-  function toggleDarkMode() {
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    persistAppTheme("theme-linear", !isDark);
-  }
-
   const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
   const formatAmountInput = (value: string) => {
     const amount = parseAmountInput(value);
@@ -116,10 +129,16 @@ export default function DashboardPage() {
     return `${amount.toLocaleString("ru-RU")} ฿`;
   };
 
+  const investorsQueryKey = investorsDashboardListQueryKey(user?.role);
+
   const { data: investorsData, isLoading: loadingInvestors } = useQuery({
-    queryKey: ["investors", "all"],
-    queryFn: () => apiClient.get<{ investors: InvestorRow[] }>("/api/investors?network=all"),
+    queryKey: investorsQueryKey,
+    queryFn: () =>
+      apiClient.get<{ investors: InvestorRow[] }>(
+        `/api/investors?network=${investorsDashboardNetworkParam(user!.role)}&lean=1`
+      ),
     enabled: !!user,
+    placeholderData: keepPreviousData,
     refetchInterval:
       user?.role === "INVESTOR"
         ? notifyPrefs.pollingMode === "fast"
@@ -157,6 +176,23 @@ export default function DashboardPage() {
       { capital: 0, accrued: 0, paid: 0, due: 0 }
     );
   }, [myInvestors]);
+
+  /** ≈ сумма недельных начислений по активным позициям (месячная ставка / 4). */
+  const nextWeeklyAccrual = useMemo(
+    () =>
+      myInvestors
+        .filter((i) => i.status === "active")
+        .reduce((s, i) => s + (i.body * (i.rate / 100)) / 4, 0),
+    [myInvestors]
+  );
+
+  const bestDueInvestor = useMemo(() => {
+    const list = myInvestors.filter((i) => i.due > 0.005);
+    if (!list.length) return null;
+    return list.reduce((a, b) => (b.due > a.due ? b : a));
+  }, [myInvestors]);
+
+  const canRequestWithdraw = bestDueInvestor != null;
   const hasLinkedCommonInvestment = useMemo(
     () => myInvestors.length > 0,
     [myInvestors]
@@ -288,93 +324,232 @@ export default function DashboardPage() {
     }
   }, [authLoading, user, router]);
 
-  if (authLoading) return <div className="flex items-center justify-center min-h-screen"><Text>Загрузка...</Text></div>;
+  if (authLoading) return <DashboardAuthSkeleton />;
   if (!user) return null;
+
+  function openWithdrawForBestDue() {
+    if (!bestDueInvestor) return;
+    setWithdrawForm((prev) => ({
+      ...prev,
+      investorId: String(bestDueInvestor.id),
+      type: "interest",
+    }));
+    setSelectedInvestorCardId(bestDueInvestor.id);
+  }
 
   return (
     <Container>
-      <div className="min-h-screen py-4 pb-28 md:py-8 md:pb-28 space-y-4">
+      <div className="thai-dashboard-root min-h-screen space-y-4 py-4 pb-28 md:space-y-5 md:py-8 md:pb-28">
         <div className={DASHBOARD_STICKY_BAR_CLASS}>
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
-            className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-muted/60 transition"
+            className="thai-glass flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110"
           >
             <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-            <span className="truncate text-base font-semibold">{user.username}</span>
+            <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
             <span className="text-muted-foreground" aria-hidden>
               ›
             </span>
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              aria-label="Переключить дневную и ночную тему"
-              title="Светлая/тёмная тема"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/70 text-xl transition hover:bg-muted/60"
-            >
-              🇹🇭
-            </button>
+            <ThemeToggle />
           </div>
         </div>
-        <Text className="text-xs text-muted-foreground">{pageSubtitle}</Text>
+
         {isSuperAdmin && !hasLinkedCommonInvestment ? (
-          <Card className="p-3">
+          <div className="thai-glass rounded-2xl p-2.5 md:p-4">
             <Button size="sm" variant="outline" className="w-full" onClick={() => setShowBecomeModal(true)}>
               Стать инвестором Семёна
             </Button>
-          </Card>
+          </div>
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <Card className="p-3 md:p-4 lg:col-span-2">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">{metricsSectionTitle}</Text>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <StatCard title={capitalStatTitle} value={stats.capital} color="text-foreground" />
-              <StatCard title="Начислено" value={stats.accrued} color="text-blue-600" />
-              <StatCard title="К выплате" value={stats.due} color="text-orange-600" />
-              <StatCard title="Выплачено" value={stats.paid} color="text-green-600" />
+        <section className="thai-glass relative overflow-hidden rounded-2xl p-2.5 md:p-5">
+          <div
+            className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-primary/15 blur-3xl dark:bg-primary/20"
+            aria-hidden
+          />
+          <div className="relative space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <div className="thai-hero-accent" />
+                <h1 className="text-xl font-bold tracking-tight md:text-2xl">Главная</h1>
+                <Text className="text-xs text-muted-foreground md:text-sm">{pageSubtitle}</Text>
+                <Text className="text-[11px] text-muted-foreground/90">
+                  Неделя {currentWeek.start} — {currentWeek.end}
+                </Text>
+              </div>
+              <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:pt-6">
+                {metricsSectionTitle}
+              </Text>
             </div>
-          </Card>
 
-          <Card className="p-3 md:p-4">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">Цикл</Text>
-            <InfoRow label="Текущая неделя" value={`${currentWeek.start} - ${currentWeek.end}`} />
-            <div className="mt-2" />
-            <InfoRow label="Следующая выплата" value={currentWeek.nextPayout} />
-          </Card>
-        </div>
+            <WeekCycleStrip payoutLabel={currentWeek.nextPayout} />
 
-        <Card className="p-3 md:p-4">
+            <div className="grid gap-2.5 md:grid-cols-2 md:gap-3">
+              <div
+                className={cn(
+                  "relative overflow-hidden rounded-2xl p-4",
+                  "bg-gradient-to-br from-primary/18 via-primary/[0.06] to-cyan-500/10",
+                  "ring-1 ring-primary/25 dark:from-primary/22 dark:ring-primary/30"
+                )}
+              >
+                <Text className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Следующее начисление
+                </Text>
+                <p className="mt-1.5 tabular-nums text-2xl font-bold tracking-tight md:text-3xl">
+                  {formatCurrency(nextWeeklyAccrual)}
+                </p>
+                <Text className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                  Ориентир на {currentWeek.nextPayout}: недельная доля (ставка ÷ 4) по активным позициям.
+                </Text>
+              </div>
+
+              <button
+                type="button"
+                onClick={openWithdrawForBestDue}
+                disabled={!canRequestWithdraw}
+                className={cn(
+                  "relative overflow-hidden rounded-2xl p-4 text-left transition duration-200",
+                  "bg-gradient-to-br from-amber-500/14 via-orange-500/[0.07] to-transparent",
+                  "ring-1 ring-amber-500/25 dark:from-amber-500/18 dark:ring-amber-400/25",
+                  canRequestWithdraw &&
+                    "cursor-pointer hover:ring-amber-500/50 hover:shadow-[0_0_28px_-8px_rgba(245,158,11,0.45)] active:scale-[0.99]",
+                  !canRequestWithdraw && "cursor-not-allowed opacity-55"
+                )}
+              >
+                <Text className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  К выплате сейчас
+                </Text>
+                <p
+                  className={cn(
+                    "mt-1.5 tabular-nums text-2xl font-bold tracking-tight md:text-3xl",
+                    "thai-text-metric-warn"
+                  )}
+                >
+                  {formatCurrency(stats.due)}
+                </p>
+                <Text className="mt-1 text-[11px] text-muted-foreground">
+                  {canRequestWithdraw
+                    ? `Запросить вывод · ${bestDueInvestor?.name ?? ""} · нажмите здесь`
+                    : "Нет доступной суммы к выводу по накопленным процентам."}
+                </Text>
+                {canRequestWithdraw ? (
+                  <span className="mt-2 inline-flex items-center text-xs font-medium text-amber-600 dark:text-amber-400">
+                    Вывести →
+                  </span>
+                ) : null}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 md:gap-3">
+              <GradientStat title={capitalStatTitle} value={stats.capital} tone="neutral" />
+              <GradientStat title="Начислено" value={stats.accrued} tone="info" />
+              <GradientStat title="Выплачено" value={stats.paid} tone="ok" />
+            </div>
+          </div>
+        </section>
+
+        {isOwner || isSuperAdmin ? (
+          <section className="thai-panel-muted space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Центр управления
+              </Text>
+              <Text className="text-[11px] text-muted-foreground">
+                Быстрый доступ к основным действиям
+              </Text>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/investors")}
+                className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-3 text-left"
+              >
+                <Text className="text-sm font-semibold text-foreground">Инвесторы</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">
+                  Поиск, фильтры, карточки, контроль статусов и выплат
+                </Text>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/manage")}
+                className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-3 text-left"
+              >
+                <Text className="text-sm font-semibold text-foreground">Управление</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">
+                  Создание инвесторов, системная готовность, ставка сети
+                </Text>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/reports")}
+                className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-3 text-left"
+              >
+                <Text className="text-sm font-semibold text-foreground">Отчёты</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">
+                  Очереди заявок, пополнения тела, история действий
+                </Text>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/profile")}
+                className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-3 text-left"
+              >
+                <Text className="text-sm font-semibold text-foreground">Профиль и безопасность</Text>
+                <Text className="mt-1 text-xs text-muted-foreground">
+                  Настройки аккаунта и критические действия SUPER_ADMIN
+                </Text>
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="thai-glass rounded-2xl p-2.5 md:p-4">
           <div className="flex items-center justify-between mb-2">
             <Text className="text-xs font-semibold text-muted-foreground">{positionsSectionTitle}</Text>
           </div>
-          {loadingInvestors ? (
-            <div className="py-10 text-center text-muted-foreground">Загрузка данных...</div>
+          {loadingInvestors && !investorsData ? (
+            <div className="space-y-2.5">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="thai-glass animate-pulse rounded-xl p-3 ring-1 ring-black/5 dark:ring-white/10"
+                >
+                  <div className="h-4 w-36 rounded-md bg-muted/45" />
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+                    {[0, 1, 2, 3].map((j) => (
+                      <div key={j} className="h-11 rounded-lg bg-muted/30" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : myInvestors.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground">{positionsEmptyHint}</div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {myInvestors.map((inv) => (
                 <div
                   key={inv.id}
                   onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                  className="w-full cursor-pointer rounded-xl border border-border/60 bg-card/70 p-3 text-left hover:bg-muted/20 transition"
+                  className="thai-row-interactive thai-glass w-full cursor-pointer border-0 p-3 text-left ring-1 ring-black/5 dark:ring-white/10"
                 >
-                  <div className="flex items-center justify-between">
-                    <Text className="font-semibold">{inv.name}</Text>
-                    <Text className="text-xs text-muted-foreground">{inv.status}</Text>
+                  <div className="flex items-center justify-between gap-2">
+                    <Text className="font-semibold tracking-tight">{inv.name}</Text>
+                    <StatusBadge status={inv.status} />
                   </div>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
                     <MiniStat label="Тело" value={formatCurrency(inv.body)} />
-                    <MiniStat label="Начислено" value={formatCurrency(inv.accrued)} valueClass="text-blue-600" />
-                    <MiniStat label="Выплачено" value={formatCurrency(inv.paid)} valueClass="text-green-600" />
+                    <MiniStat label="Начислено" value={formatCurrency(inv.accrued)} valueClass="thai-text-metric-info" />
+                    <MiniStat label="Выплачено" value={formatCurrency(inv.paid)} valueClass="thai-text-metric-ok" />
                     <MiniStat
                       label="К выплате"
                       value={formatCurrency(inv.due)}
-                      valueClass="text-orange-600"
+                      valueClass="thai-text-metric-warn"
+                      highlightAction={inv.due > 0.005}
                       onQuickAction={() => {
                         setWithdrawForm((prev) => ({ ...prev, investorId: String(inv.id) }));
                         setSelectedInvestorCardId(inv.id);
@@ -385,13 +560,11 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </Card>
-
-        
+        </div>
 
         {showBecomeModal ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-            <Card className="w-full max-w-md p-5 space-y-4">
+          <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="thai-glass w-full max-w-md space-y-4 rounded-2xl p-5 shadow-2xl">
               <Text className="text-base font-semibold">Стать инвестором Семёна</Text>
               <Text className="text-xs text-muted-foreground">
                 Будет создан инвестор в общей сети Семёна и привязан к твоему кабинету.
@@ -475,21 +648,29 @@ export default function DashboardPage() {
                   </Button>
                 </div>
               </form>
-            </Card>
+            </div>
           </div>
         ) : null}
 
         {selectedInvestorCard ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-            <Card className="w-full max-w-md p-5 space-y-4">
+          <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="thai-glass w-full max-w-md space-y-4 rounded-2xl p-5 shadow-2xl">
               <div className="flex items-center justify-between">
                 <Text className="text-base font-semibold">{selectedInvestorCard.name}</Text>
                 <Text className="text-xs text-muted-foreground">{selectedInvestorCard.status}</Text>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <MiniStat label="Тело" value={formatCurrency(selectedInvestorCard.body)} />
-                <MiniStat label="Начислено" value={formatCurrency(selectedInvestorCard.accrued)} valueClass="text-blue-600" />
-                <MiniStat label="К выплате" value={formatCurrency(selectedInvestorCard.due)} valueClass="text-orange-600" />
+                <MiniStat
+                  label="Начислено"
+                  value={formatCurrency(selectedInvestorCard.accrued)}
+                  valueClass="thai-text-metric-info"
+                />
+                <MiniStat
+                  label="К выплате"
+                  value={formatCurrency(selectedInvestorCard.due)}
+                  valueClass="thai-text-metric-warn"
+                />
               </div>
               <form
                 className="space-y-3"
@@ -577,7 +758,7 @@ export default function DashboardPage() {
                   </Button>
                 </div>
               </form>
-              <div className="rounded-xl border border-border/60 bg-card/70 p-3 space-y-2">
+              <div className="thai-glass space-y-2 rounded-xl p-3">
                 <Text className="text-xs text-muted-foreground">
                   История выплат, запросы на пополнение тела и действия по ним (принять, отклонить, спор) — в разделе «Отчёты» для этой позиции.
                 </Text>
@@ -591,7 +772,7 @@ export default function DashboardPage() {
                   Открыть отчёты
                 </Button>
               </div>
-            </Card>
+            </div>
           </div>
         ) : null}
         <MobileBottomNav active="home" />
@@ -600,20 +781,36 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, color }: { title: string; value: number; color: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card/70 p-3">
-      <Text className="text-xs text-muted-foreground mb-1 whitespace-nowrap">{title}</Text>
-      <div className={cn("text-base md:text-2xl font-semibold tracking-tight whitespace-nowrap", color)}>{formatCurrency(value)}</div>
-    </div>
-  );
-}
+function GradientStat({
+  title,
+  value,
+  tone,
+}: {
+  title: string;
+  value: number;
+  tone: "neutral" | "info" | "ok";
+}) {
+  const toneClass =
+    tone === "info"
+      ? "from-blue-500/12 via-blue-500/[0.04] to-transparent ring-blue-500/15 dark:from-blue-400/14 dark:ring-blue-400/20"
+      : tone === "ok"
+        ? "from-emerald-500/12 via-emerald-500/[0.04] to-transparent ring-emerald-500/15 dark:from-emerald-400/14 dark:ring-emerald-400/20"
+        : "from-foreground/[0.07] via-transparent to-transparent ring-black/[0.06] dark:from-white/[0.08] dark:ring-white/10";
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+  const valueClass =
+    tone === "info" ? "thai-text-metric-info" : tone === "ok" ? "thai-text-metric-ok" : "text-foreground";
+
   return (
-    <div className="rounded-xl border border-border/60 bg-card/70 p-2.5">
-      <Text className="text-xs font-medium text-muted-foreground">{label}</Text>
-      <Text className="text-sm font-semibold mt-0.5">{value}</Text>
+    <div
+      className={cn(
+        "rounded-xl bg-gradient-to-br p-3 ring-1 transition duration-200 hover:brightness-[1.02] dark:hover:brightness-110",
+        toneClass
+      )}
+    >
+      <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</Text>
+      <div className={cn("mt-1 tabular-nums text-base font-bold tracking-tight md:text-lg", valueClass)}>
+        {formatCurrency(value)}
+      </div>
     </div>
   );
 }
@@ -623,12 +820,19 @@ function MiniStat({
   value,
   valueClass,
   onQuickAction,
+  highlightAction,
 }: {
   label: string;
   value: string;
   valueClass?: string;
   onQuickAction?: () => void;
+  /** Подсветка «можно вывести» для кликабельного блока. */
+  highlightAction?: boolean;
 }) {
+  const actionRing = highlightAction
+    ? "ring-2 ring-amber-500/45 shadow-[0_0_14px_-4px_rgba(245,158,11,0.35)] dark:ring-amber-400/40"
+    : "ring-1 ring-black/[0.05] dark:ring-white/[0.08]";
+
   if (onQuickAction) {
     return (
       <button
@@ -637,17 +841,20 @@ function MiniStat({
           e.stopPropagation();
           onQuickAction();
         }}
-        className="rounded-lg border border-border/50 bg-background/40 p-2 text-left transition hover:bg-muted/40"
+        className={cn(
+          "thai-glass rounded-lg border-0 p-2 text-left transition hover:brightness-[1.03] active:scale-[0.99] dark:hover:brightness-110",
+          actionRing
+        )}
       >
         <Text className="text-xs text-muted-foreground">{label}</Text>
-        <Text className={cn("text-sm font-semibold mt-0.5", valueClass)}>{value}</Text>
+        <Text className={cn("mt-0.5 text-sm font-semibold", valueClass)}>{value}</Text>
       </button>
     );
   }
   return (
-    <div className="rounded-lg border border-border/50 bg-background/40 p-2">
+    <div className="thai-glass rounded-lg border-0 p-2 ring-1 ring-black/[0.05] dark:ring-white/[0.08]">
       <Text className="text-xs text-muted-foreground">{label}</Text>
-      <Text className={cn("text-sm font-semibold mt-0.5", valueClass)}>{value}</Text>
+      <Text className={cn("mt-0.5 text-sm font-semibold", valueClass)}>{value}</Text>
     </div>
   );
 }

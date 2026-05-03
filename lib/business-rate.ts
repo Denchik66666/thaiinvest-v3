@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
+import { withDbRetry } from "@/lib/db-retry";
 
 export interface BusinessRateSnapshot {
   rate: number;
@@ -8,14 +9,16 @@ export interface BusinessRateSnapshot {
 
 export async function getCurrentBusinessRate(atDate: Date = new Date()): Promise<BusinessRateSnapshot | null> {
   const target = startOfDay(atDate);
-  const row = await prisma.rateHistory.findFirst({
-    where: {
-      effectiveDate: {
-        lte: target,
+  const row = await withDbRetry(() =>
+    prisma.rateHistory.findFirst({
+      where: {
+        effectiveDate: {
+          lte: target,
+        },
       },
-    },
-    orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
-  });
+      orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
+    })
+  );
 
   if (!row) return null;
 
@@ -35,13 +38,15 @@ export async function upsertBusinessRate(params: {
   const current = await getCurrentBusinessRate(effective);
   const oldRate = current?.rate ?? params.newRate;
 
-  return prisma.rateHistory.create({
-    data: {
-      changedBy: params.changedBy,
-      oldRate,
-      newRate: params.newRate,
-      effectiveDate: effective,
-      comment: params.comment ?? null,
-    },
-  });
+  return withDbRetry(() =>
+    prisma.rateHistory.create({
+      data: {
+        changedBy: params.changedBy,
+        oldRate,
+        newRate: params.newRate,
+        effectiveDate: effective,
+        comment: params.comment ?? null,
+      },
+    })
+  );
 }

@@ -1,0 +1,232 @@
+/**
+ * ThaiInvest v3 — ЕДИНСТВЕННЫЙ файл визуальной дизайн-системы приложения.
+ * Подключение: app/globals.css → @import "../styles/thai-design-system.css";
+ *
+ * Правила:
+ * - Цвета и «стекло» — только токены .theme-linear / .dark и классы .thai-* ниже.
+ * - Не задавать на страницах произвольные from-slate-900 / neon-градиенты в обход этих утилит.
+ * - Типографика UI: шрифты из layout (Geist); кириллица в исходниках — строго UTF-8.
+ */
+
+/* ThaiInvest v3 — единая оболочка (deep dark + clean light), 2026 */
+
+/* Дополнительные токены поверх theme-linear / .dark */
+.theme-linear {
+  --thai-ambient-1: 258 88% 62%;
+  --thai-ambient-2: 220 70% 58%;
+  --thai-ambient-3: 280 60% 55%;
+  --thai-glass-surface: 0 0% 100% / 0.62;
+  --thai-glass-border: 230 28% 78% / 0.85;
+  --thai-glass-highlight: 0 0% 100% / 0.55;
+  --thai-glass-shadow: 0 12px 40px -12px hsl(235 20% 20% / 0.12);
+  --thai-ring-glow: 258 82% 60% / 0.22;
+}
+
+.theme-linear.dark {
+  --thai-ambient-1: 258 55% 48%;
+  --thai-ambient-2: 232 45% 42%;
+  --thai-ambient-3: 280 40% 38%;
+  --thai-glass-surface: 240 12% 14% / 0.5;
+  --thai-glass-border: 240 10% 96% / 0.09;
+  --thai-glass-highlight: 240 15% 100% / 0.04;
+  --thai-glass-shadow: 0 20px 50px -15px hsl(0 0% 0% / 0.55);
+  --thai-ring-glow: 258 82% 64% / 0.18;
+}
+
+/* Семантика сумм / статусов — одинаковая логика в обеих темах */
+.theme-linear {
+  --thai-metric-info: 221 83% 53%;
+  --thai-metric-warn: 32 95% 44%;
+  --thai-metric-ok: 142 76% 36%;
+  --thai-metric-danger: 0 72% 51%;
+}
+
+.theme-linear.dark {
+  --thai-metric-info: 217 91% 60%;
+  --thai-metric-warn: 38 92% 50%;
+  --thai-metric-ok: 142 71% 45%;
+  --thai-metric-danger: 0 84% 60%;
+}
+
+/* --- Утилиты страницы дашборда и полноэкранных экранов (логин) --- */
+.thai-dashboard-root,
+.thai-login-shell {
+  position: relative;
+  z-index: 0;
+}
+
+.thai-login-shell {
+  min-height: 100dvh;
+}
+
+.thai-dashboard-root::before,
+.thai-login-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 100% 70% at 50% -25%, hsl(var(--thai-ambient-1) / 0.2), transparent 58%),
+    radial-gradient(ellipse 55% 45% at 100% 15%, hsl(var(--thai-ambient-2) / 0.14), transparent 52%),
+    radial-gradient(ellipse 50% 40% at 0% 80%, hsl(var(--thai-ambient-3) / 0.1), transparent 48%);
+}
+
+.theme-linear.dark .thai-dashboard-root::before,
+.theme-linear.dark .thai-login-shell::before {
+  background:
+    radial-gradient(ellipse 90% 65% at 50% -30%, hsl(var(--thai-ambient-1) / 0.28), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 100% 10%, hsl(var(--thai-ambient-2) / 0.18), transparent 50%),
+    radial-gradient(ellipse 45% 38% at 0% 85%, hsl(var(--thai-ambient-3) / 0.12), transparent 45%);
+}
+
+/* Вкладки профиля и похожие переключатели */
+.thai-tab-pill {
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+/* Стеклянная панель */
+.thai-glass {
+  background: hsl(var(--thai-glass-surface));
+  border: 1px solid hsl(var(--thai-glass-border));
+  box-shadow: var(--thai-glass-shadow);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+}
+
+.thai-glass-subtle {
+  background: linear-gradient(
+    145deg,
+    hsl(var(--thai-glass-highlight)),
+    transparent 48%
+  );
+  pointer-events: none;
+}
+
+/* Герой-блок */
+.thai-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  padding: 1.25rem 1.35rem;
+}
+
+@media (min-width: 768px) {
+  .thai-hero {
+    padding: 1.5rem 1.75rem;
+  }
+}
+
+.thai-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 0 hsl(var(--thai-glass-highlight));
+  pointer-events: none;
+}
+
+.thai-hero-accent {
+  height: 3px;
+  width: 4.5rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--thai-ambient-2)));
+  opacity: 0.9;
+}
+
+/* Карточка метрики */
+.thai-stat-tile {
+  position: relative;
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.thai-stat-tile:hover {
+  transform: translateY(-1px);
+}
+
+.theme-linear .thai-stat-tile:hover {
+  box-shadow: 0 14px 36px -14px hsl(235 25% 30% / 0.14);
+}
+
+.theme-linear.dark .thai-stat-tile:hover {
+  box-shadow: 0 18px 44px -16px hsl(0 0% 0% / 0.45);
+}
+
+/* Интерактивная строка списка */
+.thai-row-interactive {
+  border-radius: 1rem;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 160ms ease;
+}
+
+.thai-row-interactive:hover {
+  transform: translateY(-1px);
+}
+
+/* Модальные оверлеи */
+.thai-modal-overlay {
+  background: hsl(var(--foreground) / 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.theme-linear.dark .thai-modal-overlay {
+  background: hsl(0 0% 0% / 0.55);
+}
+
+/* Текстовые акценты метрик */
+.thai-text-metric-info {
+  color: hsl(var(--thai-metric-info));
+}
+.thai-text-metric-warn {
+  color: hsl(var(--thai-metric-warn));
+}
+.thai-text-metric-ok {
+  color: hsl(var(--thai-metric-ok));
+}
+.thai-text-metric-danger {
+  color: hsl(var(--thai-metric-danger));
+}
+
+/* Панель «админ / опасное действие» — спокойный акцент, без неона */
+.thai-panel-admin {
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--thai-metric-danger) / 0.32);
+  background: hsl(var(--thai-metric-danger) / 0.07);
+  box-shadow: var(--thai-glass-shadow);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  padding: 1rem 1.15rem;
+}
+
+@media (min-width: 768px) {
+  .thai-panel-admin {
+    padding: 1.15rem 1.35rem;
+  }
+}
+
+/* Вторичная панель (формы, журнал) */
+.thai-panel-muted {
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--border) / 0.85);
+  background: hsl(var(--muted) / 0.35);
+  box-shadow: var(--thai-glass-shadow);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  padding: 1rem 1.15rem;
+}
+
+@media (min-width: 768px) {
+  .thai-panel-muted {
+    padding: 1.25rem 1.35rem;
+  }
+}
