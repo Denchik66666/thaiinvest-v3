@@ -134,17 +134,17 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
           <div className="thai-stat-tile thai-glass border border-border/30 text-center">
             <Text className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Тело</Text>
-            <Text className="text-base font-bold tabular-nums text-foreground md:text-lg">
+            <Text className="text-base font-bold tabular-nums md:text-lg" style={{ color: "#ffffff" }}>
               {formatCurrency(investor.body)}
             </Text>
           </div>
           <div className="thai-stat-tile thai-glass border border-border/30 text-center">
             <Text className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ставка</Text>
-            <Text className="text-base font-bold tabular-nums thai-text-metric-info md:text-lg">{investor.rate}%</Text>
+            <Text className="text-base font-bold tabular-nums text-foreground md:text-lg">{investor.rate}%</Text>
           </div>
           <div className="thai-stat-tile thai-glass border border-border/30 text-center">
             <Text className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Начислено</Text>
-            <Text className="text-base font-bold tabular-nums thai-text-metric-ok md:text-lg">
+            <Text className="text-base font-bold tabular-nums md:text-lg" style={{ color: "#60a5fa" }}>
               {formatCurrency(investor.accrued)}
             </Text>
           </div>

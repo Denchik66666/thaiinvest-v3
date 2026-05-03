@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -249,7 +250,7 @@ export default function InvestorsListPage() {
           </div>
         </div>
 
-        <div className="thai-glass flex flex-col gap-2 rounded-2xl p-2.5 md:p-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="thai-glass flex flex-col gap-2 rounded-2xl p-2.5 md:flex-row md:items-end md:justify-between md:p-4">
           <div>
             <div className="thai-hero-accent mb-2" aria-hidden />
             <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инвесторы</Text>
@@ -258,11 +259,11 @@ export default function InvestorsListPage() {
               {isSuperAdmin ? networkSubtitle : "Общая сеть"} · цикл {week.start}–{week.end}, выплата {week.nextPayout}
             </Text>
           </div>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-            <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/manage")}>
+          <div className="flex w-full flex-col gap-1.5 md:w-auto md:flex-row md:flex-wrap md:justify-end md:gap-2">
+            <Button className="w-full md:w-auto" size="sm" variant="outline" onClick={() => router.push("/dashboard/manage")}>
               Управление и ставка
             </Button>
-            <Button size="sm" onClick={() => router.push("/dashboard/manage")}>
+            <Button className="w-full md:w-auto" size="sm" onClick={() => router.push("/dashboard/manage")}>
               Добавить инвестора
             </Button>
           </div>
@@ -302,15 +303,18 @@ export default function InvestorsListPage() {
               <Text className="text-sm">
                 Позиция у Семёна:{" "}
                 <span className="font-semibold">{privateCtx.commonInvestorName}</span> —{" "}
-                <span className="font-semibold">{formatCurrency(privateCtx.commonBody)}</span>
+                <span className="font-semibold" style={{ color: "#ffffff" }}>
+                  {formatCurrency(privateCtx.commonBody)}
+                </span>
               </Text>
               <Text className="text-sm text-muted-foreground">
-                В личной сети: {formatCurrency(privateCtx.privateBodiesTotal)} · свободно:{" "}
+                В личной сети:{" "}
+                <span style={{ color: "#ffffff" }}>{formatCurrency(privateCtx.privateBodiesTotal)}</span> · свободно:{" "}
                 <span
-                  className={cn(
-                    "font-semibold",
-                    privateCtx.remainingForPrivate < 1 ? "text-amber-600 dark:text-amber-400" : "text-foreground"
-                  )}
+                  className="font-semibold"
+                  style={{
+                    color: privateCtx.remainingForPrivate < 1 ? "#fbbf24" : "#ffffff",
+                  }}
                 >
                   {formatCurrency(privateCtx.remainingForPrivate)}
                 </span>
@@ -330,21 +334,21 @@ export default function InvestorsListPage() {
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-4 xl:grid-cols-7">
           <Kpi title="В списке" value={String(kpis.count)} />
           <Kpi title="Активных" value={String(kpis.active)} />
-          <Kpi title="Внимание" value={String(kpis.attention)} accent="thai-text-metric-warn" />
-          <Kpi title="Сумма тел" value={formatCurrency(kpis.body)} />
-          <Kpi title="Начислено" value={formatCurrency(kpis.accrued)} accent="thai-text-metric-info" />
-          <Kpi title="Выплачено" value={formatCurrency(kpis.paid)} accent="thai-text-metric-ok" />
-          <Kpi title="К выплате" value={formatCurrency(kpis.due)} accent="thai-text-metric-warn" />
+          <Kpi title="Внимание" value={String(kpis.attention)} valueStyle={{ color: "#fbbf24" }} />
+          <Kpi title="Сумма тел" value={formatCurrency(kpis.body)} valueStyle={{ color: "#ffffff" }} />
+          <Kpi title="Начислено" value={formatCurrency(kpis.accrued)} valueStyle={{ color: "#60a5fa" }} />
+          <Kpi title="Выплачено" value={formatCurrency(kpis.paid)} valueStyle={{ color: "#4ade80" }} />
+          <Kpi title="К выплате" value={formatCurrency(kpis.due)} valueStyle={{ color: "#fbbf24" }} />
         </div>
         {kpis.awaiting > 0 ? (
-          <Text className="text-xs text-amber-700 dark:text-amber-300">
+          <Text className="text-xs" style={{ color: "#fbbf24" }}>
             Ожидают активации: {kpis.awaiting} — проверьте даты входа и ближайший понедельник.
           </Text>
         ) : null}
 
         <div className="thai-glass space-y-2 rounded-2xl p-2.5 md:p-4">
-          <div className="grid gap-3 md:grid-cols-12 md:items-end">
-            <div className="md:col-span-4">
+          <div className="flex flex-col gap-3 md:grid md:grid-cols-12 md:items-end">
+            <div className="w-full md:col-span-4">
               <Text className="mb-1 text-xs font-medium text-muted-foreground">Поиск</Text>
               <Input
                 placeholder="Имя, телефон, @handle, владелец…"
@@ -352,30 +356,35 @@ export default function InvestorsListPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="md:col-span-3">
-              <Text className="mb-1 text-xs font-medium text-muted-foreground">Сортировка</Text>
-              <select
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-background px-2.5 text-sm"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as typeof sort)}
-              >
-                <option value="due_desc">К выплате (сначала больше)</option>
-                <option value="body_desc">Тело (по убыванию)</option>
-                <option value="accrued_desc">Начислено (по убыванию)</option>
-                <option value="activation_desc">Дата активации</option>
-                <option value="name_asc">Имя (А–Я)</option>
-              </select>
+            <div className="flex w-full gap-3 md:contents">
+              <div className="min-w-0 flex-1 md:col-span-3">
+                <Text className="mb-1 text-xs font-medium text-muted-foreground">Сортировка</Text>
+                <select
+                  className="flex h-9 w-full rounded-lg border border-border/70 bg-background px-2.5 text-sm"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as typeof sort)}
+                >
+                  <option value="due_desc">К выплате (сначала больше)</option>
+                  <option value="body_desc">Тело (по убыванию)</option>
+                  <option value="accrued_desc">Начислено (по убыванию)</option>
+                  <option value="activation_desc">Дата активации</option>
+                  <option value="name_asc">Имя (А–Я)</option>
+                </select>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-2 md:contents">
+                <div className="w-full md:col-span-2">
+                  <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход с</Text>
+                  <Input type="date" value={entryFrom} onChange={(e) => setEntryFrom(e.target.value)} />
+                </div>
+                <div className="w-full md:col-span-2">
+                  <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход по</Text>
+                  <Input type="date" value={entryTo} onChange={(e) => setEntryTo(e.target.value)} />
+                </div>
+              </div>
             </div>
-            <div className="md:col-span-2">
-              <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход с</Text>
-              <Input type="date" value={entryFrom} onChange={(e) => setEntryFrom(e.target.value)} />
-            </div>
-            <div className="md:col-span-2">
-              <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход по</Text>
-              <Input type="date" value={entryTo} onChange={(e) => setEntryTo(e.target.value)} />
-            </div>
-            <div className="flex flex-wrap gap-2 md:col-span-12">
+            <div className="grid w-full grid-cols-2 gap-2 md:col-span-12 md:flex md:flex-wrap md:gap-2">
               <Button
+                className="w-full md:w-auto"
                 size="sm"
                 variant={attentionOnly ? "primary" : "outline"}
                 onClick={() => setAttentionOnly((v) => !v)}
@@ -383,6 +392,7 @@ export default function InvestorsListPage() {
                 Требуют внимания
               </Button>
               <Button
+                className="w-full md:w-auto"
                 size="sm"
                 variant={includeClosed ? "primary" : "outline"}
                 onClick={() => setIncludeClosed((v) => !v)}
@@ -433,13 +443,13 @@ export default function InvestorsListPage() {
   );
 }
 
-function Kpi({ title, value, accent }: { title: string; value: string; accent?: string }) {
+function Kpi({ title, value, valueStyle }: { title: string; value: string; valueStyle?: CSSProperties }) {
   return (
     <div className="thai-glass thai-stat-tile border-border/35 px-2.5 py-2 md:px-3 md:py-2.5">
       <Text className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground leading-tight">
         {title}
       </Text>
-      <Text className={cn("mt-0.5 text-sm font-semibold tabular-nums leading-tight md:text-base", accent)}>
+      <Text className="mt-0.5 text-sm font-semibold tabular-nums leading-tight md:text-base" style={valueStyle}>
         {value}
       </Text>
     </div>

@@ -101,7 +101,7 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
                   min="0"
                   required
                 />
-                <Text className="text-xs text-amber-400 mt-1">
+                <Text className="text-xs mt-1" style={{ color: "#fbbf24" }}>
                   Warning: Changing body will recalculate accruals
                 </Text>
               </div>
@@ -156,7 +156,7 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
                   value={formData.entryDate}
                   onChange={(value) => handleInputChange("entryDate", value)}
                 />
-                <Text className="text-xs text-amber-400 mt-1">
+                <Text className="text-xs mt-1" style={{ color: "#fbbf24" }}>
                   Warning: Changing entry date will recalculate accruals
                 </Text>
               </div>
@@ -187,19 +187,19 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-400">Body:</span>
-                <span className="text-white">{investor.body.toLocaleString('ru-RU')}</span>
+                <span style={{ color: "#ffffff" }}>{investor.body.toLocaleString('ru-RU')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Accrued:</span>
-                <span className="text-blue-400">{investor.accrued.toLocaleString('ru-RU')}</span>
+                <span style={{ color: "#60a5fa" }}>{investor.accrued.toLocaleString('ru-RU')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Paid:</span>
-                <span className="text-green-400">{(investor.paid || 0).toLocaleString('ru-RU')}</span>
+                <span style={{ color: "#4ade80" }}>{(investor.paid || 0).toLocaleString('ru-RU')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Due:</span>
-                <span className="text-purple-400">{investor.due.toLocaleString('ru-RU')}</span>
+                <span style={{ color: "#fbbf24" }}>{investor.due.toLocaleString('ru-RU')}</span>
               </div>
             </div>
           </div>

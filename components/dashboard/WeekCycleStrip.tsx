@@ -27,8 +27,8 @@ export function WeekCycleStrip({ payoutLabel }: { payoutLabel: string }) {
   const markerLeft = todayIndex >= 0 ? ((todayIndex + 0.5) / 7) * 100 : 50;
 
   return (
-    <div className="w-full">
-      <div className="mb-2 flex justify-between gap-0.5 md:mb-2.5">
+    <div className="w-full py-0.5">
+      <div className="mb-0.5 flex justify-between gap-0.5 md:mb-1">
         {days.map((d, i) => (
           <div
             key={i}
@@ -58,22 +58,28 @@ export function WeekCycleStrip({ payoutLabel }: { payoutLabel: string }) {
       </div>
 
       <div className="relative px-0.5">
-        <div className="h-[3px] w-full overflow-hidden rounded-full bg-muted/50 dark:bg-white/[0.08]">
+        <div className="h-[2px] w-full overflow-hidden rounded-full bg-muted/50 dark:bg-white/[0.08]">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500/70 via-primary to-cyan-500/60 transition-[width] duration-500 ease-out dark:from-violet-400/50 dark:via-primary dark:to-cyan-400/45"
+            className="thai-week-progress-fill h-full rounded-full transition-[width] duration-500 ease-out"
             style={{ width: `${progress * 100}%` }}
           />
         </div>
         {todayIndex >= 0 ? (
           <div
-            className="pointer-events-none absolute -top-1 z-10 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-background bg-primary shadow-[0_0_16px_hsl(var(--primary)/0.65)] ring-1 ring-primary/30"
-            style={{ left: `${markerLeft}%` }}
+            className="pointer-events-none absolute -top-0.5 z-10 -translate-x-1/2 rounded-full border-0 shadow-none ring-0"
+            style={{
+              left: `${markerLeft}%`,
+              width: "8px",
+              height: "8px",
+              background: "#a78bfa",
+              animation: "thai-pulse-dot 2s ease-in-out infinite",
+            }}
             aria-hidden
           />
         ) : null}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
         <span>Недельный цикл (пн–вс)</span>
         <span className="font-medium text-foreground/85">Следующая выплата · {payoutLabel}</span>
       </div>

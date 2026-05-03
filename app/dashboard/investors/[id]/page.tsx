@@ -334,7 +334,7 @@ export default function InvestorDetailPage() {
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Начислено
                 </Text>
-                <Text className="text-xl font-bold tabular-nums thai-text-metric-info">
+                <Text className="text-xl font-bold tabular-nums" style={{ color: "#60a5fa" }}>
                   ฿{ledgerData.summary.totalAccruedAdded.toLocaleString("ru-RU")}
                 </Text>
               </div>
@@ -342,7 +342,7 @@ export default function InvestorDetailPage() {
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Выплачено
                 </Text>
-                <Text className="text-xl font-bold tabular-nums thai-text-metric-ok">
+                <Text className="text-xl font-bold tabular-nums" style={{ color: "#4ade80" }}>
                   ฿{ledgerData.summary.totalInterestPaid.toLocaleString("ru-RU")}
                 </Text>
               </div>
@@ -350,7 +350,7 @@ export default function InvestorDetailPage() {
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Баланс
                 </Text>
-                <Text className="text-xl font-bold tabular-nums thai-text-metric-warn">
+                <Text className="text-xl font-bold tabular-nums" style={{ color: "#fbbf24" }}>
                   ฿
                   {(ledgerData.summary.totalAccruedAdded - ledgerData.summary.totalInterestPaid).toLocaleString("ru-RU")}
                 </Text>
@@ -376,14 +376,20 @@ export default function InvestorDetailPage() {
                         {new Date(row.weekStart).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} —{" "}
                         {new Date(row.weekEnd).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                       </Text>
-                      <Text className="text-sm font-semibold tabular-nums thai-text-metric-ok">
+                      <Text className="text-sm font-semibold tabular-nums" style={{ color: "#60a5fa" }}>
                         +฿{row.weeklyInterest.toLocaleString("ru-RU")}
                       </Text>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       <span>Ставка: {row.rate.toFixed(2)}%</span>
-                      <span>Тело: ฿{row.body.toLocaleString("ru-RU")}</span>
-                      <span>Остаток: ฿{row.balance.toLocaleString("ru-RU")}</span>
+                      <span>
+                        Тело:{" "}
+                        <span style={{ color: "#ffffff" }}>฿{row.body.toLocaleString("ru-RU")}</span>
+                      </span>
+                      <span>
+                        Остаток:{" "}
+                        <span style={{ color: "#fbbf24" }}>฿{row.balance.toLocaleString("ru-RU")}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -426,11 +432,19 @@ export default function InvestorDetailPage() {
 
             {form.type === "interest" ? (
               <Text className="text-xs text-muted-foreground">
-                Максимум по процентам: ฿{availableInterest.toLocaleString("ru-RU")}
+                Максимум по процентам:{" "}
+                <span style={{ color: "#fbbf24" }}>฿{availableInterest.toLocaleString("ru-RU")}</span>
               </Text>
             ) : (
               <Text className="text-xs text-muted-foreground">
-                Полное закрытие: ฿{(investor.body + investor.accrued).toLocaleString("ru-RU")}
+                Полное закрытие:{" "}
+                <span style={{ color: "#ffffff" }}>฿{investor.body.toLocaleString("ru-RU")}</span>
+                {" + "}
+                <span style={{ color: "#60a5fa" }}>฿{investor.accrued.toLocaleString("ru-RU")}</span>
+                {" = "}
+                <span style={{ color: "#ffffff" }}>
+                  ฿{(investor.body + investor.accrued).toLocaleString("ru-RU")}
+                </span>
               </Text>
             )}
 

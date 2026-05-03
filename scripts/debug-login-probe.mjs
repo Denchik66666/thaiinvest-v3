@@ -1,5 +1,5 @@
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
-const users = ["Den", "Denchik", "admin", "semen", "Sega", "Sam", "owner"];
+const users = ["admin", "semen", "Sega_55RUS"];
 const passwords = ["admin123", "18121985", "12345678", "password", "qwerty123"];
 
 async function tryLogin(username, password, timeoutMs = 5000) {

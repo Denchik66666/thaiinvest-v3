@@ -128,7 +128,7 @@ function assertStep(results, name, condition, details = "") {
 
 async function run() {
   const results = [];
-  const superCandidates = ["Denchik", "admin"];
+  const superCandidates = ["admin"];
   let superCookie = null;
   let superUser = null;
   for (const username of superCandidates) {
@@ -144,7 +144,7 @@ async function run() {
     if (superCookie) superUser = "service-token";
   }
   assertStep(results, "SUPER_ADMIN login", !!superCookie, superUser ?? "не найден");
-  const ownerCandidates = ["Sam", "semen", "Semen", "owner"];
+  const ownerCandidates = ["semen", "Semen"];
   let ownerCookie = null;
   let ownerUser = null;
   for (const username of ownerCandidates) {

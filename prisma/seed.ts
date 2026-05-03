@@ -15,7 +15,7 @@ async function main() {
       role: "OWNER",
     },
     {
-      username: "Sega",
+      username: "Sega_55RUS",
       password: "admin123",
       role: "INVESTOR",
     },
@@ -46,7 +46,7 @@ async function main() {
     select: { id: true },
   });
   const sega = await prisma.user.findFirst({
-    where: { username: "Sega", isArchived: false },
+    where: { username: "Sega_55RUS", isArchived: false },
     select: { id: true },
   });
   if (owner && sega) {
@@ -61,7 +61,7 @@ async function main() {
         data: {
           ownerId: owner.id,
           investorUserId: sega.id,
-          name: "Sega",
+          name: "Sega_55RUS",
           body: 1,
           rate: 0.01,
           accrued: 0,
@@ -72,9 +72,9 @@ async function main() {
           isPrivate: false,
         },
       });
-      console.log("✅ Инвесторская позиция для Sega (чат с владельцем сети) создана");
+      console.log("✅ Инвесторская позиция для Sega_55RUS (чат с владельцем сети) создана");
     } else {
-      console.log("ℹ️ У Sega уже есть позиция инвестора");
+      console.log("ℹ️ У Sega_55RUS уже есть позиция инвестора");
     }
   }
 }

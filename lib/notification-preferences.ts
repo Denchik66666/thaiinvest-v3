@@ -36,15 +36,35 @@ function normalizePreferences(raw: string | null): NotificationPreferences {
   }
 }
 
+function overlayFromLegacyKeys(base: NotificationPreferences): NotificationPreferences {
+  if (typeof window === "undefined") return base;
+  let next = base;
+  const sound = localStorage.getItem("notif_sound");
+  if (sound === "0" || sound === "1") {
+    next = { ...next, soundEnabled: sound === "1" };
+  }
+  const vib = localStorage.getItem("notif_vibration");
+  if (vib === "0" || vib === "1") {
+    next = { ...next, vibrationEnabled: vib === "1" };
+  }
+  const poll = localStorage.getItem("notif_polling");
+  if (poll === "fast" || poll === "standard" || poll === "economy") {
+    next = { ...next, pollingMode: poll };
+  }
+  return next;
+}
+
 export function readNotificationPreferences(): NotificationPreferences {
   if (typeof window === "undefined") return DEFAULT_NOTIFY_PREFS;
   try {
     const raw = localStorage.getItem(LS_NOTIFY_PREFS);
-    if (raw === lastRaw) return lastSnapshot;
-    const next = normalizePreferences(raw);
-    lastRaw = raw ?? "";
-    lastSnapshot = next;
-    return next;
+    const cacheKey = raw ?? "";
+    if (cacheKey === lastRaw) return lastSnapshot;
+    const normalized = normalizePreferences(raw);
+    const merged = overlayFromLegacyKeys(normalized);
+    lastRaw = cacheKey;
+    lastSnapshot = merged;
+    return merged;
   } catch {
     return DEFAULT_NOTIFY_PREFS;
   }

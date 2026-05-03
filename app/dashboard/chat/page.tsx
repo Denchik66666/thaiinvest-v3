@@ -326,7 +326,7 @@ function ChatPageInner() {
         {sendMutation.error instanceof Error ? (
           <Text className="text-xs text-red-400 px-1">{sendMutation.error.message}</Text>
         ) : null}
-        <MobileBottomNav active="chat" />
+        <MobileBottomNav active="home" />
       </div>
     </Container>
   );

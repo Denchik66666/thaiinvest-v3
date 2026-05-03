@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -23,8 +24,7 @@ function IconHome({ active }: { active: boolean }) {
 function IconFinance({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={active ? "text-foreground" : "text-muted-foreground"}>
-      <path d="M7 7h10v10H7z" />
-      <path d="M9 12h6M12 9v6" />
+      <path d="M12 3v18M17 8H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -55,34 +55,59 @@ function IconManage({ active }: { active: boolean }) {
   );
 }
 
+function IconProfile({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={active ? "text-foreground" : "text-muted-foreground"}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function tabMatchesPath(tab: Tab, pathname: string | null): boolean {
+  if (!pathname) return false;
+  if (tab.key === "home") return pathname === "/dashboard" || pathname === "/dashboard/";
+  return pathname === tab.path || pathname.startsWith(`${tab.path}/`);
+}
+
 export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
 
-  const tabs: Tab[] =
-    user?.role === "INVESTOR"
-      ? [
-          { key: "home", label: "Главная", path: "/dashboard" },
-          { key: "finance", label: "Финансы", path: "/dashboard/finance" },
-          { key: "reports", label: "Отчёты", path: "/dashboard/reports" },
-        ]
-      : [
-          { key: "home", label: "Главная", path: "/dashboard" },
-          { key: "investors", label: "Инвесторы", path: "/dashboard/investors" },
-          { key: "manage", label: "Управление", path: "/dashboard/manage" },
-          { key: "reports", label: "Отчёты", path: "/dashboard/reports" },
-        ];
+  const tabs: Tab[] = useMemo(() => {
+    if (user?.role === "INVESTOR") {
+      return [
+        { key: "home", label: "Главная", path: "/dashboard" },
+        { key: "finance", label: "Финансы", path: "/dashboard/finance" },
+        { key: "reports", label: "Отчёты", path: "/dashboard/reports" },
+        { key: "profile", label: "Профиль", path: "/dashboard/profile" },
+      ];
+    }
+    return [
+      { key: "home", label: "Главная", path: "/dashboard" },
+      { key: "investors", label: "Инвесторы", path: "/dashboard/investors" },
+      { key: "manage", label: "Управление", path: "/dashboard/manage" },
+      { key: "reports", label: "Отчёты", path: "/dashboard/reports" },
+    ];
+  }, [user?.role]);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3 pt-2 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]">
       <nav
         className={cn(
-          "thai-glass pointer-events-auto flex w-full max-w-md items-stretch justify-between gap-0.5 rounded-[22px] px-0.5 py-0.5",
+          "pointer-events-auto flex w-full max-w-md items-stretch justify-between gap-0.5 rounded-[22px] px-0.5 py-0.5",
           "shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)]"
         )}
+        style={{
+          background: "rgba(13,13,20,0.8)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderTop: "1px solid rgba(255,255,255,0.07)",
+        }}
       >
         {tabs.map((tab) => {
-          const isActive = tab.key === active;
+          const isActive = active === tab.key || (active === undefined && tabMatchesPath(tab, pathname));
           const iconProps = { active: isActive };
           return (
             <button
@@ -91,9 +116,7 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
               onClick={() => router.push(tab.path)}
               className={cn(
                 "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-[18px] px-1 py-2 text-[11px] font-medium transition",
-                isActive
-                  ? "bg-primary/12 text-foreground shadow-sm"
-                  : "text-muted-foreground/90 hover:bg-muted/20 hover:text-foreground"
+                isActive ? "text-foreground shadow-sm ring-1 ring-primary/35" : "text-muted-foreground/90 hover:text-foreground"
               )}
             >
               <span className="relative flex h-7 w-7 items-center justify-center">
@@ -102,6 +125,7 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
                 {tab.key === "reports" ? <IconReports {...iconProps} /> : null}
                 {tab.key === "investors" ? <IconInvestors {...iconProps} /> : null}
                 {tab.key === "manage" ? <IconManage {...iconProps} /> : null}
+                {tab.key === "profile" ? <IconProfile {...iconProps} /> : null}
               </span>
               <span className="truncate max-w-full">{tab.label}</span>
             </button>

@@ -13,7 +13,7 @@ const prisma = new PrismaClient(
 );
 
 function parseArgs(argv) {
-  let fromUsername = process.env.CHAT_FROM ?? "Sega";
+  let fromUsername = process.env.CHAT_FROM ?? "Sega_55RUS";
   let toUsername = process.env.CHAT_TO ?? null;
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -66,7 +66,7 @@ async function main() {
       process.exit(1);
     }
   } else {
-    const preferRecipients = ["Denchik", "denchik", "admin", "semen", "Sam"];
+    const preferRecipients = ["admin", "semen"];
     const recipients = await prisma.user.findMany({
       where: {
         isArchived: false,

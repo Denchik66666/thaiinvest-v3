@@ -21,7 +21,7 @@ type StatusResponse = {
   failedAttempts: number;
 };
 
-export function SuperAdminDatabaseResetSection() {
+export function SuperAdminDatabaseResetSection({ embedMode = false }: { embedMode?: boolean }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [newResetPassword, setNewResetPassword] = useState("");
@@ -82,14 +82,22 @@ export function SuperAdminDatabaseResetSection() {
 
   return (
     <>
-      <div className="h-px bg-border/50" />
-      <div className="thai-panel-admin space-y-3">
+      {!embedMode ? <div className="h-px bg-border/50" /> : null}
+      <div className={cn("space-y-3", !embedMode && "thai-panel-admin")}>
+        {!embedMode ? (
+          <>
         <Text className="text-sm font-semibold text-foreground">Полный сброс базы данных</Text>
         <Text className="text-xs text-muted-foreground leading-relaxed">
           Удаляются все инвесторы, платежи, чат и прочие данные. Остаются только учётные записи{" "}
           <span className="font-medium text-foreground">OWNER</span> и{" "}
           <span className="font-medium text-foreground">SUPER_ADMIN</span>. Действие необратимо.
         </Text>
+          </>
+        ) : (
+          <Text className="text-xs text-muted-foreground leading-relaxed">
+            Удаляются инвесторы, платежи, чат и прочие данные. Остаются учётные записи OWNER и SUPER_ADMIN. Необратимо.
+          </Text>
+        )}
 
         <div className="space-y-2 rounded-xl border border-border/50 bg-background/40 p-3">
           <Text className="text-xs font-semibold text-muted-foreground">Пароль для сброса</Text>
@@ -137,8 +145,16 @@ export function SuperAdminDatabaseResetSection() {
         <Button
           variant="outline"
           className={cn(
-            "w-full border-red-500/45 text-red-700 transition hover:bg-red-500/10 dark:text-red-400",
-            (!configured || locked) && "pointer-events-none opacity-45"
+            "min-h-12 w-full",
+            embedMode
+              ? cn(
+                  "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/55 dark:border-border/50 dark:bg-muted/25",
+                  (!configured || locked) && "pointer-events-none opacity-50"
+                )
+              : cn(
+                  "border-red-500/45 text-red-700 transition hover:bg-red-500/10 dark:text-red-400",
+                  (!configured || locked) && "pointer-events-none opacity-45"
+                )
           )}
           disabled={!configured || locked}
           onClick={() => {
@@ -147,7 +163,7 @@ export function SuperAdminDatabaseResetSection() {
             setModalOpen(true);
           }}
         >
-          Полный сброс базы данных
+          Сброс базы данных
         </Button>
       </div>
 

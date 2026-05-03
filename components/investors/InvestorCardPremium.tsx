@@ -52,11 +52,11 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
   const getStatusColor = (status: string) => {
     switch (status) {
       case "active":
-        return "bg-green-500/20 text-green-300 border-green-500/30";
+        return "bg-[#4ade80]/15 text-[#4ade80] border-[#4ade80]/35";
       case "paused":
-        return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
+        return "bg-[#fbbf24]/15 text-[#fbbf24] border-[#fbbf24]/35";
       case "closed":
-        return "bg-red-500/20 text-red-300 border-red-500/30";
+        return "bg-[#ef4444]/15 text-[#ef4444] border-[#ef4444]/35";
       default:
         return "bg-slate-500/20 text-slate-300 border-slate-500/30";
     }
@@ -171,15 +171,24 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <Text className="text-slate-400 text-xs">Body</Text>
-                  <Text className="text-white font-semibold">  {investor.body.toLocaleString('ru-RU')}</Text>
+                  <Text className="font-semibold" style={{ color: "#ffffff" }}>
+                    {" "}
+                    {investor.body.toLocaleString("ru-RU")}
+                  </Text>
                 </div>
                 <div>
                   <Text className="text-slate-400 text-xs">Accrued</Text>
-                  <Text className="text-blue-400 font-semibold"> {investor.accrued.toLocaleString('ru-RU')}</Text>
+                  <Text className="font-semibold" style={{ color: "#60a5fa" }}>
+                    {" "}
+                    {investor.accrued.toLocaleString("ru-RU")}
+                  </Text>
                 </div>
                 <div>
                   <Text className="text-slate-400 text-xs">To Pay</Text>
-                  <Text className="text-green-400 font-bold"> {availableForWithdrawal.toLocaleString('ru-RU')}</Text>
+                  <Text className="font-bold" style={{ color: "#fbbf24" }}>
+                    {" "}
+                    {availableForWithdrawal.toLocaleString("ru-RU")}
+                  </Text>
                 </div>
               </div>
 
@@ -192,11 +201,23 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
 
             <div className="flex flex-col gap-2">
               {canEdit && (
-                <Button size="sm" onClick={() => setShowEditModal(true)} className="bg-blue-600 hover:bg-blue-700">
+                <Button
+                  size="sm"
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-[#60a5fa] text-[#0f172a] hover:brightness-110 border-[#60a5fa]/40"
+                >
                   Edit
                 </Button>
               )}
-              <Button size="sm" onClick={handleWithdraw} className="bg-green-600 hover:bg-green-700">
+              <Button
+                size="sm"
+                onClick={handleWithdraw}
+                className={
+                  isOwnInvestment
+                    ? "bg-[#ef4444] hover:brightness-110 text-white border-[#ef4444]/40"
+                    : "border-white/25 text-white hover:bg-white/10"
+                }
+              >
                 {isOwnInvestment ? "Withdraw" : "Manage"}
               </Button>
               <Button size="sm" variant="outline" onClick={handlePositions}>
@@ -255,7 +276,11 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
               {canEdit && (
-                <Button size="sm" onClick={() => setShowEditModal(true)} className="bg-blue-600 hover:bg-blue-700 border-blue-500/30">
+                <Button
+                  size="sm"
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-[#60a5fa] text-[#0f172a] hover:brightness-110 border-[#60a5fa]/40"
+                >
                   Edit
                 </Button>
               )}
@@ -264,7 +289,7 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
                   size="sm" 
                   variant="outline" 
                   onClick={handlePause}
-                  className="border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10"
+                  className="border-[#fbbf24]/40 text-[#fbbf24] hover:bg-[#fbbf24]/10"
                   disabled={pauseMutation.isPending}
                 >
                   {pauseMutation.isPending ? "Pausing..." : "Pause"}
@@ -274,7 +299,7 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
                 <Button 
                   size="sm" 
                   onClick={() => apiClient.patch(`/api/investors/${investor.id}`, { status: "active" })}
-                  className="bg-green-600 hover:bg-green-700 border-green-500/30"
+                  className="bg-[#4ade80] text-[#0f172a] hover:brightness-110 border-[#4ade80]/40"
                 >
                   Resume
                 </Button>
@@ -284,7 +309,7 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
                   size="sm" 
                   variant="outline" 
                   onClick={handleClose}
-                  className="border-red-500/30 text-red-300 hover:bg-red-500/10"
+                  className="border-[#ef4444]/40 text-[#ef4444] hover:bg-[#ef4444]/10"
                   disabled={closeMutation.isPending}
                 >
                   {closeMutation.isPending ? "Closing..." : "Close"}
@@ -297,22 +322,31 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
               <Text className="text-slate-400 text-sm mb-1">Body</Text>
-              <Text className="text-white text-xl font-bold">  {investor.body.toLocaleString('ru-RU')}</Text>
+              <Text className="text-xl font-bold" style={{ color: "#ffffff" }}>
+                {" "}
+                {investor.body.toLocaleString("ru-RU")}
+              </Text>
             </div>
             
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
               <Text className="text-slate-400 text-sm mb-1">Accrued</Text>
-              <Text className="text-blue-400 text-xl font-bold"> {investor.accrued.toLocaleString('ru-RU')}</Text>
+              <Text className="text-xl font-bold" style={{ color: "#60a5fa" }}>
+                {" "}
+                {investor.accrued.toLocaleString("ru-RU")}
+              </Text>
             </div>
             
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
               <Text className="text-slate-400 text-sm mb-1">To Pay</Text>
-              <Text className="text-green-400 text-xl font-bold"> {availableForWithdrawal.toLocaleString('ru-RU')}</Text>
+              <Text className="text-xl font-bold" style={{ color: "#fbbf24" }}>
+                {" "}
+                {availableForWithdrawal.toLocaleString("ru-RU")}
+              </Text>
             </div>
             
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
               <Text className="text-slate-400 text-sm mb-1">Rate</Text>
-              <Text className="text-purple-400 text-xl font-bold">{investor.rate}%</Text>
+              <Text className="text-white text-xl font-bold">{investor.rate}%</Text>
             </div>
           </div>
 
@@ -328,7 +362,7 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
                 </div>
                 <div className="text-right">
                   <Text className="text-slate-400 text-sm">Next Payout</Text>
-                  <Text className="text-cyan-400 font-semibold">
+                  <Text className="font-semibold" style={{ color: "#fbbf24" }}>
                     {weekInfo.nextPayout}
                     {daysUntilPayout !== null && (
                       <span className="text-sm text-slate-400 ml-2">
@@ -343,16 +377,22 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
 
           {/* Action buttons row */}
           <div className="flex flex-wrap gap-3">
-            <Button 
-              onClick={handleWithdraw} 
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 border-green-500/30 shadow-lg shadow-green-500/20"
+            <Button
+              onClick={handleWithdraw}
+              className={
+                isOwnInvestment
+                  ? "bg-[#ef4444] hover:brightness-110 text-white border-[#ef4444]/40 shadow-lg shadow-[#ef4444]/25"
+                  : canApproveWithdraw
+                    ? "bg-[#fbbf24] text-[#0f172a] hover:brightness-110 border-[#fbbf24]/40 shadow-lg shadow-[#fbbf24]/20"
+                    : "border-white/25 text-white hover:bg-white/10"
+              }
             >
               {isOwnInvestment ? "Request Withdrawal" : canApproveWithdraw ? "Manage Withdrawals" : "View Details"}
             </Button>
             <Button 
               variant="outline" 
               onClick={handlePositions}
-              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              className="border-[#60a5fa]/40 text-[#60a5fa] hover:bg-[#60a5fa]/10"
             >
               View Positions
             </Button>

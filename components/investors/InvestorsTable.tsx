@@ -42,10 +42,8 @@ function rowNeedsAttention(inv: InvestorTableRow) {
 
 export function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    active:
-      "bg-emerald-500/12 text-emerald-700 border-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/35",
     awaiting_activation:
-      "bg-amber-500/12 text-amber-800 border-amber-500/25 dark:text-amber-300 dark:border-amber-500/35",
+      "bg-[#fbbf24]/12 text-[#b45309] border-[#fbbf24]/30 dark:text-[#fbbf24] dark:border-[#fbbf24]/35",
     paused: "bg-sky-500/12 text-sky-800 border-sky-500/25 dark:text-sky-300 dark:border-sky-500/35",
     closed: "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300 dark:border-red-500/35",
   };
@@ -56,6 +54,10 @@ export function StatusBadge({ status }: { status: string }) {
     paused: "Пауза",
     closed: "Закрыт",
   };
+
+  if (status === "active") {
+    return <span className="thai-status-active">{labels.active}</span>;
+  }
 
   return (
     <span
@@ -87,14 +89,14 @@ function RowDots({ inv }: { inv: InvestorTableRow }) {
     dots.push({
       key: "pay",
       title: "Есть заявка на выплату",
-      className: "bg-amber-400 shadow-[0_0_8px_hsl(38_92%_50%/0.55)]",
+      className: "bg-[#fbbf24] shadow-[0_0_8px_rgba(251,191,36,0.55)]",
     });
   }
   if (inv.status === "awaiting_activation") {
     dots.push({
       key: "act",
       title: "Ожидает активации",
-      className: "bg-sky-400",
+      className: "bg-[#60a5fa]",
     });
   }
   if (inv.status === "paused" && inv.accrued > 0.005) {
@@ -108,7 +110,7 @@ function RowDots({ inv }: { inv: InvestorTableRow }) {
     dots.push({
       key: "due",
       title: "Есть сумма к выводу",
-      className: "bg-emerald-400/90",
+      className: "bg-[#fbbf24]",
     });
   }
   if (!dots.length) return <span className="inline-block w-4" aria-hidden />;
@@ -150,7 +152,7 @@ export function InvestorsTable({
 
   return (
     <div className="space-y-2 md:space-y-3">
-      <div className="thai-glass hidden overflow-hidden rounded-2xl md:block">
+      <div className="thai-glass desktop-table overflow-hidden rounded-2xl">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[920px] border-collapse text-left">
             <thead>
@@ -195,7 +197,7 @@ export function InvestorsTable({
                               {inv.investorUser.username}
                             </span>
                           ) : (
-                            <span className="text-amber-700/90 dark:text-amber-400/90">без кабинета</span>
+                            <span style={{ color: "#fbbf24" }}>без кабинета</span>
                           )}
                           {inv.handle ? (
                             <span className="truncate text-muted-foreground/80">@{inv.handle}</span>
@@ -206,24 +208,28 @@ export function InvestorsTable({
                     <td className="px-2 py-2 align-middle text-[11px] tabular-nums text-muted-foreground">
                       {shortDate(inv.entryDate)}
                     </td>
-                    <td className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums text-foreground">
+                    <td
+                      className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums"
+                      style={{ color: "#ffffff" }}
+                    >
                       {formatCurrency(inv.body)}
                     </td>
-                    <td className="px-2 py-2 align-middle text-center text-xs font-semibold tabular-nums thai-text-metric-info">
+                    <td className="px-2 py-2 align-middle text-center text-xs font-semibold tabular-nums text-foreground">
                       {inv.rate}%
                     </td>
-                    <td className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums thai-text-metric-info">
+                    <td
+                      className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums"
+                      style={{ color: "#60a5fa" }}
+                    >
                       {formatCurrency(inv.accrued)}
                     </td>
-                    <td className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums thai-text-metric-ok">
+                    <td
+                      className="px-2 py-2 align-middle text-right text-xs font-medium tabular-nums"
+                      style={{ color: "#4ade80" }}
+                    >
                       {formatCurrency(inv.paid)}
                     </td>
-                    <td
-                      className={cn(
-                        "px-2 py-2 align-middle text-right text-xs font-semibold tabular-nums",
-                        inv.due > 0.005 ? "thai-text-metric-warn" : "text-muted-foreground"
-                      )}
-                    >
+                    <td className="px-2 py-2 align-middle text-right text-xs font-semibold tabular-nums" style={{ color: "#fbbf24" }}>
                       {formatCurrency(inv.due)}
                     </td>
                     <td className="px-2 py-2 align-middle text-center">
@@ -275,7 +281,7 @@ export function InvestorsTable({
         </div>
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div className="mobile-cards space-y-3">
         {investors.map((inv) => {
           const hot = inv.due > 0.005 || rowNeedsAttention(inv);
           return (
@@ -285,58 +291,74 @@ export function InvestorsTable({
               disabled={!rowClickable}
               onClick={() => onOpenInvestor?.(inv.id)}
               className={cn(
-                "thai-glass thai-row-interactive w-full rounded-2xl border border-border/40 p-3 text-left ring-1 ring-black/[0.03] transition dark:ring-white/[0.06]",
+                "thai-glass thai-row-interactive w-full rounded-2xl border border-border/40 p-4 text-left ring-1 ring-black/[0.03] transition dark:ring-white/[0.06]",
                 !rowClickable && "cursor-default",
                 hot && "border-primary/25 ring-primary/10"
               )}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold leading-tight">{inv.name}</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">{inv.owner.username}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {inv.investorUser?.username ? (
-                      <span className="rounded border border-border/50 px-1 font-mono text-[10px]">
-                        {inv.investorUser.username}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-amber-700 dark:text-amber-400">нет кабинета</span>
-                    )}
-                    {showNetwork ? <NetworkBadge isPrivate={inv.isPrivate} /> : null}
-                    <StatusBadge status={inv.status} />
-                  </div>
+                <div className="min-w-0 flex-1 truncate text-[15px] font-medium leading-snug text-foreground">
+                  {inv.name}
                 </div>
-                <RowDots inv={inv} />
+                <div className="shrink-0">
+                  <StatusBadge status={inv.status} />
+                </div>
               </div>
 
-              <div className="mt-2.5 grid grid-cols-4 gap-1.5 text-center">
-                <div className="rounded-lg bg-muted/25 px-1 py-1.5">
-                  <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Тело</div>
-                  <div className="text-[11px] font-semibold tabular-nums">{formatCurrency(inv.body)}</div>
+              <div className="mt-1.5 text-xs text-muted-foreground">
+                {inv.owner.username}
+                {inv.investorUser?.username ? (
+                  <span className="text-muted-foreground/80"> · {inv.investorUser.username}</span>
+                ) : null}
+                <span> · вход {shortDate(inv.entryDate)}</span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="thai-glass thai-stat-tile border border-border/35 px-2.5 py-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Тело</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "#ffffff" }}>
+                    {formatCurrency(inv.body)}
+                  </div>
                 </div>
-                <div className="rounded-lg bg-muted/25 px-1 py-1.5">
-                  <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">%</div>
-                  <div className="text-[11px] font-semibold tabular-nums thai-text-metric-info">{inv.rate}</div>
-                </div>
-                <div className="rounded-lg bg-muted/25 px-1 py-1.5">
-                  <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Нач.</div>
-                  <div className="text-[11px] font-semibold tabular-nums thai-text-metric-info">
+                <div className="thai-glass thai-stat-tile border border-border/35 px-2.5 py-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Начислено</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "#60a5fa" }}>
                     {formatCurrency(inv.accrued)}
                   </div>
                 </div>
-                <div className="rounded-lg bg-muted/25 px-1 py-1.5">
-                  <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">К выпл.</div>
-                  <div
-                    className={cn(
-                      "text-[11px] font-semibold tabular-nums",
-                      inv.due > 0.005 ? "thai-text-metric-warn" : "text-muted-foreground"
-                    )}
-                  >
+                <div className="thai-glass thai-stat-tile border border-border/35 px-2.5 py-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Выплачено</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "#4ade80" }}>
+                    {formatCurrency(inv.paid)}
+                  </div>
+                </div>
+                <div className="thai-glass thai-stat-tile border border-border/35 px-2.5 py-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">К выплате</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "#fbbf24" }}>
                     {formatCurrency(inv.due)}
                   </div>
                 </div>
               </div>
-              <div className="mt-1.5 text-[10px] text-muted-foreground">Вход {shortDate(inv.entryDate)}</div>
+
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  {showNetwork ? (
+                    inv.isPrivate ? (
+                      <span className="inline-flex rounded-md border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                        ЛИЧ
+                      </span>
+                    ) : (
+                      <span className="inline-flex rounded-md border border-border/50 bg-muted/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        ОБЩ
+                      </span>
+                    )
+                  ) : null}
+                  <span className="inline-flex items-center gap-1" title={rowNeedsAttention(inv) ? "Сигналы" : undefined}>
+                    <RowDots inv={inv} />
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{inv.rate}%</span>
+              </div>
             </button>
           );
         })}

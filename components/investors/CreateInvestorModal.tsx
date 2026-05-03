@@ -139,19 +139,28 @@ export function CreateInvestorModal({
             {privateContextLoading ? (
               <Text className="text-xs text-muted-foreground">Загрузка данных…</Text>
             ) : privateContext && !privateContext.ok ? (
-              <Text className="text-xs text-amber-700 dark:text-amber-300">{privateContext.message}</Text>
+              <Text className="text-xs" style={{ color: "#fbbf24" }}>
+                {privateContext.message}
+              </Text>
             ) : privateContext?.ok ? (
               <>
                 <Text className="text-xs leading-relaxed text-foreground">
                   Общая позиция «{privateContext.commonInvestorName}»: тело{" "}
-                  <span className="font-semibold">{formatCurrency(privateContext.commonBody)}</span>, ставка{" "}
+                  <span className="font-semibold" style={{ color: "#ffffff" }}>
+                    {formatCurrency(privateContext.commonBody)}
+                  </span>
+                  , ставка{" "}
                   <span className="font-semibold">{privateContext.commonRatePercent}%</span> в месяц (в карточке).
                 </Text>
                 <Text className="text-xs leading-relaxed text-foreground">
                   Уже в личной сети (сумма тел):{" "}
-                  <span className="font-semibold">{formatCurrency(privateContext.privateBodiesTotal)}</span>. Свободно
-                  под новые личные позиции:{" "}
-                  <span className="font-semibold text-primary">{formatCurrency(privateContext.remainingForPrivate)}</span>
+                  <span className="font-semibold" style={{ color: "#ffffff" }}>
+                    {formatCurrency(privateContext.privateBodiesTotal)}
+                  </span>
+                  . Свободно под новые личные позиции:{" "}
+                  <span className="font-semibold" style={{ color: "#fbbf24" }}>
+                    {formatCurrency(privateContext.remainingForPrivate)}
+                  </span>
                   .
                 </Text>
                 <Text className="text-xs leading-relaxed text-muted-foreground">
@@ -161,7 +170,8 @@ export function CreateInvestorModal({
                 </Text>
                 {privateOver ? (
                   <Text className="text-xs font-medium text-red-500">
-                    Сумма «Тело» превышает доступный остаток ({formatCurrency(privateContext.remainingForPrivate)}).
+                    Сумма «Тело» превышает доступный остаток (
+                    <span style={{ color: "#fbbf24" }}>{formatCurrency(privateContext.remainingForPrivate)}</span>).
                   </Text>
                 ) : null}
               </>
