@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * Календарь в портале на `document.body` с высоким z-index — чтобы попап не оказывался
- * под модалками (`z-50`) и не обрезался `overflow` у предков. Не использовать нативный
- * `<input type="date">` в тех же формах — визуально «ломает» единый UI.
+ * Календарь в портале на `document.body`, z-index выше модалок.
+ * Не использовать `<input type="date">` рядом — ломает единый премиальный UI.
  */
+import type { CSSProperties } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function parseYmd(value: string): Date | null {
-  // Expect `YYYY-MM-DD` and build date in *local* timezone to avoid UTC shift.
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   const y = Number(m[1]);
@@ -36,8 +36,16 @@ function addMonths(date: Date, delta: number) {
   return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  );
+}
+
+const POPOVER_ESTIMATE_H = 400;
+
 export type DatePickerProps = {
-  value: string; // `YYYY-MM-DD` or empty
+  value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
@@ -62,7 +70,6 @@ export function DatePicker({
 
   useEffect(() => {
     if (!selectedDate) return;
-    // Avoid calling setState synchronously inside an effect (ESLint rule).
     queueMicrotask(() => setViewDate(startOfMonth(selectedDate)));
   }, [selectedDate]);
 
@@ -88,10 +95,16 @@ export function DatePicker({
     const anchor = anchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const desiredWidth = Math.min(320, Math.max(220, rect.width));
+    const desiredWidth = Math.min(360, Math.max(280, rect.width + 24));
     const vw = window.innerWidth;
-    const left = Math.max(8, Math.min(rect.left, vw - desiredWidth - 8));
-    const top = rect.bottom + 8;
+    const vh = window.innerHeight;
+    const left = Math.max(10, Math.min(rect.left, vw - desiredWidth - 10));
+
+    let top = rect.bottom + 10;
+    if (top + POPOVER_ESTIMATE_H > vh - 10) {
+      top = Math.max(10, rect.top - POPOVER_ESTIMATE_H - 10);
+    }
+
     setPopover({ top, left, width: desiredWidth });
   };
 
@@ -107,12 +120,10 @@ export function DatePicker({
     };
   }, [open]);
 
-  const today = useMemo(() => new Date(), []);
   const viewStart = useMemo(() => startOfMonth(viewDate), [viewDate]);
 
   const daysHeader = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
   const monthLabel = useMemo(() => {
-    // Keep Russian month names short-ish to match existing app vibe.
     const months = [
       "Январь",
       "Февраль",
@@ -131,11 +142,8 @@ export function DatePicker({
   }, [viewStart]);
 
   const calendarCells = useMemo(() => {
-    // Monday-first grid for Russian locale.
     const firstDay = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
-    const startWeekday = (firstDay.getDay() + 6) % 7; // 0..6 (Mo..Su)
-
-    // Total 6 weeks x 7 = 42 cells.
+    const startWeekday = (firstDay.getDay() + 6) % 7;
     const cells: Array<{ date: Date; inMonth: boolean }> = [];
     for (let i = 0; i < 42; i++) {
       const dt = new Date(viewStart);
@@ -145,93 +153,174 @@ export function DatePicker({
     }
     return cells;
   }, [viewStart]);
+
   const highlightedSet = useMemo(() => new Set(highlightedDates), [highlightedDates]);
+  const hasLegend = highlightedDates.length > 0;
+
+  /** Один раз на открытие попапа — не дергать `new Date` на каждую ячейку. */
+  const sessionToday = useMemo(() => new Date(), [open]);
+
+  const goToday = () => {
+    const n = new Date();
+    setViewDate(startOfMonth(n));
+    onChange(toYmd(n));
+    setOpen(false);
+  };
+
+  const panelStyle: CSSProperties = {
+    position: "fixed",
+    top: popover?.top ?? 0,
+    left: popover?.left ?? 0,
+    width: popover?.width ?? 320,
+    borderColor: "var(--thai-color-card-border)",
+    background: "color-mix(in srgb, var(--thai-color-card-bg) 85%, hsl(var(--card)))",
+    boxShadow:
+      "0 24px 48px -12px rgba(0,0,0,0.45), 0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 18%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent)",
+    animation: "thai-fade-in-up 0.26s ease forwards",
+  };
 
   const popoverNode =
     open && popover ? (
       <div
         ref={popoverRef}
-        style={{ position: "fixed", top: popover.top, left: popover.left, width: popover.width }}
-        className="z-[20000] rounded-xl border border-border/60 bg-background/95 backdrop-blur p-3 shadow-lg"
+        role="dialog"
+        aria-label="Календарь"
+        style={panelStyle}
+        className="z-[20000] overflow-hidden rounded-2xl border p-1 backdrop-blur-xl"
       >
-        <div className="flex items-center justify-between mb-2">
-          <button
-            type="button"
-            className="px-2 py-1 rounded-md hover:bg-muted/60 transition text-sm text-foreground"
-            onClick={() => setViewDate((d) => addMonths(d, -1))}
-          >
-            ◀
-          </button>
-          <div className="text-sm font-semibold text-foreground">{monthLabel}</div>
-          <button
-            type="button"
-            className="px-2 py-1 rounded-md hover:bg-muted/60 transition text-sm text-foreground"
-            onClick={() => setViewDate((d) => addMonths(d, 1))}
-          >
-            ▶
-          </button>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-[10px] uppercase text-muted-foreground font-semibold mb-1">
-          {daysHeader.map((d) => (
-            <div key={d} className="text-center">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-7 gap-1">
-          {calendarCells.map(({ date, inMonth }, idx) => {
-            const isSelected = selectedDate && toYmd(date) === toYmd(selectedDate);
-            const hasDot = highlightedSet.has(toYmd(date));
-            const isToday =
-              date.getFullYear() === today.getFullYear() &&
-              date.getMonth() === today.getMonth() &&
-              date.getDate() === today.getDate();
-            return (
-              <button
-                key={`${idx}-${toYmd(date)}`}
-                type="button"
-                onClick={() => {
-                  onChange(toYmd(date));
-                  setOpen(false);
-                }}
-                className={cn(
-                  "relative h-9 rounded-md text-sm transition",
-                  inMonth ? "text-foreground" : "text-muted-foreground/60",
-                  isSelected ? "bg-primary text-primary-foreground" : "hover:bg-muted/60",
-                  !isSelected && isToday ? "border border-primary/60" : "border border-transparent"
-                )}
+        <div className="rounded-[14px] bg-gradient-to-b from-background/40 to-background/5 px-2.5 pb-2 pt-2">
+          <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
+            <button
+              type="button"
+              aria-label="Предыдущий месяц"
+              onClick={() => setViewDate((d) => addMonths(d, -1))}
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
+                "border-border/50 bg-background/40 text-foreground hover:bg-muted/30 hover:border-primary/35",
+                "active:scale-[0.97]"
+              )}
+            >
+              <ChevronLeft className="h-4 w-4 opacity-90" strokeWidth={2.2} />
+            </button>
+            <div className="min-w-0 flex-1 text-center">
+              <div
+                className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+                style={{ color: "var(--thai-color-text-muted)" }}
               >
-                {date.getDate()}
-                {hasDot ? (
-                  <span
-                    className={cn(
-                      "absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full",
-                      isSelected ? "bg-primary-foreground" : "bg-violet-500"
-                    )}
-                  />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+                Месяц
+              </div>
+              <div className="truncate text-sm font-bold tracking-tight text-foreground sm:text-[15px]">
+                {monthLabel}
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label="Следующий месяц"
+              onClick={() => setViewDate((d) => addMonths(d, 1))}
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
+                "border-border/50 bg-background/40 text-foreground hover:bg-muted/30 hover:border-primary/35",
+                "active:scale-[0.97]"
+              )}
+            >
+              <ChevronRight className="h-4 w-4 opacity-90" strokeWidth={2.2} />
+            </button>
+          </div>
 
-        <div className="mt-2 flex items-center justify-between">
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground transition"
-            onClick={() => onChange("")}
+          <div
+            className="mb-1.5 grid grid-cols-7 gap-0.5 px-0.5"
+            style={{ color: "var(--thai-color-text-muted)" }}
           >
-            Очистить
-          </button>
-          <button
-            type="button"
-            className="text-xs font-semibold text-foreground rounded-md px-2 py-1 hover:bg-muted/60 transition"
-            onClick={() => setOpen(false)}
-          >
-            Готово
-          </button>
+            {daysHeader.map((d) => (
+              <div
+                key={d}
+                className="py-1 text-center text-[10px] font-semibold uppercase tracking-wide"
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 rounded-xl border border-border/25 bg-muted/5 p-1.5">
+            {calendarCells.map(({ date, inMonth }, idx) => {
+              const isToday = isSameDay(date, sessionToday);
+              const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
+              const hasDot = highlightedSet.has(toYmd(date));
+              const ymd = toYmd(date);
+
+              return (
+                <button
+                  key={`${idx}-${ymd}`}
+                  type="button"
+                  onClick={() => {
+                    onChange(ymd);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "relative flex h-10 flex-col items-center justify-center rounded-xl text-[13px] font-semibold tabular-nums transition duration-150",
+                    inMonth ? "text-foreground" : "text-muted-foreground/45",
+                    isSelected &&
+                      "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.55)] ring-1 ring-white/25",
+                    !isSelected && "hover:bg-background/70 hover:ring-1 hover:ring-border/50",
+                    !isSelected && isToday && "ring-1 ring-[color-mix(in_srgb,var(--thai-color-due)_55%,transparent)] bg-[color-mix(in_srgb,var(--thai-color-due)_12%,transparent)]"
+                  )}
+                >
+                  <span className="leading-none">{date.getDate()}</span>
+                  {hasDot ? (
+                    <span
+                      className={cn(
+                        "absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full shadow-sm",
+                        isSelected
+                          ? "bg-primary-foreground ring-1 ring-primary-foreground/40"
+                          : "bg-[#a78bfa] ring-2 ring-[color-mix(in_srgb,#a78bfa_35%,transparent)]"
+                      )}
+                      aria-hidden
+                    />
+                  ) : (
+                    <span className="h-1.5 shrink-0" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {hasLegend ? (
+            <div
+              className="mt-2 flex items-center gap-2 rounded-lg border border-border/30 px-2 py-1.5"
+              style={{ background: "color-mix(in srgb, var(--thai-color-card-bg) 100%, transparent)" }}
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#a78bfa] ring-2 ring-[color-mix(in_srgb,#a78bfa_30%,transparent)]" />
+              <span className="text-[10px] leading-snug text-muted-foreground">
+                Фиолетовая точка — в этот день есть события в контексте формы (как метки в истории).
+              </span>
+            </div>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/30 pt-2">
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                onClick={() => onChange("")}
+              >
+                Очистить
+              </button>
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-[11px] font-semibold text-primary transition hover:bg-primary/10"
+                onClick={goToday}
+              >
+                Сегодня
+              </button>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-muted/50"
+              onClick={() => setOpen(false)}
+            >
+              Готово
+            </button>
+          </div>
         </div>
       </div>
     ) : null;
@@ -240,19 +329,46 @@ export function DatePicker({
     <div ref={anchorRef} className={cn("relative", className)}>
       <button
         type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "w-full px-3 py-2 rounded-md bg-input text-foreground border border-border focus:ring-2 focus:ring-primary transition outline-none text-left",
-          "flex items-center justify-between gap-2"
+          "group flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left outline-none transition duration-200",
+          "border-border/60 bg-background/50 backdrop-blur-sm",
+          "hover:border-primary/35 hover:bg-muted/20",
+          open && "border-primary/50 ring-2 ring-primary/25 shadow-[0_0_0_1px_color-mix(in_srgb,hsl(var(--primary))_20%,transparent)]"
         )}
+        style={{
+          borderColor: open ? "color-mix(in srgb, hsl(var(--primary)) 40%, var(--thai-color-card-border))" : undefined,
+        }}
       >
-        <span className={cn("text-sm", value ? "text-foreground" : "text-muted-foreground")}>
-          {value ? parseYmd(value)?.toLocaleDateString("ru-RU") : placeholder}
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition",
+              "border-border/50 bg-muted/20 text-muted-foreground group-hover:border-primary/30 group-hover:text-primary"
+            )}
+          >
+            <CalendarDays className="h-4 w-4" strokeWidth={2} />
+          </span>
+          <span
+            className={cn(
+              "min-w-0 truncate text-sm font-medium tabular-nums tracking-tight",
+              value ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            {value ? parseYmd(value)?.toLocaleDateString("ru-RU") : placeholder}
+          </span>
         </span>
-        <span className="text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
+        <ChevronRight
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition duration-200",
+            open && "rotate-90 text-primary"
+          )}
+          strokeWidth={2}
+        />
       </button>
       {open && popoverNode ? createPortal(popoverNode, document.body) : null}
     </div>
   );
 }
-
