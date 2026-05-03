@@ -280,6 +280,7 @@ export function BusinessRateControlCenter({
                   }
                 }}
                 placeholder="Выбери дату"
+                highlightedDates={Array.from(changeDays)}
               />
             </div>
             <div>

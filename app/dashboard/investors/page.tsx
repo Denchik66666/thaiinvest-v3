@@ -9,6 +9,7 @@ import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { DatePicker } from "@/components/ui/DatePicker";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -27,6 +28,7 @@ type PaymentRow = {
   type: string;
   amount: number;
   status: string;
+  createdAt?: string;
 };
 
 export type InvestorListRow = {
@@ -85,6 +87,23 @@ function parseYmd(s: string) {
   const d = new Date(s);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
+}
+
+function toYmdFromIso(iso: string) {
+  return iso.split("T")[0] ?? "";
+}
+
+/** Точки в фильтре «вход»: даты входа/активации и открытых заявок по загруженному списку. */
+function collectInvestorCalendarDots(investors: InvestorListRow[]): string[] {
+  const s = new Set<string>();
+  for (const inv of investors) {
+    if (inv.entryDate) s.add(toYmdFromIso(inv.entryDate));
+    if (inv.activationDate) s.add(toYmdFromIso(inv.activationDate));
+    for (const p of inv.payments ?? []) {
+      if (p.createdAt) s.add(toYmdFromIso(p.createdAt));
+    }
+  }
+  return Array.from(s);
 }
 
 export default function InvestorsListPage() {
@@ -200,6 +219,11 @@ export default function InvestorsListPage() {
   const week = useMemo(() => getCurrentWeekLabel(), []);
 
   const privateCtx = privateCtxData?.context;
+
+  const entryFilterCalendarDots = useMemo(
+    () => collectInvestorCalendarDots(data?.investors ?? []),
+    [data?.investors]
+  );
 
   if (authLoading || !user) {
     return (
@@ -374,11 +398,21 @@ export default function InvestorsListPage() {
               <div className="flex min-w-0 flex-1 flex-col gap-2 md:contents">
                 <div className="w-full md:col-span-2">
                   <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход с</Text>
-                  <Input type="date" value={entryFrom} onChange={(e) => setEntryFrom(e.target.value)} />
+                  <DatePicker
+                    value={entryFrom}
+                    onChange={setEntryFrom}
+                    placeholder="Не задано"
+                    highlightedDates={entryFilterCalendarDots}
+                  />
                 </div>
                 <div className="w-full md:col-span-2">
                   <Text className="mb-1 text-xs font-medium text-muted-foreground">Вход по</Text>
-                  <Input type="date" value={entryTo} onChange={(e) => setEntryTo(e.target.value)} />
+                  <DatePicker
+                    value={entryTo}
+                    onChange={setEntryTo}
+                    placeholder="Не задано"
+                    highlightedDates={entryFilterCalendarDots}
+                  />
                 </div>
               </div>
             </div>

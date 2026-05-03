@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -75,6 +76,14 @@ export function CreateInvestorModal({
     if (!amount) return "";
     return `${amount.toLocaleString("ru-RU")} ฿`;
   };
+
+  const entryDateHighlights = useMemo(() => {
+    const s = new Set<string>();
+    if (formData.entryDate) s.add(formData.entryDate);
+    if (businessCurrent?.effectiveDate) s.add(businessCurrent.effectiveDate.split("T")[0]);
+    if (businessNext?.effectiveDate) s.add(businessNext.effectiveDate.split("T")[0]);
+    return Array.from(s);
+  }, [formData.entryDate, businessCurrent, businessNext]);
 
   if (!open) return null;
 
@@ -291,6 +300,7 @@ export function CreateInvestorModal({
             <DatePicker
               value={formData.entryDate}
               onChange={(v) => setFormData({ ...formData, entryDate: v })}
+              highlightedDates={entryDateHighlights}
             />
           </FormGroup>
 

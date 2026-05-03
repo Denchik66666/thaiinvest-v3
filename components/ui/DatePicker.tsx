@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Календарь в портале на `document.body` с высоким z-index — чтобы попап не оказывался
+ * под модалками (`z-50`) и не обрезался `overflow` у предков. Не использовать нативный
+ * `<input type="date">` в тех же формах — визуально «ломает» единый UI.
+ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -147,7 +152,7 @@ export function DatePicker({
       <div
         ref={popoverRef}
         style={{ position: "fixed", top: popover.top, left: popover.left, width: popover.width }}
-        className="z-[9999] rounded-xl border border-border/60 bg-background/95 backdrop-blur p-3 shadow-lg"
+        className="z-[20000] rounded-xl border border-border/60 bg-background/95 backdrop-blur p-3 shadow-lg"
       >
         <div className="flex items-center justify-between mb-2">
           <button

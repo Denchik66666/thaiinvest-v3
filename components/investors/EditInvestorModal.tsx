@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -65,6 +65,13 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const dateHighlights = useMemo(() => {
+    const s = new Set<string>();
+    if (formData.entryDate) s.add(formData.entryDate);
+    if (formData.activationDate) s.add(formData.activationDate);
+    return Array.from(s);
+  }, [formData.entryDate, formData.activationDate]);
 
   return (
     <Modal open={open} onClose={onClose} className="max-w-2xl">
@@ -166,6 +173,7 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
                 <DatePicker
                   value={formData.activationDate}
                   onChange={(value) => handleInputChange("activationDate", value)}
+                  highlightedDates={dateHighlights}
                 />
               </div>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { Input } from "@/components/ui/Input";
@@ -49,6 +49,15 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
 
   const isOwner = user?.role === "OWNER" || user?.role === "SUPER_ADMIN";
   const canEdit = isOwner || investor?.investorUserId === user?.id;
+
+  const dateHighlights = useMemo(() => {
+    if (!investor) return [];
+    const s = new Set<string>();
+    const y = (iso: string) => (iso ? iso.split("T")[0] : "");
+    if (investor.entryDate) s.add(y(investor.entryDate));
+    if (investor.activationDate) s.add(y(investor.activationDate));
+    return Array.from(s);
+  }, [investor]);
 
   const updateMutation = useMutation({
     mutationFn: (data: typeof editForm) => apiClient.put(`/api/investors/${investor?.id}`, data),
@@ -126,6 +135,7 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
               <DatePicker
                 value={editForm.activationDate}
                 onChange={(v) => setEditForm({ ...editForm, activationDate: v || "" })}
+                highlightedDates={dateHighlights}
               />
             </div>
           </div>
