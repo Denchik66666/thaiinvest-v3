@@ -1,6 +1,6 @@
 # API_AUDIT — все HTTP-роуты ThaiInvest
 
-**Дата:** 2026-05-03  
+**Дата:** 2026-05-04 (актуализация: `middleware.ts`, `PATCH /api/chat/read`, `POST /api/auth/avatar`)  
 **Базовый URL (локально):** `http://localhost:3000`  
 **Префикс API:** `/api/`
 
@@ -13,8 +13,7 @@
 | **401** | Нет cookie / невалидный токен. |
 | **403** | Токен валиден, но роль или владение сущностью не допускают операцию. |
 
-Роуты **без** проверки JWT: **`POST /api/auth/login`**, **`POST /api/auth/logout`** (logout не требует валидного токена — только сброс cookie).  
-**`POST /api/auth/avatar`** — отдельный случай (см. ниже).
+Роуты **без** проверки JWT: **`POST /api/auth/login`**, **`POST /api/auth/logout`** (logout не требует валидного токена — только сброс cookie).
 
 ---
 
@@ -30,7 +29,7 @@
 | **POST** | `/api/auth/logout` | Удаление cookie `token` | Публично | Нет `verifyToken`; `app/api/auth/logout/route.ts`. |
 | **GET** | `/api/auth/me` | Текущий пользователь (id, username, role, isSystemOwner) | Любая роль при валидном JWT | `verifyToken` + загрузка `User` по `decoded.userId`; явного запрета по роли нет — `app/api/auth/me/route.ts`. |
 | **PATCH** | `/api/auth/account` | Смена своего username / пароля | Любая роль при валидном JWT | `verifyToken`; обновление только `decoded.userId` — `app/api/auth/account/route.ts`. |
-| **POST** | `/api/auth/avatar` | Загрузка аватара | Заявлено как недоступно | **Нет** `verifyToken`; сразу **503** — `app/api/auth/avatar/route.ts`. |
+| **POST** | `/api/auth/avatar` | Загрузка аватара (функция пока отключена) | Любая роль при валидном JWT; после проверки — **503** | Сначала **`verifyToken`** + cookie (как **`/api/auth/me`**): нет/невалидный токен → **401**; при валидном токене — ответ **503** (заглушка) — `app/api/auth/avatar/route.ts`. |
 
 ---
 
@@ -98,7 +97,7 @@
 | **GET** | `/api/chat/context` | Непрочитанные, партнёры, defaultPeer | Любой валидный JWT; логика defaultPeer от **роли пользователя из БД** | `verifyToken`; `user.role` из БД — `app/api/chat/context/route.ts`. |
 | **GET** | `/api/chat/messages` | История сообщений с `peerId` | Любой валидный JWT **и** разрешённая пара с `peerId` | `verifyToken`; **`canChatWithPeer`** (`lib/chat-peer-permission.ts`) — `app/api/chat/messages/route.ts`. |
 | **POST** | `/api/chat/messages` | Отправка сообщения | То же: **`canChatWithPeer`** после проверки существования получателя | `verifyToken`; `lib/chat-peer-permission.ts` — `app/api/chat/messages/route.ts`. |
-| **PATCH** | `/api/chat/read` | Пометить входящие от `peerId` прочитанными | Любой валидный JWT | `verifyToken`; **нет** явной проверки «разрешён ли peer» (только `recipientId === me`) — `app/api/chat/read/route.ts`. |
+| **PATCH** | `/api/chat/read` | Пометить входящие от `peerId` прочитанными | Любой валидный JWT **и** разрешённая пара с `peerId` | `verifyToken`; **`canChatWithPeer`** (`lib/chat-peer-permission.ts`); иначе **403** — как в **`/api/chat/messages`** — `app/api/chat/read/route.ts`. |
 | **POST** | `/api/chat/admin-test-send` | Тестовая отправка от имени другого пользователя | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/chat/admin-test-send/route.ts`. |
 
 ---
@@ -153,7 +152,11 @@
 
 ## Примечание по сетевому периметру
 
-Файл **`proxy.ts`** в корне репозитория **не подключён** как `middleware.ts`; ограничение доступа к части URL на границе Next **может не применяться**. Реальная защита — **`verifyToken` в каждом handler** и редиректы на клиенте для `/dashboard`. Подробнее — `PROJECT_AUDIT.md`.
+**`middleware.ts`** (корень проекта, рядом с `app/`): для **`/dashboard/:path*`** проверяется cookie **`token`** через **`lib/middleware-verify-session.ts`** (проверка JWT на **`jose`**, без `jsonwebtoken`/Edge-несовместимых зависимостей). Без валидного токена — **редирект на `/login`**.
+
+**`proxy.ts`**: Next.js **не выполняет** этот файл как middleware; он **сохранён** в репозитории как справочная копия старой логики (в т.ч. список префиксов `/api/...`).
+
+Защита **API** по-прежнему в **`verifyToken`** (и прочих проверках) внутри **`app/api/**/route.ts`**. Подробнее — `PROJECT_AUDIT.md`.
 
 ---
 
