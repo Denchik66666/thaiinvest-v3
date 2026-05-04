@@ -31,6 +31,7 @@ import {
   getPaymentStatusBlock,
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
+import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 
 type InvestorRow = {
   id: number;
@@ -60,6 +61,21 @@ type PaymentRow = {
   createdAt: string;
   approvedAt?: string | null;
 };
+
+function investorLifecycleBadge(status: string): { label: string; dot: string } {
+  switch (status) {
+    case "active":
+      return { label: "Активен", dot: "#22c55e" };
+    case "awaiting_activation":
+      return { label: "Ожидает активации", dot: "#fbbf24" };
+    case "paused":
+      return { label: "Пауза", dot: "#94a3b8" };
+    case "closed":
+      return { label: "Закрыт", dot: "#64748b" };
+    default:
+      return { label: status, dot: "#94a3b8" };
+  }
+}
 
 function subscribeHtmlDark(onStoreChange: () => void) {
   if (typeof document === "undefined") return () => {};
@@ -103,11 +119,13 @@ const GLASS_CARD_LIGHT: CSSProperties = {
 };
 
 const PAYOUT_CARD_STYLE: CSSProperties = {
-  background: "linear-gradient(90deg, var(--thai-color-due-bg) 0%, var(--thai-color-card-bg) 100%)",
-  border: "1px solid var(--thai-color-card-border)",
-  boxShadow: "0 0 24px rgba(251,191,36,0.08)",
-  borderRadius: "12px",
-  padding: "14px 16px",
+  background:
+    "linear-gradient(115deg, color-mix(in srgb, #fbbf24 22%, transparent) 0%, color-mix(in srgb, var(--thai-color-due-bg) 90%, transparent) 42%, var(--thai-color-card-bg) 100%)",
+  border: "1px solid color-mix(in srgb, #fbbf24 35%, var(--thai-color-card-border))",
+  boxShadow:
+    "0 0 32px -8px rgba(251, 191, 36, 0.35), inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent)",
+  borderRadius: "14px",
+  padding: "15px 17px",
 };
 
 function getCurrentWeek() {
@@ -519,9 +537,6 @@ export default function DashboardPage() {
 
   const displayStats = isSuperAdmin ? networkStats : stats;
 
-  const weekStripDay = new Date().getDay();
-  const currentDayIndex = weekStripDay === 0 ? 6 : weekStripDay - 1;
-
   return (
     <Container>
       <div
@@ -547,76 +562,30 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <section className="thai-glass p-3 md:p-4" style={glassCard}>
-          <h1 className="text-base font-bold leading-snug tracking-tight md:text-lg">{headlineLine1}</h1>
+        <section
+          className="thai-glass relative overflow-hidden border p-3 md:p-5"
+          style={{
+            ...glassCard,
+            borderColor: "color-mix(in srgb, hsl(var(--primary)) 22%, var(--thai-color-card-border))",
+            boxShadow: [
+              glassCard.boxShadow,
+              "0 0 48px -20px color-mix(in srgb, hsl(var(--primary)) 28%, transparent)",
+            ]
+              .filter(Boolean)
+              .join(", "),
+          }}
+        >
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "8px 0",
-              fontSize: 12,
-              color: "var(--thai-color-text-muted)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-                flex: 1,
-              }}
-            >
-              {(["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"] as const).map((day, i) => {
-                const isPast = i < currentDayIndex;
-                const isCurrent = i === currentDayIndex;
-                return (
-                  <div
-                    key={day}
-                    style={{
-                      flex: 1,
-                      textAlign: "center",
-                      fontSize: 10,
-                      fontWeight: isCurrent ? 600 : 400,
-                      color: isCurrent
-                        ? "#a78bfa"
-                        : isPast
-                          ? "var(--thai-color-text-secondary)"
-                          : "var(--thai-color-text-muted)",
-                      position: "relative",
-                      paddingBottom: 6,
-                    }}
-                  >
-                    {day}
-                    {isCurrent ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: 0,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          width: 4,
-                          height: 4,
-                          borderRadius: "50%",
-                          background: "#a78bfa",
-                          boxShadow: "0 0 6px #a78bfa",
-                        }}
-                      />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--thai-color-text-muted)",
-                whiteSpace: "nowrap",
-                marginLeft: 12,
-              }}
-              title="По правилам цикла: выплаты в понедельник. Это не дата из заявки на вывод."
-            >
-              След. выплата {currentWeek.nextPayout}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_80%_at_50%_-20%,color-mix(in_srgb,hsl(var(--primary))_22%,transparent),transparent_65%)]"
+          />
+          <div className="relative">
+            <h1 className="text-[15px] font-bold leading-snug tracking-tight text-foreground md:text-lg">{headlineLine1}</h1>
+            <div className="mt-3 border-t border-border/25 pt-3">
+              <WeekCycleStrip
+                payoutLabel={currentWeek.nextPayout}
+                cycleHint="По правилам цикла выплаты — понедельник; не дата из заявки на вывод."
+              />
             </div>
           </div>
         </section>
@@ -818,39 +787,53 @@ export default function DashboardPage() {
               </Text>
             ) : (
               <div className="space-y-2.5">
-                {myInvestors.map((inv) => (
-                  <button
-                    key={inv.id}
-                    type="button"
-                    onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                    className="thai-row-interactive thai-glass w-full border-0 p-3 text-left"
-                    style={glassCard}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Text className="font-semibold tracking-tight">{inv.name}</Text>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-left">
-                      <div>
-                        <Text className="text-xs text-muted-foreground">Тело</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
-                          {formatCurrency(inv.body)}
-                        </Text>
+                {myInvestors.map((inv) => {
+                  const life = investorLifecycleBadge(inv.status);
+                  return (
+                    <button
+                      key={inv.id}
+                      type="button"
+                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
+                      className="thai-row-interactive thai-glass w-full border-0 p-3.5 text-left"
+                      style={glassCard}
+                    >
+                      <div className="flex items-start gap-3">
+                        <UserAvatar name={inv.name} size={44} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
+                        <div className="min-w-0 flex-1">
+                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full shadow-[0_0_10px_currentColor]"
+                              style={{ backgroundColor: life.dot, color: life.dot }}
+                              aria-hidden
+                            />
+                            <Text className="text-[11px] font-medium text-muted-foreground">{life.label}</Text>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <Text className="text-xs text-muted-foreground">Начислено</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
-                          {formatCurrency(inv.accrued)}
-                        </Text>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-left">
+                        <div>
+                          <Text className="text-xs text-muted-foreground">Тело</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
+                            {formatCurrency(inv.body)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-xs text-muted-foreground">Начислено</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
+                            {formatCurrency(inv.accrued)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-xs text-muted-foreground">К выплате</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
+                            {formatCurrency(inv.due)}
+                          </Text>
+                        </div>
                       </div>
-                      <div>
-                        <Text className="text-xs text-muted-foreground">К выплате</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
-                          {formatCurrency(inv.due)}
-                        </Text>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -894,39 +877,53 @@ export default function DashboardPage() {
               <Text className="block py-6 text-center text-sm text-muted-foreground">Нет позиций в выбранном фильтре.</Text>
             ) : (
               <div className="space-y-2.5">
-                {superAdminFilteredInvestors.map((inv) => (
-                  <button
-                    key={inv.id}
-                    type="button"
-                    onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                    className="thai-row-interactive thai-glass w-full border-0 p-3 text-left"
-                    style={glassCard}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Text className="font-semibold tracking-tight">{inv.name}</Text>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-left">
-                      <div>
-                        <Text className="text-xs text-muted-foreground">Тело</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
-                          {formatCurrency(inv.body)}
-                        </Text>
+                {superAdminFilteredInvestors.map((inv) => {
+                  const life = investorLifecycleBadge(inv.status);
+                  return (
+                    <button
+                      key={inv.id}
+                      type="button"
+                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
+                      className="thai-row-interactive thai-glass w-full border-0 p-3.5 text-left"
+                      style={glassCard}
+                    >
+                      <div className="flex items-start gap-3">
+                        <UserAvatar name={inv.name} size={44} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
+                        <div className="min-w-0 flex-1">
+                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full shadow-[0_0_10px_currentColor]"
+                              style={{ backgroundColor: life.dot, color: life.dot }}
+                              aria-hidden
+                            />
+                            <Text className="text-[11px] font-medium text-muted-foreground">{life.label}</Text>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <Text className="text-xs text-muted-foreground">Начислено</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
-                          {formatCurrency(inv.accrued)}
-                        </Text>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-left">
+                        <div>
+                          <Text className="text-xs text-muted-foreground">Тело</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
+                            {formatCurrency(inv.body)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-xs text-muted-foreground">Начислено</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
+                            {formatCurrency(inv.accrued)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-xs text-muted-foreground">К выплате</Text>
+                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
+                            {formatCurrency(inv.due)}
+                          </Text>
+                        </div>
                       </div>
-                      <div>
-                        <Text className="text-xs text-muted-foreground">К выплате</Text>
-                        <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
-                          {formatCurrency(inv.due)}
-                        </Text>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </section>
