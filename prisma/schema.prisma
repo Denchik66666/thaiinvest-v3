@@ -10,6 +10,8 @@ model User {
   id            Int           @id @default(autoincrement())
   username      String        @unique
   password      String
+  /** Публичный URL файла в `/uploads/avatars/…` */
+  avatarUrl     String?
   role          Role          @default(OWNER)
   isSystemOwner Boolean       @default(false)
   isArchived    Boolean       @default(false)

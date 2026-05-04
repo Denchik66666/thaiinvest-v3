@@ -21,7 +21,7 @@ test("finance page metric colors screenshot", async ({ page, context }) => {
   }
 
   await page.goto("/dashboard", { waitUntil: "networkidle" });
-  await expect(page.getByText("Твои показатели", { exact: false })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Доступно к выводу", { exact: false })).toBeVisible({ timeout: 30_000 });
 
   await page.screenshot({ path: "test-results/finance-page-metrics.png", fullPage: true });
 
@@ -38,7 +38,6 @@ test("finance page metric colors screenshot", async ({ page, context }) => {
   });
 
   expect(samples["Начислено"]).toBe("rgb(96, 165, 250)");
-  expect(samples["К выплате"]).toBe("rgb(251, 191, 36)");
   expect(samples["Выплачено"]).toBe("rgb(74, 222, 128)");
   expect(samples["Тело"]).toBe("rgb(255, 255, 255)");
 });

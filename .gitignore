@@ -50,4 +50,7 @@ backup_*.zip
 db_backup_*.json
 prisma/dev.db
 
+# локальные загрузки аватаров
+/public/uploads/
+
 .vercel

@@ -24,6 +24,7 @@ export async function GET() {
         select: {
           id: true,
           username: true,
+          avatarUrl: true,
           role: true,
           isSystemOwner: true,
         },
@@ -37,6 +38,7 @@ export async function GET() {
       user: {
         id: user.id,
         username: user.username,
+        avatarUrl: user.avatarUrl,
         role: user.role,
         isSystemOwner: user.isSystemOwner,
       },

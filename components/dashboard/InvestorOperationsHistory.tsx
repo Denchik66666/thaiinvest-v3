@@ -417,19 +417,16 @@ export function InvestorDashboardMetricTiles({
   body,
   accrued,
   paid,
-  due,
 }: {
   body: number;
   accrued: number;
   paid: number;
-  due: number;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-3 gap-2">
       <CompactStat title="Тело" value={formatCurrency(body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
       <CompactStat title="Начислено" value={formatCurrency(accrued)} valueStyle={{ color: "var(--thai-color-accrued)" }} />
       <CompactStat title="Выплачено" value={formatCurrency(paid)} valueStyle={{ color: "var(--thai-color-paid)" }} />
-      <CompactStat title="К выплате" value={formatCurrency(due)} valueStyle={{ color: "var(--thai-color-due)" }} />
     </div>
   );
 }

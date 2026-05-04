@@ -171,12 +171,12 @@ test("all dashboard pages screenshots dark + light", async ({ browser, baseURL }
   const invPage = await invContext.newPage();
   await invPage.setViewportSize({ width: 1280, height: 900 });
   await gotoDashboardPath(invPage, "/dashboard");
-  await expect(invPage.getByText("Твои показатели", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+  await expect(invPage.getByText("Доступно к выводу", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
 
   for (const theme of ["dark", "light"] as const) {
     await setTheme(invPage, theme === "dark");
     await gotoDashboardPath(invPage, "/dashboard");
-    await expect(invPage.getByText("Твои показатели", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+    await expect(invPage.getByText("Доступно к выводу", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
     await invPage.waitForTimeout(400);
     await shot(invPage, "finance", theme);
   }

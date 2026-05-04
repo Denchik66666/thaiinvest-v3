@@ -10,7 +10,7 @@ import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
-import { openWeekDayProgress, sumExpectedOpenWeekAccrualGross } from "@/lib/open-week-forecast";
+import { sumExpectedFullOpenWeekAccrualGross } from "@/lib/open-week-forecast";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
@@ -32,10 +32,8 @@ import {
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
-import {
-  InvestorDashboardMetricTiles,
-  InvestorOperationsHistory,
-} from "@/components/dashboard/InvestorOperationsHistory";
+import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
+import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
 
 type InvestorRow = {
   id: number;
@@ -122,16 +120,6 @@ const GLASS_CARD_LIGHT: CSSProperties = {
   borderRadius: "16px",
 };
 
-const PAYOUT_CARD_STYLE: CSSProperties = {
-  background:
-    "linear-gradient(115deg, color-mix(in srgb, #fbbf24 22%, transparent) 0%, color-mix(in srgb, var(--thai-color-due-bg) 90%, transparent) 42%, var(--thai-color-card-bg) 100%)",
-  border: "1px solid color-mix(in srgb, #fbbf24 35%, var(--thai-color-card-border))",
-  boxShadow:
-    "0 0 32px -8px rgba(251, 191, 36, 0.35), inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent)",
-  borderRadius: "14px",
-  padding: "15px 17px",
-};
-
 function getCurrentWeek() {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -204,7 +192,7 @@ function DashboardAuthSkeleton() {
 type SuperAdminInvestorFilter = "all" | "common" | "private";
 
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refresh: refreshAuth } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [selectedInvestorCardId, setSelectedInvestorCardId] = useState<number | null>(null);
@@ -246,7 +234,7 @@ export default function DashboardPage() {
   });
 
   const openWeekMondayIso = user?.role === "INVESTOR" ? getPreviousOrCurrentMonday(new Date()).toISOString() : "";
-  const { data: investorBusinessRate, isSuccess: investorBusinessRateFetched } = useQuery({
+  const { data: investorBusinessRate } = useQuery({
     queryKey: ["system", "business-rate", openWeekMondayIso] as const,
     queryFn: () =>
       apiClient.get<{ success: boolean; current: { rate: number } | null }>(
@@ -278,10 +266,9 @@ export default function DashboardPage() {
     );
   }, [myInvestors]);
 
-  const investorOpenWeek = openWeekDayProgress();
-  const investorForecastGross =
+  const investorForecastFullWeek =
     user?.role === "INVESTOR"
-      ? sumExpectedOpenWeekAccrualGross(
+      ? sumExpectedFullOpenWeekAccrualGross(
           myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
           investorBusinessRate?.current?.rate ?? null
         )
@@ -315,6 +302,17 @@ export default function DashboardPage() {
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isOwner = user?.role === "OWNER";
   const isInvestor = user?.role === "INVESTOR";
+
+  const investorForecastLine = useMemo(() => {
+    if (!isInvestor || myInvestors.length === 0 || investorForecastFullWeek == null || investorForecastFullWeek < 0.005) {
+      return null;
+    }
+    const amt = new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(investorForecastFullWeek);
+    return `Ожидается +${amt} ฿ к ${currentWeek.nextPayout}`;
+  }, [isInvestor, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
 
   const latestInvestorWithdrawalRequest = useMemo(() => {
     if (!isInvestor || investorsQueryError) return null;
@@ -415,9 +413,6 @@ export default function DashboardPage() {
   }, [isSuperAdmin, user, investors]);
 
   const headlineLine1 = useMemo(() => {
-    if (isInvestor) {
-      return `Мой кабинет · Отчётная неделя (пн–вс) ${currentWeek.start} — ${currentWeek.end}`;
-    }
     if (isOwner) {
       return `Моя сеть · ${activeInvestorsCount} активных инвесторов`;
     }
@@ -425,7 +420,7 @@ export default function DashboardPage() {
       return `Общая сеть · ${investors.length} инвесторов · Следующая выплата ${currentWeek.nextPayout}`;
     }
     return "";
-  }, [isInvestor, isOwner, isSuperAdmin, currentWeek, activeInvestorsCount, investors.length]);
+  }, [isOwner, isSuperAdmin, currentWeek, activeInvestorsCount, investors.length]);
 
   const paymentStatusRef = useRef<Record<string, string> | null>(null);
 
@@ -544,21 +539,33 @@ export default function DashboardPage() {
   return (
     <Container>
       <div
-        className="thai-dashboard-root min-h-screen space-y-4 py-4 pb-28 md:space-y-5 md:py-8 md:pb-28"
+        className={cn(
+          "thai-dashboard-root min-h-screen py-4 pb-28 md:py-8 md:pb-28",
+          isInvestor ? "space-y-5 md:space-y-5" : "space-y-4 md:space-y-5"
+        )}
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
         <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
-            className="thai-glass flex min-w-0 items-center gap-2 px-2.5 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110"
-            style={glassCard}
+            className={cn(
+              "flex min-w-0 items-center gap-2 px-2 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110",
+              !isInvestor && "thai-glass",
+              isInvestor && "rounded-2xl"
+            )}
+            style={!isInvestor ? glassCard : undefined}
+            aria-label="Профиль"
           >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-            <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
-            <span className="text-muted-foreground" aria-hidden>
-              ›
-            </span>
+            <UserAvatar name={user.username} src={user.avatarUrl} size={isInvestor ? 36 : 38} />
+            {!isInvestor ? (
+              <>
+                <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
+                <span className="text-muted-foreground" aria-hidden>
+                  ›
+                </span>
+              </>
+            ) : null}
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
@@ -566,61 +573,63 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <section
-          className="thai-glass relative overflow-hidden border p-3 md:p-5"
-          style={{
-            ...glassCard,
-            borderColor: "color-mix(in srgb, hsl(var(--primary)) 22%, var(--thai-color-card-border))",
-            boxShadow: [
-              glassCard.boxShadow,
-              "0 0 48px -20px color-mix(in srgb, hsl(var(--primary)) 28%, transparent)",
-            ]
-              .filter(Boolean)
-              .join(", "),
-          }}
-        >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_80%_at_50%_-20%,color-mix(in_srgb,hsl(var(--primary))_22%,transparent),transparent_65%)]"
-          />
-          <div className="relative">
-            <h1 className="text-[15px] font-bold leading-snug tracking-tight text-foreground md:text-lg">{headlineLine1}</h1>
-            <div className="mt-3 border-t border-border/25 pt-3">
-              <WeekCycleStrip
-                payoutLabel={currentWeek.nextPayout}
-                cycleHint="По правилам цикла выплаты — понедельник; не дата из заявки на вывод."
-              />
+        {!isInvestor ? (
+          <section
+            className="thai-glass relative overflow-hidden border p-3 md:p-5"
+            style={{
+              ...glassCard,
+              borderColor: "color-mix(in srgb, hsl(var(--primary)) 22%, var(--thai-color-card-border))",
+              boxShadow: [
+                glassCard.boxShadow,
+                "0 0 48px -20px color-mix(in srgb, hsl(var(--primary)) 28%, transparent)",
+              ]
+                .filter(Boolean)
+                .join(", "),
+            }}
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_80%_at_50%_-20%,color-mix(in_srgb,hsl(var(--primary))_22%,transparent),transparent_65%)]"
+            />
+            <div className="relative">
+              <h1 className="text-[15px] font-bold leading-snug tracking-tight text-foreground md:text-lg">{headlineLine1}</h1>
+              <div className="mt-3 border-t border-border/25 pt-3">
+                <WeekCycleStrip
+                  payoutLabel={currentWeek.nextPayout}
+                  cycleHint="По правилам цикла выплаты — понедельник; не дата из заявки на вывод."
+                />
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         {isInvestor ? (
-          <section className="thai-glass space-y-2.5 p-3 md:p-4" style={glassCard}>
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Кабинет</Text>
-                <Text className="text-base font-semibold tracking-tight text-foreground">Твои показатели</Text>
-              </div>
-              {!loadingInvestors && myInvestors.length === 0 ? (
-                <Text className="text-xs text-muted-foreground">Позиций пока нет</Text>
-              ) : null}
-            </div>
-            <InvestorDashboardMetricTiles body={stats.capital} accrued={stats.accrued} paid={stats.paid} due={stats.due} />
-            {investorForecastGross != null && myInvestors.length > 0 ? (
-              <Text className="text-[11px] leading-snug text-muted-foreground">
-                Прогноз за неделю (до выплат): ≈ +
-                {investorForecastGross.toLocaleString("ru-RU", {
-                  maximumFractionDigits: 2,
-                  minimumFractionDigits: 0,
-                })}{" "}
-                ฿ · дней {investorOpenWeek.daySpan}/7
-              </Text>
-            ) : investorBusinessRateFetched && investorBusinessRate?.current == null && myInvestors.length > 0 ? (
-              <Text className="text-[11px] leading-snug text-muted-foreground">
-                Ставка сети пока не задана — прогноз за неделю не считается.
-              </Text>
-            ) : null}
-          </section>
+          <InvestorPremiumDashboard
+            username={user.username}
+            avatarUrl={user.avatarUrl}
+            onAuthRefresh={refreshAuth}
+            glassCard={glassCard}
+            hasPositions={myInvestors.length > 0}
+            payoutDue={stats.due}
+            canWithdraw={Boolean(showDueAction)}
+            onWithdraw={openWithdrawForBestDue}
+            statsBody={stats.capital}
+            statsAccrued={stats.accrued}
+            statsPaid={stats.paid}
+            forecastLine={investorForecastLine}
+            loadingPositions={loadingInvestors && !investorsData}
+            positions={myInvestors.map((inv) => ({ id: inv.id, name: inv.name }))}
+            paymentStatusSlot={
+              !investorsQueryError && latestInvestorWithdrawalRequest ? getPaymentStatusBlock(latestInvestorWithdrawalRequest) : null
+            }
+            historySlot={
+              <InvestorOperationsHistory
+                enabled
+                glassCard={glassCard}
+                showMultiPositionLabels={myInvestors.length > 1}
+              />
+            }
+          />
         ) : isOwner ? (
           <div className="grid gap-2">
             <StatTile primary title="Тело в сети" value={stats.capital} className="w-full" />
@@ -665,32 +674,6 @@ export default function DashboardPage() {
 
         {superAdminPrivateLimitCard}
 
-        {showDueAction ? (
-          <button
-            type="button"
-            onClick={openWithdrawForBestDue}
-            className="thai-row-interactive w-full text-left"
-            style={PAYOUT_CARD_STYLE}
-          >
-              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <span className="text-sm font-semibold" style={{ color: "var(--thai-color-due)" }}>
-                К выплате: {formatCurrency(stats.due)}
-              </span>
-              <span
-                className="text-sm font-semibold"
-                style={{
-                  color: "var(--thai-color-due)",
-                  textDecoration: "underline",
-                  textUnderlineOffset: "3px",
-                  transition: "opacity 0.15s ease",
-                }}
-              >
-                Вывести →
-              </span>
-            </span>
-          </button>
-        ) : null}
-
         {showPendingAction ? (
           <button
             type="button"
@@ -704,110 +687,8 @@ export default function DashboardPage() {
           </button>
         ) : null}
 
-        {isInvestor && !investorsQueryError && latestInvestorWithdrawalRequest
-          ? getPaymentStatusBlock(latestInvestorWithdrawalRequest)
-          : null}
-
-        {isInvestor ? (
-          <section className="space-y-2">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Мои позиции</Text>
-            {loadingInvestors && !investorsData ? (
-              <div className="space-y-2">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="thai-glass animate-pulse p-2.5" style={glassCard}>
-                    <div className="flex gap-3">
-                      <div className="h-11 w-11 shrink-0 rounded-full bg-muted/45" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-4 w-32 rounded-md bg-muted/45" />
-                        <div className="grid grid-cols-3 gap-2">
-                          {[0, 1, 2].map((j) => (
-                            <div key={j} className="h-9 rounded-lg bg-muted/30" />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : myInvestors.length === 0 ? (
-              <Text className="block py-5 text-center text-sm text-muted-foreground">
-                Позиций пока нет. Обратитесь к владельцу сети.
-              </Text>
-            ) : (
-              <div className="space-y-2">
-                {myInvestors.map((inv) => {
-                  const life = investorLifecycleBadge(inv.status);
-                  return (
-                    <div
-                      key={inv.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          router.push(`/dashboard/investors/${inv.id}`);
-                        }
-                      }}
-                      className="thai-row-interactive thai-glass w-full cursor-pointer border-0 p-2.5 text-left"
-                      style={glassCard}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <UserAvatar name={inv.name} size={40} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
-                        <div className="min-w-0 flex-1">
-                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
-                          <div className="mt-0.5 flex items-center gap-1.5">
-                            <span
-                              className="h-1.5 w-1.5 shrink-0 rounded-full shadow-[0_0_8px_currentColor]"
-                              style={{ backgroundColor: life.dot, color: life.dot }}
-                              aria-hidden
-                            />
-                            <Text className="text-[10px] font-medium text-muted-foreground">{life.label}</Text>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-4 gap-1.5 text-left">
-                        <div>
-                          <Text className="text-[10px] text-muted-foreground">Тело</Text>
-                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-text-primary)" }}>
-                            {formatCurrency(inv.body)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-[10px] text-muted-foreground">Начисл.</Text>
-                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-accrued)" }}>
-                            {formatCurrency(inv.accrued)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-[10px] text-muted-foreground">Выплач.</Text>
-                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-paid)" }}>
-                            {formatCurrency(inv.paid)}
-                          </Text>
-                        </div>
-                        <MiniStat
-                          label="К выплате"
-                          value={formatCurrency(inv.due)}
-                          valueStyle={{ color: "var(--thai-color-due)" }}
-                          highlightAction={inv.due > 0.005}
-                          onQuickAction={() => {
-                            setWithdrawForm((prev) => ({ ...prev, investorId: String(inv.id) }));
-                            setSelectedInvestorCardId(inv.id);
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <InvestorOperationsHistory
-              enabled={isInvestor}
-              glassCard={glassCard}
-              showMultiPositionLabels={myInvestors.length > 1}
-            />
-          </section>
-        ) : isOwner ? (
+        {!isInvestor ? (
+          isOwner ? (
           <section className="space-y-2">
             <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инвесторы в сети</Text>
             {loadingInvestors && !investorsData ? (
@@ -969,7 +850,8 @@ export default function DashboardPage() {
               </div>
             )}
           </section>
-        )}
+          )
+        ) : null}
 
         {selectedInvestorCard ? (
           <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">

@@ -34,6 +34,23 @@ export function sumExpectedOpenWeekAccrualGross(
   return sum;
 }
 
+/** Полное начисление за текущую открытую неделю (к понедельнику закрытия), без доли «день/7». */
+export function sumExpectedFullOpenWeekAccrualGross(
+  positions: { body: number; isPrivate: boolean }[],
+  networkWeeklyPercent: number | null
+): number | null {
+  if (networkWeeklyPercent == null || !Number.isFinite(networkWeeklyPercent)) return null;
+  let sum = 0;
+  for (const p of positions) {
+    const body = p.body || 0;
+    if (body <= 0) continue;
+    const applied = p.isPrivate ? networkWeeklyPercent / 2 : networkWeeklyPercent;
+    const weeklyRatePercent = applied / 4;
+    sum += body * (weeklyRatePercent / 100);
+  }
+  return sum;
+}
+
 export function isSameOpenWeekAsNow(weekStartIso: string, now = new Date()): boolean {
   const rowMon = startOfDay(getPreviousOrCurrentMonday(new Date(weekStartIso)));
   const curMon = startOfDay(getPreviousOrCurrentMonday(now));
