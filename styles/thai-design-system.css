@@ -96,6 +96,18 @@
   }
 }
 
+/** Попап календаря: чуть заметнее scale + меньше сдвиг, чем у ленты истории */
+@keyframes thai-calendar-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes thai-shimmer {
   0% {
     background-position: -200% center;

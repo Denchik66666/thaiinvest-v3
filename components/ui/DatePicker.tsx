@@ -173,10 +173,14 @@ export function DatePicker({
     left: popover?.left ?? 0,
     width: popover?.width ?? 320,
     borderColor: "var(--thai-color-card-border)",
-    background: "color-mix(in srgb, var(--thai-color-card-bg) 85%, hsl(var(--card)))",
+    background:
+      "linear-gradient(165deg, color-mix(in srgb, hsl(var(--card)) 78%, transparent) 0%, color-mix(in srgb, var(--thai-color-card-bg) 92%, hsl(var(--card))) 48%, color-mix(in srgb, hsl(var(--background)) 55%, transparent) 100%)",
+    backdropFilter: "saturate(1.75) blur(28px)",
+    WebkitBackdropFilter: "saturate(1.75) blur(28px)",
     boxShadow:
-      "0 24px 48px -12px rgba(0,0,0,0.45), 0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 18%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent)",
-    animation: "thai-fade-in-up 0.26s ease forwards",
+      "0 28px 56px -16px rgba(0,0,0,0.5), 0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 22%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 9%, transparent), inset 0 -1px 0 color-mix(in srgb, #000 12%, transparent)",
+    animation: "thai-calendar-pop 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+    willChange: "transform, opacity",
   };
 
   const popoverNode =
@@ -186,18 +190,23 @@ export function DatePicker({
         role="dialog"
         aria-label="Календарь"
         style={panelStyle}
-        className="z-[20000] overflow-hidden rounded-2xl border p-1 backdrop-blur-xl"
+        className="z-[20000] isolate overflow-hidden rounded-2xl border p-1 shadow-none"
       >
-        <div className="rounded-[14px] bg-gradient-to-b from-background/40 to-background/5 px-2.5 pb-2 pt-2">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/[0.07] via-transparent to-primary/[0.06] dark:from-white/[0.04] dark:to-primary/[0.04]"
+        />
+        <div className="relative rounded-[14px] bg-gradient-to-b from-background/35 to-background/[0.02] px-2.5 pb-2 pt-2">
           <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
             <button
               type="button"
               aria-label="Предыдущий месяц"
               onClick={() => setViewDate((d) => addMonths(d, -1))}
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
-                "border-border/50 bg-background/40 text-foreground hover:bg-muted/30 hover:border-primary/35",
-                "active:scale-[0.97]"
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition duration-200",
+                "border-border/50 bg-background/45 text-foreground backdrop-blur-sm",
+                "hover:border-primary/40 hover:bg-muted/35 hover:shadow-[0_0_12px_-2px_hsl(var(--primary)/0.35)]",
+                "active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               )}
             >
               <ChevronLeft className="h-4 w-4 opacity-90" strokeWidth={2.2} />
@@ -218,9 +227,10 @@ export function DatePicker({
               aria-label="Следующий месяц"
               onClick={() => setViewDate((d) => addMonths(d, 1))}
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
-                "border-border/50 bg-background/40 text-foreground hover:bg-muted/30 hover:border-primary/35",
-                "active:scale-[0.97]"
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition duration-200",
+                "border-border/50 bg-background/45 text-foreground backdrop-blur-sm",
+                "hover:border-primary/40 hover:bg-muted/35 hover:shadow-[0_0_12px_-2px_hsl(var(--primary)/0.35)]",
+                "active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               )}
             >
               <ChevronRight className="h-4 w-4 opacity-90" strokeWidth={2.2} />
@@ -241,7 +251,10 @@ export function DatePicker({
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1 rounded-xl border border-border/25 bg-muted/5 p-1.5">
+          <div
+            key={`${viewStart.getFullYear()}-${viewStart.getMonth()}`}
+            className="grid grid-cols-7 gap-1 rounded-xl border border-border/25 bg-muted/5 p-1.5 animate-in fade-in zoom-in-95 duration-200"
+          >
             {calendarCells.map(({ date, inMonth }, idx) => {
               const isToday = isSameDay(date, sessionToday);
               const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
@@ -257,7 +270,7 @@ export function DatePicker({
                     setOpen(false);
                   }}
                   className={cn(
-                    "relative flex h-10 flex-col items-center justify-center rounded-xl text-[13px] font-semibold tabular-nums transition duration-150",
+                    "relative flex h-10 flex-col items-center justify-center rounded-xl text-[13px] font-semibold tabular-nums transition duration-200 ease-out",
                     inMonth ? "text-foreground" : "text-muted-foreground/45",
                     isSelected &&
                       "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.55)] ring-1 ring-white/25",
@@ -291,7 +304,7 @@ export function DatePicker({
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#a78bfa] ring-2 ring-[color-mix(in_srgb,#a78bfa_30%,transparent)]" />
               <span className="text-[10px] leading-snug text-muted-foreground">
-                Фиолетовая точка — в этот день есть события в контексте формы (как метки в истории).
+                Точка — есть события по данным формы (как в истории операций).
               </span>
             </div>
           ) : null}
@@ -333,20 +346,19 @@ export function DatePicker({
         aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "group flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left outline-none transition duration-200",
-          "border-border/60 bg-background/50 backdrop-blur-sm",
-          "hover:border-primary/35 hover:bg-muted/20",
-          open && "border-primary/50 ring-2 ring-primary/25 shadow-[0_0_0_1px_color-mix(in_srgb,hsl(var(--primary))_20%,transparent)]"
+          "group flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left outline-none transition duration-200 ease-out",
+          "border-border/55 bg-gradient-to-br from-background/70 to-muted/25 backdrop-blur-md",
+          "hover:border-primary/40 hover:from-background/85 hover:to-muted/35 hover:shadow-[0_8px_28px_-8px_hsl(var(--primary)/0.22)]",
+          open &&
+            "border-primary/50 from-background/90 to-muted/40 ring-2 ring-primary/25 shadow-[0_10px_32px_-10px_hsl(var(--primary)/0.35)]"
         )}
-        style={{
-          borderColor: open ? "color-mix(in srgb, hsl(var(--primary)) 40%, var(--thai-color-card-border))" : undefined,
-        }}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition",
-              "border-border/50 bg-muted/20 text-muted-foreground group-hover:border-primary/30 group-hover:text-primary"
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition duration-200",
+              "border-border/45 bg-background/50 text-muted-foreground backdrop-blur-sm",
+              "group-hover:border-primary/35 group-hover:bg-muted/25 group-hover:text-primary"
             )}
           >
             <CalendarDays className="h-4 w-4" strokeWidth={2} />
