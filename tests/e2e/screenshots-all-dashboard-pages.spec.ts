@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Browser } from "@playwright/
 
 /**
  * Скриншоты всех страниц дашборда (тёмная + светлая) → screenshots/all-pages/
- * Сессия с ролью OWNER/SUPER_ADMIN (иначе /dashboard/manage редиректит); INVESTOR: Sega_55RUS → /dashboard/finance.
+ * Сессия с ролью OWNER/SUPER_ADMIN (иначе /dashboard/manage редиректит); INVESTOR: Sega_55RUS → /dashboard (кабинет).
  *
  * PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000
  * PLAYWRIGHT_SKIP_WEBSERVER=1 — если dev уже запущен
@@ -70,7 +70,7 @@ async function newBrowserContextWithInvestorSession(browser: Browser, baseURL: s
     await ctx.close();
   }
   throw new Error(
-    "Не удалось войти как INVESTOR для /dashboard/finance. Задайте PLAYWRIGHT_INVESTOR_USER + PLAYWRIGHT_INVESTOR_PASSWORD (учётка Sega_55RUS)."
+    "Не удалось войти как INVESTOR для /dashboard. Задайте PLAYWRIGHT_INVESTOR_USER + PLAYWRIGHT_INVESTOR_PASSWORD (учётка Sega_55RUS)."
   );
 }
 
@@ -170,13 +170,13 @@ test("all dashboard pages screenshots dark + light", async ({ browser, baseURL }
   const invContext = await newBrowserContextWithInvestorSession(browser, b);
   const invPage = await invContext.newPage();
   await invPage.setViewportSize({ width: 1280, height: 900 });
-  await gotoDashboardPath(invPage, "/dashboard/finance");
-  await expect(invPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+  await gotoDashboardPath(invPage, "/dashboard");
+  await expect(invPage.getByText("Твои показатели", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
 
   for (const theme of ["dark", "light"] as const) {
     await setTheme(invPage, theme === "dark");
-    await gotoDashboardPath(invPage, "/dashboard/finance");
-    await expect(invPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+    await gotoDashboardPath(invPage, "/dashboard");
+    await expect(invPage.getByText("Твои показатели", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
     await invPage.waitForTimeout(400);
     await shot(invPage, "finance", theme);
   }

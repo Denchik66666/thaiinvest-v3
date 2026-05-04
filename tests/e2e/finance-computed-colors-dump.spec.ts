@@ -1,7 +1,7 @@
 import { test } from "@playwright/test";
 
 /**
- * Дамп computed color для метрик и истории на /dashboard/finance.
+ * Дамп computed color для метрик на главной и истории (раздел «История операций»).
  * PLAYWRIGHT_BASE_URL=http://localhost:3000 PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/e2e/finance-computed-colors-dump.spec.ts
  */
 const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "Sega_55RUS";
@@ -16,8 +16,10 @@ test("dump finance page computed colors", async ({ page, context }) => {
   });
   if (!loginRes.ok()) test.skip(true, `login failed: ${await loginRes.text()}`);
 
-  await page.goto("/dashboard/finance", { waitUntil: "networkidle" });
-  await page.waitForTimeout(1500);
+  await page.goto("/dashboard", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: /История операций/i }).click().catch(() => {});
+  await page.waitForTimeout(600);
 
   const dump = await page.evaluate(() => {
     const c = (el: Element | null | undefined) =>
@@ -36,7 +38,7 @@ test("dump finance page computed colors", async ({ page, context }) => {
       };
     });
 
-    const posButtons = Array.from(document.querySelectorAll("button.thai-row-interactive"));
+    const posButtons = Array.from(document.querySelectorAll("[role=\"button\"].thai-row-interactive"));
     posButtons.forEach((btn, bi) => {
       const spans = btn.querySelectorAll("span.font-semibold.tabular-nums");
       spans.forEach((span, si) => {

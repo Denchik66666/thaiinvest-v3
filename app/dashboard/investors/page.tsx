@@ -130,7 +130,7 @@ export default function InvestorsListPage() {
 
   useEffect(() => {
     if (!authLoading && user?.role === "INVESTOR") {
-      router.replace("/dashboard/finance");
+      router.replace("/dashboard");
     }
   }, [authLoading, user, router]);
 

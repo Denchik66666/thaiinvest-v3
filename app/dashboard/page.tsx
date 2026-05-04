@@ -32,6 +32,10 @@ import {
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
+import {
+  InvestorDashboardMetricTiles,
+  InvestorOperationsHistory,
+} from "@/components/dashboard/InvestorOperationsHistory";
 
 type InvestorRow = {
   id: number;
@@ -591,25 +595,20 @@ export default function DashboardPage() {
         </section>
 
         {isInvestor ? (
-          <div className="grid gap-2">
-            <StatTile primary title="Баланс" value={stats.capital} className="w-full" />
-            <div className="grid grid-cols-2 gap-2">
-              <StatTile
-                title="Начислено"
-                value={stats.accrued}
-                valueClassName="text-lg md:text-xl"
-                valueStyle={{ color: "var(--thai-color-accrued)" }}
-              />
-              <StatTile
-                title="Выплачено"
-                value={stats.paid}
-                valueClassName="text-lg md:text-xl"
-                valueStyle={{ color: "var(--thai-color-paid)" }}
-              />
+          <section className="thai-glass space-y-2.5 p-3 md:p-4" style={glassCard}>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Кабинет</Text>
+                <Text className="text-base font-semibold tracking-tight text-foreground">Твои показатели</Text>
+              </div>
+              {!loadingInvestors && myInvestors.length === 0 ? (
+                <Text className="text-xs text-muted-foreground">Позиций пока нет</Text>
+              ) : null}
             </div>
+            <InvestorDashboardMetricTiles body={stats.capital} accrued={stats.accrued} paid={stats.paid} due={stats.due} />
             {investorForecastGross != null && myInvestors.length > 0 ? (
               <Text className="text-[11px] leading-snug text-muted-foreground">
-                Ожидается за текущую неделю (прогноз, до выплат): ≈ +
+                Прогноз за неделю (до выплат): ≈ +
                 {investorForecastGross.toLocaleString("ru-RU", {
                   maximumFractionDigits: 2,
                   minimumFractionDigits: 0,
@@ -621,7 +620,7 @@ export default function DashboardPage() {
                 Ставка сети пока не задана — прогноз за неделю не считается.
               </Text>
             ) : null}
-          </div>
+          </section>
         ) : isOwner ? (
           <div className="grid gap-2">
             <StatTile primary title="Тело в сети" value={stats.capital} className="w-full" />
@@ -713,57 +712,100 @@ export default function DashboardPage() {
           <section className="space-y-2">
             <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Мои позиции</Text>
             {loadingInvestors && !investorsData ? (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="thai-glass animate-pulse p-3"
-                    style={glassCard}
-                  >
-                    <div className="h-4 w-36 rounded-md bg-muted/45" />
-                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-                      {[0, 1, 2, 3].map((j) => (
-                        <div key={j} className="h-11 rounded-lg bg-muted/30" />
-                      ))}
+                  <div key={i} className="thai-glass animate-pulse p-2.5" style={glassCard}>
+                    <div className="flex gap-3">
+                      <div className="h-11 w-11 shrink-0 rounded-full bg-muted/45" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-32 rounded-md bg-muted/45" />
+                        <div className="grid grid-cols-3 gap-2">
+                          {[0, 1, 2].map((j) => (
+                            <div key={j} className="h-9 rounded-lg bg-muted/30" />
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : myInvestors.length === 0 ? (
-              <Text className="block py-6 text-center text-sm text-muted-foreground">
+              <Text className="block py-5 text-center text-sm text-muted-foreground">
                 Позиций пока нет. Обратитесь к владельцу сети.
               </Text>
             ) : (
-              <div className="space-y-2.5">
-                {myInvestors.map((inv) => (
-                  <div
-                    key={inv.id}
-                    onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                    className="thai-row-interactive thai-glass w-full cursor-pointer border-0 p-3 text-left"
-                    style={glassCard}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Text className="font-semibold tracking-tight">{inv.name}</Text>
+              <div className="space-y-2">
+                {myInvestors.map((inv) => {
+                  const life = investorLifecycleBadge(inv.status);
+                  return (
+                    <div
+                      key={inv.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/dashboard/investors/${inv.id}`);
+                        }
+                      }}
+                      className="thai-row-interactive thai-glass w-full cursor-pointer border-0 p-2.5 text-left"
+                      style={glassCard}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <UserAvatar name={inv.name} size={40} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
+                        <div className="min-w-0 flex-1">
+                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full shadow-[0_0_8px_currentColor]"
+                              style={{ backgroundColor: life.dot, color: life.dot }}
+                              aria-hidden
+                            />
+                            <Text className="text-[10px] font-medium text-muted-foreground">{life.label}</Text>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 grid grid-cols-4 gap-1.5 text-left">
+                        <div>
+                          <Text className="text-[10px] text-muted-foreground">Тело</Text>
+                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-text-primary)" }}>
+                            {formatCurrency(inv.body)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-[10px] text-muted-foreground">Начисл.</Text>
+                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-accrued)" }}>
+                            {formatCurrency(inv.accrued)}
+                          </Text>
+                        </div>
+                        <div>
+                          <Text className="text-[10px] text-muted-foreground">Выплач.</Text>
+                          <Text className="mt-0.5 text-xs font-semibold tabular-nums leading-tight" style={{ color: "var(--thai-color-paid)" }}>
+                            {formatCurrency(inv.paid)}
+                          </Text>
+                        </div>
+                        <MiniStat
+                          label="К выплате"
+                          value={formatCurrency(inv.due)}
+                          valueStyle={{ color: "var(--thai-color-due)" }}
+                          highlightAction={inv.due > 0.005}
+                          onQuickAction={() => {
+                            setWithdrawForm((prev) => ({ ...prev, investorId: String(inv.id) }));
+                            setSelectedInvestorCardId(inv.id);
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-                      <MiniStat label="Тело" value={formatCurrency(inv.body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
-                      <MiniStat label="Начислено" value={formatCurrency(inv.accrued)} valueStyle={{ color: "var(--thai-color-accrued)" }} />
-                      <MiniStat label="Выплачено" value={formatCurrency(inv.paid)} valueStyle={{ color: "var(--thai-color-paid)" }} />
-                      <MiniStat
-                        label="К выплате"
-                        value={formatCurrency(inv.due)}
-                        valueStyle={{ color: "var(--thai-color-due)" }}
-                        highlightAction={inv.due > 0.005}
-                        onQuickAction={() => {
-                          setWithdrawForm((prev) => ({ ...prev, investorId: String(inv.id) }));
-                          setSelectedInvestorCardId(inv.id);
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+            <InvestorOperationsHistory
+              enabled={isInvestor}
+              glassCard={glassCard}
+              showMultiPositionLabels={myInvestors.length > 1}
+            />
           </section>
         ) : isOwner ? (
           <section className="space-y-2">

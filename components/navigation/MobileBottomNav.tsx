@@ -79,7 +79,6 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
     if (user?.role === "INVESTOR") {
       return [
         { key: "home", label: "Главная", path: "/dashboard" },
-        { key: "finance", label: "Финансы", path: "/dashboard/finance" },
         { key: "reports", label: "Отчёты", path: "/dashboard/reports" },
         { key: "profile", label: "Профиль", path: "/dashboard/profile" },
       ];

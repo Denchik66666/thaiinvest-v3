@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Скриншот /dashboard/finance после логина (учётка из env или Sega_55RUS).
+ * Скриншот главной инвестора (/dashboard) после логина (учётка из env или Sega_55RUS).
  * Запуск при dev на :3000:
  *   $env:PLAYWRIGHT_SKIP_WEBSERVER="1"; $env:PLAYWRIGHT_BASE_URL="http://localhost:3000"; npx playwright test tests/e2e/finance-colors-screenshot.spec.ts
  */
@@ -20,7 +20,7 @@ test("finance page metric colors screenshot", async ({ page, context }) => {
     throw new Error(`Login failed ${loginRes.status()}: ${body}`);
   }
 
-  await page.goto("/dashboard/finance", { waitUntil: "networkidle" });
+  await page.goto("/dashboard", { waitUntil: "networkidle" });
   await expect(page.getByText("Твои показатели", { exact: false })).toBeVisible({ timeout: 30_000 });
 
   await page.screenshot({ path: "test-results/finance-page-metrics.png", fullPage: true });

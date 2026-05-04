@@ -1,6 +1,6 @@
 /**
  * Верхняя полоска на экранах дашборда: без заливки и рамки — фон страницы.
- * «Главная» и «Финансы»/управление дублируются в `MobileBottomNav`.
+ * Дубли с нижней навигацией см. `MobileBottomNav` (у инвестора — без отдельной вкладки «Финансы»).
  */
 export const DASHBOARD_STICKY_BAR_CLASS =
   "thai-dashboard-sticky-bar sticky top-0 z-30 -mx-1 mb-1 flex items-center justify-between gap-2 rounded-xl border-0 bg-transparent px-2 py-1.5";

@@ -85,17 +85,17 @@ async function newContextSuperAdmin(browser: Browser, baseURL: string) {
 }
 
 test.describe("нижний бар по ролям", () => {
-  test("INVESTOR: Главная, Финансы, Отчёты, Профиль — без Инвесторы", async ({ browser, baseURL }) => {
+  test("INVESTOR: Главная, Отчёты, Профиль — без Финансы и Инвесторы", async ({ browser, baseURL }) => {
     const b = baseURL ?? "http://127.0.0.1:3000";
     const ctx = await newContextInvestor(browser, b);
     const page = await ctx.newPage();
-    await page.goto("/dashboard/finance");
+    await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
     const nav = bottomNav(page);
     await expect(nav.getByText("Главная", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Финансы", { exact: true })).toBeVisible();
     await expect(nav.getByText("Отчёты", { exact: true })).toBeVisible();
     await expect(nav.getByText("Профиль", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Финансы", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Инвесторы", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Управление", { exact: true })).toHaveCount(0);
     await nav.screenshot({ path: "screenshots/bottom-nav/INVESTOR.png" });

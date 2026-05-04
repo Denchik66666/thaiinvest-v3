@@ -278,7 +278,7 @@ function ReportsPageInner() {
   });
 
   const financePath = user?.role === "INVESTOR" ? "/dashboard" : "/dashboard/manage";
-  const financeLabel = user?.role === "INVESTOR" ? "К финансам" : "К управлению";
+  const financeLabel = user?.role === "INVESTOR" ? "На главную" : "К управлению";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const showOwnerWithdrawQueue = user?.role === "OWNER" || isSuperAdmin;
   const showRateBlock = user?.role === "OWNER" || isSuperAdmin;
