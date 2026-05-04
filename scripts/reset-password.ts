@@ -27,7 +27,8 @@ async function resetPassword(username: string, newPassword: string) {
 
 async function main() {
   await resetPassword('admin', 'admin123')
-  await resetPassword('semen', 'admin123')
+  await resetPassword('Sam', 'admin123')
+  await resetPassword('Sega_55RUS', 'qwerty123')
 }
 
 main()

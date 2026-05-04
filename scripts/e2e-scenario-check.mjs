@@ -144,7 +144,7 @@ async function run() {
     if (superCookie) superUser = "service-token";
   }
   assertStep(results, "SUPER_ADMIN login", !!superCookie, superUser ?? "не найден");
-  const ownerCandidates = ["semen", "Semen"];
+  const ownerCandidates = ["Sam"];
   let ownerCookie = null;
   let ownerUser = null;
   for (const username of ownerCandidates) {

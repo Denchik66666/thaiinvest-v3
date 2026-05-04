@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function createTestInvestors() {
   try {
-    const owner = await prisma.user.findFirst({ where: { username: 'semen', role: 'OWNER' } });
+    const owner = await prisma.user.findFirst({ where: { username: 'Sam', role: 'OWNER' } });
     const admin = await prisma.user.findFirst({ where: { username: 'admin', role: 'SUPER_ADMIN' } });
     
     if (owner && admin) {

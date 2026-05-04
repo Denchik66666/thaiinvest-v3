@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
  *
  * $env:PLAYWRIGHT_SKIP_WEBSERVER="1"; npx playwright test tests/e2e/ui-pages-theme-preview.spec.ts
  */
-const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "semen";
+const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "Sam";
 const loginPassword = process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
 
 test.describe("UI pages theme preview", () => {

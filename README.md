@@ -204,10 +204,10 @@ Removes local build artifacts:
 The agent only has your **workspace + terminal**. It cannot log into your Vercel/Supabase accounts.
 
 1. Copy `.env.example` → `.env` and set **`DIRECT_URL`** to a normal Postgres URL (Supabase **direct** connection on port `5432`). Prisma CLI/migrations (`prisma migrate deploy`) read this from `prisma.config.ts`. If `DIRECT_URL` is missing or only Accelerate is configured for CLI, migrations and local scripts will fail.
-2. Run once: `npx prisma migrate deploy` (и при необходимости `npx prisma db seed` **только с вашего явного разрешения** — создаёт `admin`, `semen`, `Sega_55RUS`).
+2. Run once: `npx prisma migrate deploy` (и при необходимости `npx prisma db seed` **только с вашего явного разрешения** — создаёт `admin`, `Sam`, `Sega_55RUS`; удаляет устаревшего `semen` при наличии).
 3. Тест оповещения в чате: по умолчанию пишет **от `Sega_55RUS`**. Пример:  
    `npm run chat:test-send -- --to admin "текст"`  
-   Опции: `--from Имя` (по умолчанию `Sega_55RUS`), `--to Имя` (иначе первый из списка `admin` / `semen`).
+   Опции: `--from Имя` (по умолчанию `Sega_55RUS`), `--to Имя` (иначе первый из списка `admin` / `Sam`).
 
 Optional: enable **Playwright MCP** or **Chrome DevTools MCP** in Cursor + keep `npm run dev` running if you want browser-level checks on `localhost`.
 

@@ -32,7 +32,7 @@ async function main() {
   const password = "admin123";
 
   await ensureUser("admin", "SUPER_ADMIN", password);
-  await ensureUser("semen", "OWNER", password);
+  await ensureUser("Sam", "OWNER", password);
 
   console.log("Пароль для всех пользователей:", password);
 }

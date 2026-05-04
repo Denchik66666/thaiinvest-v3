@@ -8,7 +8,7 @@ import { expect, test, type APIRequestContext, type Browser } from "@playwright/
  * PLAYWRIGHT_SKIP_WEBSERVER=1 — если dev уже запущен
  * PLAYWRIGHT_LOGIN_USER / PLAYWRIGHT_LOGIN_PASSWORD — явный менеджер
  */
-const INVESTOR_PASS_DEFAULT = process.env.PLAYWRIGHT_INVESTOR_PASSWORD ?? "admin123";
+const INVESTOR_PASS_DEFAULT = process.env.PLAYWRIGHT_INVESTOR_PASSWORD ?? "qwerty123";
 
 const OUT = "screenshots/all-pages";
 
@@ -18,9 +18,9 @@ async function newBrowserContextWithManagerSession(browser: Browser, baseURL: st
   const candidates = explicit
     ? [{ u: explicit, p: process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
-        // prisma/seed.ts: admin=SUPER_ADMIN, semen=OWNER (admin первым — полный список сетей для id)
+        // prisma/seed.ts: admin=SUPER_ADMIN, Sam=OWNER (admin первым — полный список сетей для id)
         { u: "admin", p: "admin123" },
-        { u: "semen", p: "admin123" },
+        { u: "Sam", p: "admin123" },
       ];
   for (const { u, p } of candidates) {
     const ctx = await browser.newContext({ baseURL });
@@ -48,7 +48,7 @@ async function newBrowserContextWithInvestorSession(browser: Browser, baseURL: s
   const explicit = process.env.PLAYWRIGHT_INVESTOR_USER;
   const rows = explicit
     ? [{ u: explicit, p: INVESTOR_PASS_DEFAULT }]
-    : [{ u: "Sega_55RUS", p: "admin123" }];
+    : [{ u: "Sega_55RUS", p: "qwerty123" }];
   const seen = new Set<string>();
   for (const { u, p } of rows) {
     const key = `${u}:${p}`;

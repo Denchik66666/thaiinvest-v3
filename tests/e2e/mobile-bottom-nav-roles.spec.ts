@@ -1,6 +1,6 @@
 import { expect, test, type Browser } from "@playwright/test";
 
-const INVESTOR_PASS_DEFAULT = process.env.PLAYWRIGHT_INVESTOR_PASSWORD ?? "admin123";
+const INVESTOR_PASS_DEFAULT = process.env.PLAYWRIGHT_INVESTOR_PASSWORD ?? "qwerty123";
 
 function bottomNav(page: import("@playwright/test").Page) {
   return page.locator(".fixed.bottom-0.pointer-events-none nav");
@@ -11,7 +11,7 @@ async function newContextOwner(browser: Browser, baseURL: string) {
   const candidates = explicit
     ? [{ u: explicit, p: process.env.PLAYWRIGHT_OWNER_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
-        { u: "semen", p: "admin123" },
+        { u: "Sam", p: "admin123" },
         { u: "admin", p: "admin123" },
       ];
   for (const { u, p } of candidates) {
@@ -40,7 +40,7 @@ async function newContextInvestor(browser: Browser, baseURL: string) {
   const rows = explicit
     ? [{ u: explicit, p: INVESTOR_PASS_DEFAULT }]
     : [
-        { u: "Sega_55RUS", p: "admin123" },
+        { u: "Sega_55RUS", p: "qwerty123" },
         { u: "Sega_55RUS", p: INVESTOR_PASS_DEFAULT },
       ];
   const seen = new Set<string>();

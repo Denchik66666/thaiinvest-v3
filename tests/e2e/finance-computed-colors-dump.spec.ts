@@ -18,8 +18,8 @@ test("dump finance page computed colors", async ({ page, context }) => {
 
   await page.goto("/dashboard", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
-  await page.getByRole("button", { name: /История операций/i }).click().catch(() => {});
-  await page.waitForTimeout(600);
+  await page.getByText("История операций", { exact: false }).first().waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(400);
 
   const dump = await page.evaluate(() => {
     const c = (el: Element | null | undefined) =>

@@ -5,12 +5,12 @@ import { expect, test } from "@playwright/test";
  * Логин через API (httpOnly cookie), затем открытие дашборда.
  *
  * Учётные данные: PLAYWRIGHT_LOGIN_USER / PLAYWRIGHT_LOGIN_PASSWORD
- * или по умолчанию semen / admin123 (prisma/seed.ts).
+ * или по умолчанию Sam / admin123 (prisma/seed.ts).
  *
  * Запуск при уже запущенном dev на :3000:
  *   $env:PLAYWRIGHT_SKIP_WEBSERVER="1"; npx playwright test tests/e2e/dashboard-theme-screenshots.spec.ts
  */
-const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "semen";
+const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "Sam";
 const loginPassword = process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
 
 test.describe("Dashboard design preview", () => {

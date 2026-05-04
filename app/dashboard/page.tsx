@@ -31,6 +31,7 @@ import {
   getPaymentStatusBlock,
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
+import { Camera } from "lucide-react";
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
@@ -204,6 +205,8 @@ export default function DashboardPage() {
   });
   const [pageVisible, setPageVisible] = useState(true);
   const [barScrolled, setBarScrolled] = useState(false);
+  const investorAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [investorAvatarBusy, setInvestorAvatarBusy] = useState(false);
   const [saInvestorFilter, setSaInvestorFilter] = useState<SuperAdminInvestorFilter>("all");
   const notifyPrefs = useSyncExternalStore(
     subscribeNotificationPreferences,
@@ -303,7 +306,33 @@ export default function DashboardPage() {
   const isOwner = user?.role === "OWNER";
   const isInvestor = user?.role === "INVESTOR";
 
-  const investorForecastLine = useMemo(() => {
+  async function handleInvestorAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !isInvestor) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast.error("Нужен JPG или PNG");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Не больше 2 МБ");
+      return;
+    }
+    setInvestorAvatarBusy(true);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      await apiClient.postForm<{ success?: boolean; avatarUrl?: string }>("/api/auth/avatar", fd);
+      await refreshAuth();
+      toast.success("Фото обновлено");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось загрузить фото");
+    } finally {
+      setInvestorAvatarBusy(false);
+    }
+  }
+
+  const investorForecastStrip = useMemo(() => {
     if (!isInvestor || myInvestors.length === 0 || investorForecastFullWeek == null || investorForecastFullWeek < 0.005) {
       return null;
     }
@@ -311,7 +340,10 @@ export default function DashboardPage() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(investorForecastFullWeek);
-    return `Ожидается +${amt} ฿ к ${currentWeek.nextPayout}`;
+    return {
+      amountPlusBaht: `+${amt} ฿`,
+      payoutDate: currentWeek.nextPayout,
+    };
   }, [isInvestor, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
 
   const latestInvestorWithdrawalRequest = useMemo(() => {
@@ -540,34 +572,84 @@ export default function DashboardPage() {
     <Container>
       <div
         className={cn(
-          "thai-dashboard-root min-h-screen py-4 pb-28 md:py-8 md:pb-28",
-          isInvestor ? "space-y-5 md:space-y-5" : "space-y-4 md:space-y-5"
+          "thai-dashboard-root py-4 pb-28 md:py-8 md:pb-28",
+          isInvestor
+            ? "flex min-h-[calc(100dvh-5.5rem)] flex-col space-y-3 md:space-y-4"
+            : "min-h-screen space-y-4 md:space-y-5"
         )}
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
         <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/profile")}
-            className={cn(
-              "flex min-w-0 items-center gap-2 px-2 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110",
-              !isInvestor && "thai-glass",
-              isInvestor && "rounded-2xl"
-            )}
-            style={!isInvestor ? glassCard : undefined}
-            aria-label="Профиль"
-          >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={isInvestor ? 36 : 38} />
-            {!isInvestor ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/profile")}
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110",
+                !isInvestor && "thai-glass",
+                isInvestor && "rounded-2xl"
+              )}
+              style={!isInvestor ? glassCard : undefined}
+              aria-label="Профиль"
+            >
+              {isInvestor ? (
+                <>
+                  <div
+                    className={cn(
+                      "thai-investor-avatar-ring relative shrink-0 rounded-full p-[2px]",
+                      "transition-[box-shadow] duration-500"
+                    )}
+                    data-has-positions={myInvestors.length > 0 ? "true" : "false"}
+                  >
+                    <UserAvatar
+                      name={user.username}
+                      src={user.avatarUrl}
+                      size={42}
+                      className="!ring-0 bg-transparent [&_img]:object-cover"
+                    />
+                  </div>
+                  <span className="truncate text-sm font-semibold tracking-tight text-foreground">{user.username}</span>
+                  <span className="text-muted-foreground" aria-hidden>
+                    ›
+                  </span>
+                </>
+              ) : (
+                <>
+                  <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
+                  <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
+                  <span className="text-muted-foreground" aria-hidden>
+                    ›
+                  </span>
+                </>
+              )}
+            </button>
+            {isInvestor ? (
               <>
-                <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
-                <span className="text-muted-foreground" aria-hidden>
-                  ›
-                </span>
+                <input
+                  ref={investorAvatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="sr-only"
+                  onChange={handleInvestorAvatarChange}
+                />
+                <button
+                  type="button"
+                  disabled={investorAvatarBusy}
+                  onClick={() => investorAvatarInputRef.current?.click()}
+                  title="JPG или PNG, до 2 МБ"
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/40",
+                    "bg-background/45 text-muted-foreground transition hover:border-primary/35 hover:text-foreground",
+                    "disabled:opacity-45"
+                  )}
+                  aria-label={investorAvatarBusy ? "Загрузка фото" : "Загрузить фото профиля"}
+                >
+                  <Camera className="h-4 w-4" strokeWidth={2} aria-hidden />
+                </button>
               </>
             ) : null}
-          </button>
-          <div className="ml-auto flex items-center gap-2">
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <NotificationBell />
             <ThemeToggle />
           </div>
@@ -605,25 +687,20 @@ export default function DashboardPage() {
 
         {isInvestor ? (
           <InvestorPremiumDashboard
-            username={user.username}
-            avatarUrl={user.avatarUrl}
-            onAuthRefresh={refreshAuth}
             glassCard={glassCard}
-            hasPositions={myInvestors.length > 0}
             payoutDue={stats.due}
             canWithdraw={Boolean(showDueAction)}
             onWithdraw={openWithdrawForBestDue}
             statsBody={stats.capital}
             statsAccrued={stats.accrued}
             statsPaid={stats.paid}
-            forecastLine={investorForecastLine}
-            loadingPositions={loadingInvestors && !investorsData}
-            positions={myInvestors.map((inv) => ({ id: inv.id, name: inv.name }))}
+            forecastStrip={investorForecastStrip}
             paymentStatusSlot={
               !investorsQueryError && latestInvestorWithdrawalRequest ? getPaymentStatusBlock(latestInvestorWithdrawalRequest) : null
             }
             historySlot={
               <InvestorOperationsHistory
+                embedded
                 enabled
                 glassCard={glassCard}
                 showMultiPositionLabels={myInvestors.length > 1}

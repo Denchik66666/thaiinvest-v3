@@ -30,6 +30,13 @@
   --thai-color-card-border: rgba(0, 0, 0, 0.08);
   /* Градиент шкалы недели (правый конец — фиолетовый акцент) */
   --thai-color-week-bar-end: #7c3aed;
+  /** Пополнение тела / капитал (≠ начисление процентов — accrued) */
+  --thai-color-topup: #0f766e;
+  --thai-color-topup-bg: rgba(15, 118, 110, 0.1);
+  /** Прогноз начисления к выплате (информация, не «деньги на руках») */
+  --thai-color-forecast: #4f46e5;
+  --thai-color-forecast-bg: rgba(79, 70, 229, 0.09);
+  --thai-color-forecast-border: rgba(79, 70, 229, 0.28);
 }
 
 .dark {
@@ -50,6 +57,87 @@
   --thai-color-text-muted: #475569;
   --thai-color-card-bg: rgba(255, 255, 255, 0.04);
   --thai-color-card-border: rgba(255, 255, 255, 0.07);
+  --thai-color-topup: #5eead4;
+  --thai-color-topup-bg: rgba(94, 234, 212, 0.12);
+  --thai-color-forecast: #a5b4fc;
+  --thai-color-forecast-bg: rgba(165, 180, 252, 0.1);
+  --thai-color-forecast-border: rgba(165, 180, 252, 0.35);
+}
+
+/* Лента истории инвестора: заполняет оставшуюся высоту экрана внутри flex-цепочки */
+.thai-investor-history-scroll {
+  min-height: 12rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.thai-investor-forecast-strip {
+  border-radius: 0.65rem;
+  border: 1px solid var(--thai-color-forecast-border);
+  background: var(--thai-color-forecast-bg);
+  color: var(--thai-color-forecast);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  padding: 0.4rem 0.65rem;
+}
+
+/**
+ * Премиум-золото сумм (прогноз «+… ฿», ожидаемое начисление +0 ฿ в ленте и т.п.) —
+ * та же палитра, что у .thai-investor-thermo-fill.
+ */
+.thai-investor-premium-gold-amount,
+.thai-investor-forecast-strip__amount {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: hsl(36 78% 28%);
+  -webkit-text-fill-color: hsl(36 78% 28%);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .thai-investor-premium-gold-amount,
+  .thai-investor-forecast-strip__amount {
+    background: linear-gradient(
+      105deg,
+      color-mix(in srgb, hsl(32 78% 22%) 92%, black) 0%,
+      hsl(38 82% 34%) 28%,
+      hsl(43 86% 44%) 55%,
+      hsl(48 90% 50%) 82%,
+      color-mix(in srgb, hsl(48 100% 88%) 45%, hsl(43 95% 52%)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+.theme-linear.dark .thai-investor-premium-gold-amount,
+.theme-linear.dark .thai-investor-forecast-strip__amount {
+  color: hsl(48 92% 62%);
+  -webkit-text-fill-color: hsl(48 92% 62%);
+  text-shadow:
+    0 0 12px color-mix(in srgb, hsl(43 100% 52%) 50%, transparent),
+    0 0 22px color-mix(in srgb, hsl(38 90% 45%) 28%, transparent);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .theme-linear.dark .thai-investor-premium-gold-amount,
+  .theme-linear.dark .thai-investor-forecast-strip__amount {
+    background: linear-gradient(
+      105deg,
+      hsl(38 82% 36%) 0%,
+      hsl(43 86% 52%) 38%,
+      hsl(48 92% 62%) 62%,
+      hsl(51 100% 74%) 88%,
+      color-mix(in srgb, hsl(48 100% 90%) 50%, hsl(43 95% 58%)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    filter: drop-shadow(0 0 10px color-mix(in srgb, hsl(43 100% 52%) 42%, transparent));
+  }
 }
 
 @keyframes thai-slide-up {
@@ -119,7 +207,186 @@
   }
 }
 
-/* --- Главная инвестора: шкала недели, аватар, CTA --- */
+/* --- Главная инвестора: горизонтальный неоновый «градусник» недели --- */
+.thai-investor-thermo-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.35rem 0 0.15rem;
+}
+
+.thai-investor-thermo-stage {
+  position: relative;
+  width: 100%;
+  padding: 0.55rem 0 0.85rem;
+  transform-style: preserve-3d;
+  perspective: 520px;
+}
+
+/** Проекция / «пол» под трубкой */
+.thai-investor-thermo-projection {
+  position: absolute;
+  z-index: 0;
+  left: 6%;
+  right: 6%;
+  bottom: 0.2rem;
+  height: 18px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 72% 42% at 50% 0%,
+    color-mix(in srgb, hsl(var(--primary)) 55%, transparent) 0%,
+    color-mix(in srgb, var(--thai-color-accrued) 28%, transparent) 38%,
+    transparent 72%
+  );
+  filter: blur(14px);
+  opacity: 0.88;
+}
+
+.thai-investor-thermo-glow-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  transform: rotateX(6deg);
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, hsl(var(--primary)) 45%, transparent))
+    drop-shadow(0 0 14px color-mix(in srgb, var(--thai-color-accrued) 38%, transparent))
+    drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
+}
+
+.thai-investor-thermo-track {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, hsl(var(--primary)) 35%, var(--thai-color-card-border) 65%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--thai-color-card-bg) 20%, transparent) 0%,
+    color-mix(in srgb, hsl(var(--primary)) 22%, #0f172a) 45%,
+    color-mix(in srgb, #020617 88%, hsl(var(--primary))) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 22%, transparent),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.45),
+    inset 0 0 12px color-mix(in srgb, hsl(var(--primary)) 25%, transparent);
+}
+
+/** Фоновое свечение внутри колбы */
+.thai-investor-thermo-ambient {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, hsl(280 70% 55%) 35%, transparent) 0%,
+    color-mix(in srgb, hsl(var(--primary)) 40%, transparent) 35%,
+    color-mix(in srgb, var(--thai-color-accrued) 45%, transparent) 70%,
+    color-mix(in srgb, hsl(195 90% 52%) 30%, transparent) 100%
+  );
+  opacity: 0.45;
+  mix-blend-mode: screen;
+}
+
+.thai-investor-thermo-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, hsl(32 78% 22%) 92%, black) 0%,
+    hsl(38 82% 36%) 18%,
+    hsl(43 86% 46%) 38%,
+    hsl(48 92% 58%) 58%,
+    hsl(51 100% 72%) 78%,
+    color-mix(in srgb, hsl(48 100% 88%) 55%, hsl(43 95% 62%)) 100%
+  );
+  box-shadow:
+    0 0 12px color-mix(in srgb, hsl(43 100% 52%) 65%, transparent),
+    0 0 26px color-mix(in srgb, hsl(38 90% 45%) 38%, transparent),
+    inset 0 1px 0 color-mix(in srgb, hsl(54 100% 92%) 55%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, hsl(28 70% 12%) 55%, transparent);
+  transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/** Стеклянный блик по «цилиндру» */
+.thai-investor-thermo-glass {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 42%, transparent) 0%,
+    transparent 38%,
+    transparent 62%,
+    color-mix(in srgb, black 35%, transparent) 100%
+  );
+  opacity: 0.72;
+}
+
+/** Верхний блик-кромка */
+.thai-investor-thermo-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0.5px 0 color-mix(in srgb, white 55%, transparent);
+  opacity: 0.9;
+}
+
+.theme-linear.dark .thai-investor-thermo-glow-wrap {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, hsl(var(--primary)) 55%, transparent))
+    drop-shadow(0 0 20px color-mix(in srgb, var(--thai-color-accrued) 45%, transparent))
+    drop-shadow(0 3px 12px rgba(0, 0, 0, 0.55));
+}
+
+.theme-linear.dark .thai-investor-thermo-projection {
+  opacity: 1;
+}
+
+.theme-linear:not(.dark) .thai-investor-thermo-ambient {
+  opacity: 0.28;
+  mix-blend-mode: normal;
+}
+
+.theme-linear:not(.dark) .thai-investor-thermo-glow-wrap {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, hsl(var(--primary)) 28%, transparent))
+    drop-shadow(0 1px 6px rgba(0, 0, 0, 0.12));
+}
+
+/* Единая hero-карточка инвестора (градусник + метрики + история) */
+.thai-investor-hero-panel {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 14%, var(--thai-color-card-border)),
+    0 28px 56px -32px color-mix(in srgb, hsl(var(--primary)) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+}
+
+.theme-linear.dark .thai-investor-hero-panel {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 22%, transparent),
+    0 32px 64px -28px color-mix(in srgb, hsl(var(--primary)) 32%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+}
+
+.thai-investor-thermo-wrap--in-hero {
+  gap: 0.35rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.thai-investor-thermo-wrap--in-hero .thai-investor-thermo-stage {
+  padding-top: 0.35rem;
+  padding-bottom: 0.65rem;
+}
+
+/* Горизонтальная шкала (если где-то останется) */
 .thai-investor-week-track {
   height: 3px;
   border-radius: 999px;
@@ -146,7 +413,7 @@
     0 0 20px rgba(251, 191, 36, 0.08),
     0 12px 40px -24px color-mix(in srgb, var(--thai-color-due) 25%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--thai-color-due) 12%, transparent);
-  border-radius: 16px;
+  border-radius: 14px;
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
@@ -185,6 +452,16 @@
 .thai-investor-glass-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/** Кнопка «Вывести» в одной строке с суммой (компактная главная инвестора) */
+.thai-investor-glass-btn--inline {
+  width: auto;
+  min-width: 7.25rem;
+  margin-top: 0;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
 }
 
 .thai-investor-avatar-ring[data-has-positions="true"] {

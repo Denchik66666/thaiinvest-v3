@@ -1,6 +1,6 @@
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
-const users = ["admin", "semen", "Sega_55RUS"];
-const passwords = ["admin123", "18121985", "12345678", "password", "qwerty123"];
+const users = ["admin", "Sam", "Sega_55RUS"];
+const passwords = ["admin123", "qwerty123", "18121985", "12345678", "password"];
 
 async function tryLogin(username, password, timeoutMs = 5000) {
   const controller = new AbortController();
