@@ -19,10 +19,8 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
-import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "@/lib/notify";
 import { notifyWithAttention } from "@/lib/attention-notify";
-import ThemeToggle from "@/components/ThemeToggle";
 import {
   readNotificationPreferences,
   subscribeNotificationPreferences,
@@ -34,6 +32,7 @@ import {
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
+import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 
 type InvestorRow = {
   id: number;
@@ -550,70 +549,14 @@ export default function DashboardPage() {
         )}
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
-        <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div
-              className={cn(
-                "flex shrink-0 items-center gap-2 px-2 py-1.5",
-                isInvestor && "rounded-2xl",
-                !isInvestor && "thai-glass rounded-2xl"
-              )}
-              style={!isInvestor ? glassCard : undefined}
-            >
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/profile")}
-                className="relative shrink-0 rounded-full outline-none transition hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
-                aria-label="Профиль — аватар"
-              >
-                {isInvestor ? (
-                  <span
-                    className={cn(
-                      "thai-investor-avatar-ring relative block rounded-full p-[2px]",
-                      "transition-[box-shadow] duration-500"
-                    )}
-                    data-has-positions={myInvestors.length > 0 ? "true" : "false"}
-                  >
-                    <UserAvatar
-                      name={user.username}
-                      src={user.avatarUrl}
-                      size={42}
-                      className="!ring-0 bg-transparent [&_img]:object-cover"
-                    />
-                  </span>
-                ) : (
-                  <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard/profile")}
-                className={cn(
-                  "group flex min-w-0 max-w-[min(72vw,12.5rem)] items-center gap-1 rounded-lg py-0.5 pl-0.5 pr-1 outline-none transition sm:max-w-[14rem]",
-                  "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
-                )}
-                aria-label={`Профиль — ${user.username}`}
-              >
-                <span
-                  className={cn(
-                    "thai-dashboard-nick-matte-gold truncate font-semibold tracking-tight",
-                    isInvestor ? "text-sm" : "text-base"
-                  )}
-                >
-                  {user.username}
-                </span>
-                <span className="shrink-0 text-muted-foreground" aria-hidden>
-                  ›
-                </span>
-              </button>
-            </div>
-            <span className="min-h-px min-w-0 flex-1 select-none" aria-hidden />
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <NotificationBell />
-            <ThemeToggle />
-          </div>
-        </div>
+        <DashboardTopbar
+          isInvestor={isInvestor}
+          barScrolled={barScrolled}
+          glassCard={glassCard}
+          username={user.username}
+          avatarUrl={user.avatarUrl}
+          investorPositionsCount={myInvestors.length}
+        />
 
         {!isInvestor ? (
           <section
@@ -668,23 +611,7 @@ export default function DashboardPage() {
             }
           />
         ) : isOwner ? (
-          <div className="grid gap-2">
-            <StatTile primary title="Тело в сети" value={stats.capital} className="w-full" />
-            <div className="grid grid-cols-2 gap-2">
-              <StatTile
-                title="Начислено"
-                value={stats.accrued}
-                valueClassName="text-lg md:text-xl"
-                valueStyle={{ color: "var(--thai-color-accrued)" }}
-              />
-              <StatTile
-                title="Выплачено"
-                value={stats.paid}
-                valueClassName="text-lg md:text-xl"
-                valueStyle={{ color: "var(--thai-color-paid)" }}
-              />
-            </div>
-          </div>
+          <OwnerPremiumDashboard stats={stats} />
         ) : (
           <div className="grid grid-cols-2 gap-2">
             <StatTile primary title="Тело в сети" value={displayStats.capital} className="col-span-2" />
@@ -1079,6 +1006,32 @@ function StatTile({
       <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</Text>
       <div className={cn("mt-1 tabular-nums font-bold tracking-tight", valueClassName)} style={valueStyle}>
         {formatCurrency(value)}
+      </div>
+    </div>
+  );
+}
+
+function OwnerPremiumDashboard({
+  stats,
+}: {
+  stats: { capital: number; accrued: number; paid: number; due: number };
+}) {
+  return (
+    <div className="grid gap-2">
+      <StatTile primary title="Тело в сети" value={stats.capital} className="w-full" />
+      <div className="grid grid-cols-2 gap-2">
+        <StatTile
+          title="Начислено"
+          value={stats.accrued}
+          valueClassName="text-lg md:text-xl"
+          valueStyle={{ color: "var(--thai-color-accrued)" }}
+        />
+        <StatTile
+          title="Выплачено"
+          value={stats.paid}
+          valueClassName="text-lg md:text-xl"
+          valueStyle={{ color: "var(--thai-color-paid)" }}
+        />
       </div>
     </div>
   );

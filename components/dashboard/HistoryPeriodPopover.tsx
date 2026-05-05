@@ -119,20 +119,19 @@ export function HistoryPeriodPopover({ value, onChange, className, compact = fal
   const [draftStart, setDraftStart] = useState<Date | null>(null);
   const [draftEnd, setDraftEnd] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    if (value.kind === "range") {
-      const a = parseYmd(value.fromYmd);
-      const b = parseYmd(value.toYmd);
+  function syncDraftFromValue(current: HistoryPeriodValue) {
+    if (current.kind === "range") {
+      const a = parseYmd(current.fromYmd);
+      const b = parseYmd(current.toYmd);
       setDraftStart(a);
       setDraftEnd(b);
       if (a) setViewDate(startOfMonth(a));
-    } else {
-      setDraftStart(null);
-      setDraftEnd(null);
-      setViewDate(startOfMonth(new Date()));
+      return;
     }
-  }, [open, value]);
+    setDraftStart(null);
+    setDraftEnd(null);
+    setViewDate(startOfMonth(new Date()));
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -204,7 +203,7 @@ export function HistoryPeriodPopover({ value, onChange, className, compact = fal
     return cells;
   }, [viewStart]);
 
-  const sessionToday = useMemo(() => new Date(), [open]);
+  const sessionToday = useMemo(() => (open ? new Date() : new Date()), [open]);
 
   const rangeBounds = useMemo(() => {
     if (!draftStart || !draftEnd) return null;
@@ -429,7 +428,12 @@ export function HistoryPeriodPopover({ value, onChange, className, compact = fal
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={`Период: ${periodTriggerLabel(value)}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            if (!v) syncDraftFromValue(value);
+            return !v;
+          });
+        }}
         className={cn(
           "group inline-flex max-w-full items-center gap-2 rounded-xl border text-left outline-none transition duration-200 ease-out",
           compact ? "gap-1.5 rounded-lg px-2 py-1" : "gap-2 rounded-xl px-2.5 py-1.5",

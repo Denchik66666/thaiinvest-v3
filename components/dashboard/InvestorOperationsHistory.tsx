@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Banknote, ChevronDown, Percent, PlusCircle } from "lucide-react";
 
@@ -180,9 +180,9 @@ export function InvestorOperationsHistory({
   );
   const visibleOps = useMemo(() => filteredOps.slice(0, visibleCap), [filteredOps, visibleCap]);
 
-  useEffect(() => {
+  function resetVisibleCap() {
     setVisibleCap(SHOW_ALL_HISTORY_CAP);
-  }, [periodValue, opFilter]);
+  }
 
   const isBusy = opsLoading && !opsData;
 
@@ -266,7 +266,10 @@ export function InvestorOperationsHistory({
               className="shrink-0"
               compact={embedded}
               value={periodValue}
-              onChange={setPeriodValue}
+              onChange={(next) => {
+                setPeriodValue(next);
+                resetVisibleCap();
+              }}
             />
             <div className="min-w-0 flex-1 overflow-x-auto px-0 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="flex w-max items-center gap-1 pr-2">
@@ -288,7 +291,10 @@ export function InvestorOperationsHistory({
                       "h-8 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none",
                       embedded && "px-2"
                     )}
-                    onClick={() => setOpFilter(id)}
+                    onClick={() => {
+                      setOpFilter(id);
+                      resetVisibleCap();
+                    }}
                   >
                     {label}
                   </Button>
