@@ -33,6 +33,7 @@ import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
+import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
 
 type InvestorRow = {
   id: number;
@@ -611,7 +612,16 @@ export default function DashboardPage() {
             }
           />
         ) : isOwner ? (
-          <OwnerPremiumDashboard stats={stats} />
+          <OwnerPremiumDashboard
+            glassCard={glassCard}
+            headline={headlineLine1}
+            stats={stats}
+            investors={myInvestors}
+            loading={loadingInvestors}
+            hasData={Boolean(investorsData)}
+            onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
+            investorBadge={investorLifecycleBadge}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-2">
             <StatTile primary title="Тело в сети" value={displayStats.capital} className="col-span-2" />
@@ -652,79 +662,7 @@ export default function DashboardPage() {
         ) : null}
 
         {!isInvestor ? (
-          isOwner ? (
-          <section className="space-y-2">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инвесторы в сети</Text>
-            {loadingInvestors && !investorsData ? (
-              <div className="space-y-2.5">
-                {[0, 1].map((i) => (
-                  <div key={i} className="thai-glass animate-pulse p-3" style={glassCard}>
-                    <div className="h-4 w-36 rounded-md bg-muted/45" />
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {[0, 1, 2].map((j) => (
-                        <div key={j} className="h-10 rounded-lg bg-muted/30" />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : myInvestors.length === 0 ? (
-              <Text className="block py-6 text-center text-sm text-muted-foreground">
-                В общей сети пока нет инвесторов. Добавьте первого в разделе «Управление».
-              </Text>
-            ) : (
-              <div className="space-y-2.5">
-                {myInvestors.map((inv) => {
-                  const life = investorLifecycleBadge(inv.status);
-                  return (
-                    <button
-                      key={inv.id}
-                      type="button"
-                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                      className="thai-row-interactive thai-glass w-full border-0 p-3.5 text-left"
-                      style={glassCard}
-                    >
-                      <div className="flex items-start gap-3">
-                        <UserAvatar name={inv.name} size={44} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
-                        <div className="min-w-0 flex-1">
-                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full shadow-[0_0_10px_currentColor]"
-                              style={{ backgroundColor: life.dot, color: life.dot }}
-                              aria-hidden
-                            />
-                            <Text className="text-[11px] font-medium text-muted-foreground">{life.label}</Text>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-left">
-                        <div>
-                          <Text className="text-xs text-muted-foreground">Тело</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
-                            {formatCurrency(inv.body)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-xs text-muted-foreground">Начислено</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
-                            {formatCurrency(inv.accrued)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-xs text-muted-foreground">К выплате</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
-                            {formatCurrency(inv.due)}
-                          </Text>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        ) : (
+          isOwner ? null : (
           <section className="space-y-2">
             <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инвесторы</Text>
             <div className="thai-segmented" role="tablist" aria-label="Фильтр инвесторов">
@@ -1006,32 +944,6 @@ function StatTile({
       <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</Text>
       <div className={cn("mt-1 tabular-nums font-bold tracking-tight", valueClassName)} style={valueStyle}>
         {formatCurrency(value)}
-      </div>
-    </div>
-  );
-}
-
-function OwnerPremiumDashboard({
-  stats,
-}: {
-  stats: { capital: number; accrued: number; paid: number; due: number };
-}) {
-  return (
-    <div className="grid gap-2">
-      <StatTile primary title="Тело в сети" value={stats.capital} className="w-full" />
-      <div className="grid grid-cols-2 gap-2">
-        <StatTile
-          title="Начислено"
-          value={stats.accrued}
-          valueClassName="text-lg md:text-xl"
-          valueStyle={{ color: "var(--thai-color-accrued)" }}
-        />
-        <StatTile
-          title="Выплачено"
-          value={stats.paid}
-          valueClassName="text-lg md:text-xl"
-          valueStyle={{ color: "var(--thai-color-paid)" }}
-        />
       </div>
     </div>
   );
