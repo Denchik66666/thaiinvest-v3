@@ -544,7 +544,7 @@ export default function DashboardPage() {
       <div
         className={cn(
           "thai-dashboard-root py-4 pb-28 md:py-8 md:pb-28",
-          isInvestor
+          isInvestor || isOwner
             ? "flex min-h-[calc(100dvh-5.5rem)] flex-col space-y-3 md:space-y-4"
             : "min-h-screen space-y-4 md:space-y-5"
         )}
@@ -559,7 +559,7 @@ export default function DashboardPage() {
           investorPositionsCount={myInvestors.length}
         />
 
-        {!isInvestor ? (
+        {!isInvestor && !isOwner ? (
           <section
             className="thai-glass relative overflow-hidden border p-3 md:p-5"
             style={{
@@ -615,11 +615,13 @@ export default function DashboardPage() {
           <OwnerPremiumDashboard
             glassCard={glassCard}
             headline={headlineLine1}
+            nextPayoutLabel={currentWeek.nextPayout}
             stats={stats}
             investors={myInvestors}
             loading={loadingInvestors}
             hasData={Boolean(investorsData)}
             onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
+            onOpenReports={() => router.push("/dashboard/reports")}
             investorBadge={investorLifecycleBadge}
           />
         ) : (
