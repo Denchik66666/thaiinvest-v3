@@ -106,9 +106,10 @@ type HistoryPeriodPopoverProps = {
   value: HistoryPeriodValue;
   onChange: (next: HistoryPeriodValue) => void;
   className?: string;
+  compact?: boolean;
 };
 
-export function HistoryPeriodPopover({ value, onChange, className }: HistoryPeriodPopoverProps) {
+export function HistoryPeriodPopover({ value, onChange, className, compact = false }: HistoryPeriodPopoverProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -430,7 +431,8 @@ export function HistoryPeriodPopover({ value, onChange, className }: HistoryPeri
         aria-label={`Период: ${periodTriggerLabel(value)}`}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "group inline-flex max-w-full items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left outline-none transition duration-200 ease-out",
+          "group inline-flex max-w-full items-center gap-2 rounded-xl border text-left outline-none transition duration-200 ease-out",
+          compact ? "gap-1.5 rounded-lg px-2 py-1" : "gap-2 rounded-xl px-2.5 py-1.5",
           "border-border/55 bg-gradient-to-br from-background/70 to-muted/25 backdrop-blur-md",
           "hover:border-primary/40 hover:from-background/85 hover:to-muted/35 hover:shadow-[0_8px_28px_-8px_hsl(var(--primary)/0.22)]",
           open &&
@@ -439,7 +441,8 @@ export function HistoryPeriodPopover({ value, onChange, className }: HistoryPeri
       >
         <CalendarDays
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition duration-200",
+            compact ? "h-3 w-3" : "h-3.5 w-3.5",
+            "shrink-0 text-muted-foreground transition duration-200",
             "group-hover:text-primary",
             open && "text-primary"
           )}
@@ -447,12 +450,21 @@ export function HistoryPeriodPopover({ value, onChange, className }: HistoryPeri
           aria-hidden
         />
         <span className="min-w-0 flex-1">
-          <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75">
+          <span
+            className={cn(
+              "block font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75",
+              compact ? "text-[8px]" : "text-[9px]"
+            )}
+          >
             Период
           </span>
         </span>
         <ChevronRight
-          className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition duration-200", open && "rotate-90 text-primary")}
+          className={cn(
+            compact ? "h-3 w-3" : "h-3.5 w-3.5",
+            "shrink-0 text-muted-foreground transition duration-200",
+            open && "rotate-90 text-primary"
+          )}
           strokeWidth={2}
           aria-hidden
         />

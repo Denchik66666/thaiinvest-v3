@@ -98,19 +98,22 @@ function CompactStat({
   value,
   valueStyle,
   compact,
+  className,
 }: {
   title: string;
   value: string;
   valueStyle?: CSSProperties;
   /** Плотная сетка на главной инвестора */
   compact?: boolean;
+  className?: string;
 }) {
   const merged = valueStyle?.color ? { ...valueStyle, ...metricValueStyle(String(valueStyle.color)) } : valueStyle;
   return (
     <div
       className={cn(
         "thai-stat-tile thai-glass border border-border/35",
-        compact ? "rounded-lg px-1.5 py-1.5" : "rounded-xl p-2"
+        compact ? "rounded-lg px-1.5 py-1.5" : "rounded-xl p-2",
+        className
       )}
     >
       <Text
@@ -205,7 +208,7 @@ export function InvestorOperationsHistory({
           : `Показать все (+${filteredOps.length - visibleCap})`;
 
   const historyHeader = embedded ? (
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-0.5">
+    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 px-0.5">
       <div className="flex flex-wrap items-center gap-2">
         <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">История операций</Text>
         {!isBusy ? (
@@ -250,12 +253,6 @@ export function InvestorOperationsHistory({
     </button>
   );
 
-  const periodRow = showPanel ? (
-    <div className="flex flex-wrap items-center gap-2">
-      <HistoryPeriodPopover value={periodValue} onChange={setPeriodValue} />
-    </div>
-  ) : null;
-
   const historyBody = showPanel ? (
         <div
           className={cn(
@@ -263,33 +260,46 @@ export function InvestorOperationsHistory({
             embedded ? "px-0 pb-0 pt-0" : "border-t border-border/25 px-2.5 pb-2.5 pt-2"
           )}
         >
-          {periodRow}
-          <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {(
-              [
-                ["all", "Все"],
-                ["accrual", "Начисления"],
-                ["payout", "Выплаты"],
-                ["request", "Заявки"],
-                ["topup", "Пополнения"],
-              ] as const
-            ).map(([id, label]) => (
-              <Button
-                key={id}
-                type="button"
-                size="sm"
-                variant={opFilter === id ? "primary" : "outline"}
-                className="shrink-0 rounded-lg px-2.5 py-1 text-[11px]"
-                onClick={() => setOpFilter(id)}
-              >
-                {label}
-              </Button>
-            ))}
+          {/* Полоска периода + фильтров поверх ленты: overflow-x-auto иначе «стригает» чипы по вертикали без py */}
+          <div className="relative z-10 flex min-w-0 flex-nowrap items-center gap-2">
+            <HistoryPeriodPopover
+              className="shrink-0"
+              compact={embedded}
+              value={periodValue}
+              onChange={setPeriodValue}
+            />
+            <div className="min-w-0 flex-1 overflow-x-auto px-0 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex w-max items-center gap-1 pr-2">
+                {(
+                  [
+                    ["all", "Все"],
+                    ["accrual", "Начисления"],
+                    ["payout", "Выплаты"],
+                    ["request", "Заявки"],
+                    ["topup", "Пополнения"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    size="sm"
+                    variant={opFilter === id ? "primary" : "outline"}
+                    className={cn(
+                      "h-8 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none",
+                      embedded && "px-2"
+                    )}
+                    onClick={() => setOpFilter(id)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div
             className={cn(
-              "thai-investor-history-scroll overflow-y-auto rounded-xl border border-border/30",
+              "relative z-0 thai-investor-history-scroll overflow-y-auto rounded-xl border border-border/30",
               embedded ? "min-h-0 flex-1" : "max-h-[min(60vh,32rem)]"
             )}
           >
@@ -533,9 +543,20 @@ export function InvestorDashboardMetricTiles({
   paid: number;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-1.5">
-      <CompactStat compact title="Тело" value={formatCurrency(body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
-      <CompactStat compact title="Начислено" value={formatCurrency(accrued)} valueStyle={{ color: "var(--thai-color-accrued)" }} />
+    <div className="grid grid-cols-2 gap-1 sm:gap-1.5 sm:grid-cols-3">
+      <CompactStat
+        className="col-span-2 sm:col-span-1"
+        compact
+        title="Тело"
+        value={formatCurrency(body)}
+        valueStyle={{ color: "var(--thai-color-text-primary)" }}
+      />
+      <CompactStat
+        compact
+        title="Начислено"
+        value={formatCurrency(accrued)}
+        valueStyle={{ color: "var(--thai-color-accrued)" }}
+      />
       <CompactStat compact title="Выплачено" value={formatCurrency(paid)} valueStyle={{ color: "var(--thai-color-paid)" }} />
     </div>
   );

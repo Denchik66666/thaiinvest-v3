@@ -82,7 +82,7 @@ export function InvestorPremiumDashboard({
         />
 
         <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0 space-y-3 md:space-y-4">
+          <div className="shrink-0 space-y-2 md:space-y-2.5">
             <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
                 Открытая неделя
@@ -90,65 +90,70 @@ export function InvestorPremiumDashboard({
               <Text className="text-right text-[10px] tabular-nums leading-snug text-muted-foreground">{weekCaption}</Text>
             </div>
 
-            <div className="thai-investor-thermo-wrap thai-investor-thermo-wrap--in-hero">
-              <div className="thai-investor-thermo-stage">
-                <div className="thai-investor-thermo-projection" aria-hidden />
-                <div className="thai-investor-thermo-glow-wrap">
-                  <div
-                    className="thai-investor-thermo-track"
-                    role="img"
-                    aria-label={`Прогресс открытой недели: ${weekCaption}`}
-                  >
-                    <div className="thai-investor-thermo-ambient" aria-hidden />
-                    <div className="thai-investor-thermo-fill" style={{ width: `${barPct}%` }} />
-                    <div className="thai-investor-thermo-glass" aria-hidden />
-                    <div className="thai-investor-thermo-rim" aria-hidden />
+            <div className="space-y-1.5">
+              <div className="thai-investor-thermo-wrap thai-investor-thermo-wrap--in-hero">
+                <div className="thai-investor-thermo-stage">
+                  <div className="thai-investor-thermo-projection" aria-hidden />
+                  <div className="thai-investor-thermo-glow-wrap">
+                    <div
+                      className="thai-investor-thermo-track"
+                      role="img"
+                      aria-label={`Прогресс открытой недели: ${weekCaption}`}
+                    >
+                      <div className="thai-investor-thermo-ambient" aria-hidden />
+                      <div className="thai-investor-thermo-fill" style={{ width: `${barPct}%` }} />
+                      <div className="thai-investor-thermo-glass" aria-hidden />
+                      <div className="thai-investor-thermo-rim" aria-hidden />
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {forecastStrip ? (
+                <p className={cn("thai-investor-forecast-strip thai-investor-forecast-strip--quiet tabular-nums")} role="status">
+                  Ожидается{" "}
+                  <span className="thai-investor-forecast-strip__amount">{forecastStrip.amountPlusBaht}</span> к{" "}
+                  {forecastStrip.payoutDate}
+                </p>
+              ) : null}
             </div>
 
-            {forecastStrip ? (
-              <p className="thai-investor-forecast-strip tabular-nums" role="status">
-                Ожидается{" "}
-                <span className="thai-investor-forecast-strip__amount">{forecastStrip.amountPlusBaht}</span> к{" "}
-                {forecastStrip.payoutDate}
+            {/* Ось «доступно» + одна операционная строка: сумма и действие сопряжены как у платёжной линии */}
+            <div className={cn("thai-investor-payout-hero rounded-xl px-2 py-1.5 md:px-2.5 md:py-2")}>
+              <p className={cn("px-0.5 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground/85")}>
+                Доступно к выводу
               </p>
-            ) : null}
-
-            <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/25 to-transparent" aria-hidden />
-
-            <div
-              className={cn(
-                "thai-investor-payout-hero flex flex-col gap-3 rounded-xl px-3 py-3",
-                "sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <Text className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Доступно к выводу
-                </Text>
-                <div
-                  className="mt-0.5 tabular-nums tracking-tight text-[var(--thai-color-due)] sm:mt-0"
-                  style={{ fontSize: "clamp(1.5rem, 5vw, 1.875rem)", fontWeight: 600, lineHeight: 1.15 }}
+              <div className="flex min-h-[2.35rem] flex-nowrap items-center justify-between gap-2 md:min-h-[2.5rem]">
+                <output
+                  className={cn(
+                    "min-w-0 flex-1 truncate py-0.5 text-left tabular-nums tracking-tight text-[var(--thai-color-due)]"
+                  )}
+                  style={{
+                    fontSize: "clamp(1.05rem, 2.9vw + 0.72rem, 1.52rem)",
+                    fontWeight: 600,
+                    lineHeight: 1.06,
+                  }}
+                  aria-live="polite"
                 >
                   {formatCurrency(payoutDue)}
+                </output>
+                <div className="flex shrink-0 items-stretch border-l border-border/45 py-0.5 pl-2 md:py-1 md:pl-2.5">
+                  <button
+                    type="button"
+                    className="thai-investor-glass-btn thai-investor-glass-btn--inline thai-investor-glass-btn--dense max-sm:min-w-[6.25rem]"
+                    disabled={!canWithdraw}
+                    onClick={onWithdraw}
+                  >
+                    Вывести
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                className="thai-investor-glass-btn thai-investor-glass-btn--inline shrink-0 sm:self-center"
-                disabled={!canWithdraw}
-                onClick={onWithdraw}
-              >
-                Вывести
-              </button>
             </div>
 
             <InvestorDashboardMetricTiles body={statsBody} accrued={statsAccrued} paid={statsPaid} />
           </div>
 
-          <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-border/25 pt-2 md:mt-4 md:pt-3">
+          <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-border/25 pt-2 md:mt-3 md:pt-2.5">
             {historySlot}
           </div>
         </div>

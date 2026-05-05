@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
+import { Camera } from "lucide-react";
 
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
+import { initialsTwoLetters } from "@/lib/utils";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import ThemeToggle from "@/components/ThemeToggle";
+import { UserAvatar } from "@/components/user/UserAvatar";
 import { SuperAdminDatabaseResetSection } from "@/components/profile/SuperAdminDatabaseResetSection";
 import { toast } from "@/lib/notify";
 import {
@@ -48,13 +51,6 @@ function mirrorNotifyLs(p: { soundEnabled: boolean; vibrationEnabled: boolean; p
   localStorage.setItem("notif_polling", p.pollingMode);
 }
 
-function initialsTwoLetters(username: string) {
-  const u = String(username).trim();
-  if (u.length === 0) return "??";
-  if (u.length === 1) return u.toUpperCase() + u.toUpperCase();
-  return u.slice(0, 2).toUpperCase();
-}
-
 function formatLastVisit(raw: string | null): string {
   if (!raw) return "Неизвестно";
   try {
@@ -84,6 +80,8 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   useEffect(() => {
     setUsername(user.username);
@@ -105,6 +103,32 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
       polling: p.pollingMode !== "economy",
     });
   }, []);
+
+  async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast.error("Нужен JPG или PNG");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Не больше 2 МБ");
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      await apiClient.postForm<{ success?: boolean; avatarUrl?: string }>("/api/auth/avatar", fd);
+      await refresh();
+      toast.success("Фото обновлено");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось загрузить фото");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   const persistSettings = (next: SettingValues) => {
     setSettingValues(next);
@@ -156,7 +180,7 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
   });
 
   const role = user.role;
-  const initials = initialsTwoLetters(username);
+  const hasAvatarPhoto = Boolean(user.avatarUrl?.trim());
 
   const passwordFieldStyle: CSSProperties = {
     height: 48,
@@ -198,6 +222,13 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
           }}
         >
           <div style={{ position: "relative", display: "inline-block" }}>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="sr-only"
+              onChange={handleAvatarChange}
+            />
             <div
               style={{
                 position: "absolute",
@@ -218,23 +249,78 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
                 pointerEvents: "none",
               }}
             />
-            <div
+            <button
+              type="button"
+              disabled={avatarBusy}
+              onClick={() => avatarInputRef.current?.click()}
+              title="JPG или PNG, до 2 МБ"
+              aria-label={avatarBusy ? "Загрузка фото" : "Сменить фото профиля"}
               style={{
+                position: "relative",
                 width: 88,
                 height: 88,
+                padding: 0,
+                margin: 0,
+                border: "none",
                 borderRadius: "50%",
-                background: role === "SUPER_ADMIN" ? "#7c3aed" : role === "OWNER" ? "#2563eb" : "#059669",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 28,
-                fontWeight: 700,
-                color: "#fff",
+                cursor: avatarBusy ? "wait" : "pointer",
+                opacity: avatarBusy ? 0.72 : 1,
+                background: "transparent",
                 boxShadow: "0 0 0 4px rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.4)",
+                outline: "none",
               }}
             >
-              {initials}
-            </div>
+              <span
+                aria-hidden
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  background: hasAvatarPhoto ? "transparent" : role === "SUPER_ADMIN" ? "#7c3aed" : role === "OWNER" ? "#2563eb" : "#059669",
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
+                }}
+              >
+                {hasAvatarPhoto ? (
+                  <UserAvatar name={username} src={user.avatarUrl} size={88} className="!ring-0" />
+                ) : (
+                  <span
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 700,
+                      color: "#fff",
+                      letterSpacing: "-0.02em",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {initialsTwoLetters(username)}
+                  </span>
+                )}
+              </span>
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  right: 2,
+                  bottom: 2,
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0,0,0,0.55)",
+                  border: "2px solid rgba(255,255,255,0.35)",
+                  color: "#fff",
+                  pointerEvents: "none",
+                }}
+              >
+                <Camera size={13} strokeWidth={2.25} />
+              </span>
+            </button>
           </div>
 
           <div

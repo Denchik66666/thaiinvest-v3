@@ -1,6 +1,6 @@
 # API_AUDIT — все HTTP-роуты ThaiInvest
 
-**Дата:** 2026-05-04 (актуализация: `proxy.ts` / дашборд, `PATCH /api/chat/read`, `POST /api/auth/avatar`)  
+**Дата:** 2026-05-05 (актуализация: `POST /api/auth/avatar` — полная загрузка файла; инвесторский дашборд / e2e-скриншоты в `PROJECT_AUDIT.md`)  
 **Базовый URL (локально):** `http://localhost:3000`  
 **Префикс API:** `/api/`
 
@@ -29,7 +29,7 @@
 | **POST** | `/api/auth/logout` | Удаление cookie `token` | Публично | Нет `verifyToken`; `app/api/auth/logout/route.ts`. |
 | **GET** | `/api/auth/me` | Текущий пользователь (id, username, role, isSystemOwner) | Любая роль при валидном JWT | `verifyToken` + загрузка `User` по `decoded.userId`; явного запрета по роли нет — `app/api/auth/me/route.ts`. |
 | **PATCH** | `/api/auth/account` | Смена своего username / пароля | Любая роль при валидном JWT | `verifyToken`; обновление только `decoded.userId` — `app/api/auth/account/route.ts`. |
-| **POST** | `/api/auth/avatar` | Загрузка аватара (функция пока отключена) | Любая роль при валидном JWT; после проверки — **503** | Сначала **`verifyToken`** + cookie (как **`/api/auth/me`**): нет/невалидный токен → **401**; при валидном токене — ответ **503** (заглушка) — `app/api/auth/avatar/route.ts`. |
+| **POST** | `/api/auth/avatar` | Загрузка аватара: **multipart/form-data**, поле **`file`**; только **image/jpeg** и **image/png**, максимум **2 МБ** | Любая роль при валидном JWT | **`verifyToken`**; **400** если нет файла / неверный тип / слишком большой файл; **401** без токена или с невалидным JWT; при успехе — запись в **`public/uploads/avatars/{userId}.jpg|png`**, обновление **`User.avatarUrl`**, **`withDbRetry`**, ответ **200** `{ success, avatarUrl }` — `app/api/auth/avatar/route.ts`. |
 
 ---
 

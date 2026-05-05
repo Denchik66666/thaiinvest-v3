@@ -1,6 +1,6 @@
 # PROJECT_AUDIT — ThaiInvest v3.x
 
-**Дата ревизии:** 2026-05-03  
+**Дата ревизии:** 2026-05-05  
 **Корень проекта:** `THAIINVEST v3.0`  
 **Версия приложения (package.json):** 3.1.0  
 
@@ -48,7 +48,7 @@
 | **`lib/`** | Prisma, auth, аудит, бизнес-ставка, недели, чат, сброс БД, retry к БД, тема, схемы. |
 | **`styles/`** | `thai-design-system.css` (токены `.thai-*`, фон логина/дашборда), `animations.css`. |
 | **`prisma/`** | `schema.prisma`, `migrations/`, `seed.ts`. |
-| **`scripts/`** | Утилиты: проверка БД, e2e-сценарии, отладка логина/сброса, чат. |
+| **`scripts/`** | Утилиты: проверка БД, e2e-сценарии, отладка логина/сброса, чат; при необходимости вспомогательные скрипты (например извлечение текста для превью). |
 | **`tests/e2e/`** | Playwright-спеки. |
 | **`types/`** | Общие TS-типы (например инвестор). |
 | **`public/`** | Статика, PWA manifest, иконки. |
@@ -69,14 +69,14 @@
 |---------|------|------------|-----------|
 | **`/`** | `app/page.tsx` | Редирект → `/login` | Работает |
 | **`/login`** | `app/login/page.tsx` | Вход, опционально toast при `?db_cleared=1`, переключатель темы | Работает; тема через общий `ThemeToggle` + `AppThemeSync` |
-| **`/dashboard`** | `app/dashboard/page.tsx` | Главная: список инвесторов, платежи, уведомления (зависит от роли) | Работает (данные с API) |
+| **`/dashboard`** | `app/dashboard/page.tsx` | Главная: для **INVESTOR** — премиум-герой (`InvestorPremiumDashboard`), встроенная история операций, компактный блок «Доступно к выводу»; для **OWNER** / **SUPER_ADMIN** — список инвесторов, платежи, уведомления. Верхняя полоса: переход в профиль только с **аватара** и **ника + шеврона** (не вся полоса). Ник инвестора — класс **`thai-dashboard-nick-matte-gold`**. Отдельной кнопки загрузки аватара на главной **нет** (аватар — в профиле). | Работает (данные с API) |
 | **`/dashboard/finance`** | `app/dashboard/finance/page.tsx` | Финансы; для не-инвестора редирект на manage | Работает |
 | **`/dashboard/reports`** | `app/dashboard/reports/page.tsx` | Лента отчётов (`/api/reports/feed`) | Работает |
 | **`/dashboard/investors`** | `app/dashboard/investors/page.tsx` | Список инвесторов; редирект инвестора на finance | Работает |
 | **`/dashboard/investors/[id]`** | `app/dashboard/investors/[id]/page.tsx` | Карточка инвестора | Работает |
 | **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает |
 | **`/dashboard/chat`** | `app/dashboard/chat/page.tsx` | Чат | Работает |
-| **`/dashboard/profile`** | `app/dashboard/profile/page.tsx` | Профиль, аккаунт, тема, блок сброса БД для SUPER_ADMIN | Работает; аватар API — заглушка 503 |
+| **`/dashboard/profile`** | `app/dashboard/profile/page.tsx` | Профиль, аккаунт, тема, блок сброса БД для SUPER_ADMIN; смена аватара по клику на круг (скрытый `input type="file"`, бейдж камеры) → **`POST /api/auth/avatar`** | Работает |
 
 **Устаревший маршрут в старом аудите:** `manage/investors/[id]` — в текущем дереве **нет**; детальная карточка — **`/dashboard/investors/[id]`**.
 
@@ -84,7 +84,7 @@
 
 ## 4. API (обзор)
 
-Каждый защищённый эндпоинт проверяет cookie **`token`**, **`verifyToken`** и при необходимости **роль / владение сущностью** (см. §5). Исключения: **`POST /api/auth/login`**, **`POST /api/auth/logout`** (по смыслу), **`POST /api/auth/avatar`** (заглушка без полноценной логики).
+Каждый защищённый эндпоинт проверяет cookie **`token`**, **`verifyToken`** и при необходимости **роль / владение сущностью** (см. §5). Исключения по «нет полноценного JWT»: **`POST /api/auth/login`**, **`POST /api/auth/logout`** (по смыслу). **`POST /api/auth/avatar`** — полноценная загрузка после **`verifyToken`** (см. **`API_AUDIT.md`**).
 
 | Префикс / файл | Назначение |
 |----------------|------------|
@@ -190,8 +190,13 @@
 
 ## 8. Уже сделано (после прошлых аудитов)
 
-- **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; **`canChatWithPeer`** для **`GET/POST /api/chat/messages`** и **`PATCH /api/chat/read`**; **`POST /api/auth/avatar`** — **`verifyToken`** перед **503**.  
+- **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; **`canChatWithPeer`** для **`GET/POST /api/chat/messages`** и **`PATCH /api/chat/read`**.  
+- **`POST /api/auth/avatar`:** реализована загрузка **JPG/PNG** до **2 МБ**, запись в **`public/uploads/avatars/{userId}.(jpg|png)`**, обновление **`User.avatarUrl`**, ответ **200** с **`avatarUrl`** (не заглушка **503**).  
 - **Единая тема:** удалён отдельный переключатель логина; **`ThemeToggle`** + **`AppThemeSync`** + **`lib/app-theme`**; логин на Tailwind для полей/кнопки; часть специфичных CSS логина убрана из `thai-design-system.css`.  
+- **Инвесторский дашборд (UX/UI):** **`InvestorPremiumDashboard`** — компактный герой, «тихая» полоса прогноза, плотная строка «Доступно к выводу», кнопка вывода **`thai-investor-glass-btn--dense`**; **`InvestorOperationsHistory`** — период и чипы фильтра в одной строке, исправлено обрезание чипов (**`z-index` / отступы**), на узких экранах метрики в сетке; **`HistoryPeriodPopover`** — режим **`compact`** для триггера.  
+- **Шапка инвестора:** матовый янтарно-золотой ник (**`thai-dashboard-nick-matte-gold`**); **`UserAvatar`** — две буквы инициалов, масштаб шрифта от размера; экспорт **`initialsTwoLetters`** из **`lib/utils.ts`**.  
+- **E2E / скриншоты:** спеки сравнения owner vs investor (desktop / mobile / **S25+ 412×915**), папки под датой в **`screenshots/compare/`**; обновлены ожидания в превью-транскрипте под актуальный текст героя.  
+- **Справка по UI:** в репозитории есть **`docs/UI_RULES_BACKUP.md`** (референс правил интерфейса).  
 - **Зависимости:** в манифесте нет неиспользуемых пакетов из старого списка (supabase / zustand / accelerate-extension).  
 - **TypeScript:** исправлены ошибки **`tsc --noEmit`** (body-topup, business-rate POST, reset credentials).  
 - **Git:** репозиторий ведётся; зафиксированы коммиты по аудиту и документации (в т.ч. сообщения на русском по запросу команды).
@@ -202,10 +207,10 @@
 
 | Тема | Детали |
 |------|--------|
-| **`POST /api/auth/avatar`** | После **`verifyToken`** по-прежнему **503** — загрузка файла не реализована. |
+| **Аватары в проде** | Файлы лежат на диске в **`public/uploads/avatars/`** — для деплоя нужны персистентный том / объектное хранилище и исключение из «эфемерного» контейнера без тома. |
 | **Зависимость `jose`** | В `package.json` есть, в основном коде auth не видна — проверить необходимость или удалить. |
 | **`console.error` в API** | Широко используется в `catch` — норм для отладки; при проде стоит согласовать структурированный логгер. |
-| **ESLint** | Полный `npm run lint` может по-прежнему ругаться на отдельные файлы (например `SuperAdminDatabaseResetSection`, `Select.tsx`, др.) — прогонять перед релизом и чинить точечно. |
+| **ESLint (прогон 2026-05-05)** | Ошибки: **`prefer-const`** и **`no-explicit-any`** в **`app/api/investors/[id]/route.ts`**; **`no-explicit-any`** в **`app/dashboard/manage/page.tsx`**; правило React Compiler / cascading renders в **`components/dashboard/HistoryPeriodPopover.tsx`** (setState внутри `useEffect`). Предупреждения: неиспользуемые импорты/переменные в **`app/dashboard/chat/page.tsx`**, **`app/dashboard/manage/page.tsx`**, **`app/dashboard/page.tsx`**, неиспользуемый импорт в **`app/api/investors/[id]/route.ts`**. |
 | **Папка `Для анализа/`** | Не код; при публикации репозитория решить, оставлять ли в git. |
 | **`create-test-investors.js`** и debug-скрипты | Убедиться, что не попадают в прод-сборку и не содержат секретов. |
 | **Связка INVESTOR + `linkedUserId`** | В **`GET /api/investors`** для инвестора фильтр **`investorUserId`**; если нужны сценарии только по **`linkedUserId`**, сверить с продуктом. |
@@ -214,7 +219,7 @@
 
 ## 10. Краткий итог
 
-Проект — **монолит Next.js (App Router)** с **Prisma + PostgreSQL**, **JWT в cookie**, кабинетом **`/dashboard/*`** и набором **REST API**. Структура каталогов **согласована** с ролями и доменом (инвесторы, платежи, чат, отчёты, сброс БД). Документ отражает **фактическое** состояние на дату ревизии; для следующего аудита имеет смысл снова прогнать **`npm run lint`**, **`npx tsc --noEmit`**, **`npm run build`** и при необходимости **`npm run test:e2e`**.
+Проект — **монолит Next.js (App Router)** с **Prisma + PostgreSQL**, **JWT в cookie**, кабинетом **`/dashboard/*`** и набором **REST API**. Структура каталогов **согласована** с ролями и доменом (инвесторы, платежи, чат, отчёты, сброс БД). Документ отражает **фактическое** состояние на **2026-05-05**; для следующего аудита имеет смысл снова прогнать **`npm run lint`**, **`npx tsc --noEmit`**, **`npm run build`** и при необходимости **`npm run test:e2e`**.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, initialsTwoLetters } from "@/lib/utils";
 
 type Props = {
   name: string;
@@ -9,9 +9,11 @@ type Props = {
   className?: string;
 };
 
-/** Круглый аватар: фото или буква; фон нейтральный, без «плашки». */
+/** Круглый аватар: фото или две буквы; фон нейтральный, без «плашки». */
 export function UserAvatar({ name, src, size = 36, className }: Props) {
-  const initial = (name || "?").slice(0, 1).toUpperCase();
+  const initials = initialsTwoLetters(name || "?");
+  const photoSrc = src?.trim() ? src : undefined;
+  const initialsFontPx = Math.max(8, Math.round(size * 0.34));
 
   return (
     <span
@@ -22,12 +24,15 @@ export function UserAvatar({ name, src, size = 36, className }: Props) {
       )}
       style={{ width: size, height: size }}
     >
-      {src ? (
+      {photoSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" className="h-full w-full object-cover object-center" loading="lazy" />
+        <img src={photoSrc} alt="" className="h-full w-full object-cover object-center" loading="lazy" />
       ) : (
-        <span className="flex h-full w-full items-center justify-center bg-muted/25 text-[0.55em] font-semibold text-foreground/90">
-          {initial}
+        <span
+          className="flex h-full w-full items-center justify-center bg-muted/25 font-semibold leading-none tracking-tight text-foreground/90"
+          style={{ fontSize: initialsFontPx }}
+        >
+          {initials}
         </span>
       )}
     </span>

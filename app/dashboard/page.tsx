@@ -31,7 +31,6 @@ import {
   getPaymentStatusBlock,
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
-import { Camera } from "lucide-react";
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
@@ -205,8 +204,6 @@ export default function DashboardPage() {
   });
   const [pageVisible, setPageVisible] = useState(true);
   const [barScrolled, setBarScrolled] = useState(false);
-  const investorAvatarInputRef = useRef<HTMLInputElement>(null);
-  const [investorAvatarBusy, setInvestorAvatarBusy] = useState(false);
   const [saInvestorFilter, setSaInvestorFilter] = useState<SuperAdminInvestorFilter>("all");
   const notifyPrefs = useSyncExternalStore(
     subscribeNotificationPreferences,
@@ -305,32 +302,6 @@ export default function DashboardPage() {
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isOwner = user?.role === "OWNER";
   const isInvestor = user?.role === "INVESTOR";
-
-  async function handleInvestorAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !isInvestor) return;
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      toast.error("Нужен JPG или PNG");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Не больше 2 МБ");
-      return;
-    }
-    setInvestorAvatarBusy(true);
-    try {
-      const fd = new FormData();
-      fd.set("file", file);
-      await apiClient.postForm<{ success?: boolean; avatarUrl?: string }>("/api/auth/avatar", fd);
-      await refreshAuth();
-      toast.success("Фото обновлено");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Не удалось загрузить фото");
-    } finally {
-      setInvestorAvatarBusy(false);
-    }
-  }
 
   const investorForecastStrip = useMemo(() => {
     if (!isInvestor || myInvestors.length === 0 || investorForecastFullWeek == null || investorForecastFullWeek < 0.005) {
@@ -580,23 +551,25 @@ export default function DashboardPage() {
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
         <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/profile")}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div
               className={cn(
-                "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110",
-                !isInvestor && "thai-glass",
-                isInvestor && "rounded-2xl"
+                "flex shrink-0 items-center gap-2 px-2 py-1.5",
+                isInvestor && "rounded-2xl",
+                !isInvestor && "thai-glass rounded-2xl"
               )}
               style={!isInvestor ? glassCard : undefined}
-              aria-label="Профиль"
             >
-              {isInvestor ? (
-                <>
-                  <div
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/profile")}
+                className="relative shrink-0 rounded-full outline-none transition hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+                aria-label="Профиль — аватар"
+              >
+                {isInvestor ? (
+                  <span
                     className={cn(
-                      "thai-investor-avatar-ring relative shrink-0 rounded-full p-[2px]",
+                      "thai-investor-avatar-ring relative block rounded-full p-[2px]",
                       "transition-[box-shadow] duration-500"
                     )}
                     data-has-positions={myInvestors.length > 0 ? "true" : "false"}
@@ -607,47 +580,34 @@ export default function DashboardPage() {
                       size={42}
                       className="!ring-0 bg-transparent [&_img]:object-cover"
                     />
-                  </div>
-                  <span className="truncate text-sm font-semibold tracking-tight text-foreground">{user.username}</span>
-                  <span className="text-muted-foreground" aria-hidden>
-                    ›
                   </span>
-                </>
-              ) : (
-                <>
+                ) : (
                   <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-                  <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
-                  <span className="text-muted-foreground" aria-hidden>
-                    ›
-                  </span>
-                </>
-              )}
-            </button>
-            {isInvestor ? (
-              <>
-                <input
-                  ref={investorAvatarInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  className="sr-only"
-                  onChange={handleInvestorAvatarChange}
-                />
-                <button
-                  type="button"
-                  disabled={investorAvatarBusy}
-                  onClick={() => investorAvatarInputRef.current?.click()}
-                  title="JPG или PNG, до 2 МБ"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/profile")}
+                className={cn(
+                  "group flex min-w-0 max-w-[min(72vw,12.5rem)] items-center gap-1 rounded-lg py-0.5 pl-0.5 pr-1 outline-none transition sm:max-w-[14rem]",
+                  "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+                )}
+                aria-label={`Профиль — ${user.username}`}
+              >
+                <span
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/40",
-                    "bg-background/45 text-muted-foreground transition hover:border-primary/35 hover:text-foreground",
-                    "disabled:opacity-45"
+                    "thai-dashboard-nick-matte-gold truncate font-semibold tracking-tight",
+                    isInvestor ? "text-sm" : "text-base"
                   )}
-                  aria-label={investorAvatarBusy ? "Загрузка фото" : "Загрузить фото профиля"}
                 >
-                  <Camera className="h-4 w-4" strokeWidth={2} aria-hidden />
-                </button>
-              </>
-            ) : null}
+                  {user.username}
+                </span>
+                <span className="shrink-0 text-muted-foreground" aria-hidden>
+                  ›
+                </span>
+              </button>
+            </div>
+            <span className="min-h-px min-w-0 flex-1 select-none" aria-hidden />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <NotificationBell />
