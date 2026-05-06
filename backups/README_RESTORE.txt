@@ -1,12 +1,35 @@
-Восстановление из файла thaiinvest-restore-2026-05-06.bundle
---------------------------------------------------------------
-Файл *.bundle в .gitignore — он не попадает в git push. Сохраните копию bundle на диск / облако отдельно.
+Восстановление из git bundle (*.bundle в .gitignore — храните копию отдельно от push).
+
+================================================================================
+Актуальный снимок (зафиксировано 2026-05-06)
+================================================================================
+Файл:  backups/thaiinvest-restore-2026-05-06-dashboard-nav-theme.bundle
+Тег:   snapshot/dashboard-theme-nav-2026-05-06  → коммит темы/навигации и шапки Финансов
+
+Что улучшено и зафиксировано в этом снимке:
+  • Финансы: шапка без декоративной полосы thai-hero-accent над стрелкой; более выраженное
+    «стекло» (blur, прозрачность, блик по верху).
+  • Тема приложения: переключатель только на /login и в Профиль → Настройки; убран из
+    верхней панели главного экрана и из шапок Управление / Инвесторы / карточка инвестора / Чат.
+  • Инвестор — нижний бар: только «Главная» и «Финансы»; вкладка «Профиль» убрана (профиль
+    из аватара и ника в шапке).
+  • Правило для агента: .cursor/rules/dashboard-theme-nav.mdc (alwaysApply).
+  • E2E: tests/e2e/mobile-bottom-nav-roles.spec.ts под новый состав вкладок инвестора.
 
 Проверка целостности:
-  git bundle verify backups/thaiinvest-restore-2026-05-06.bundle
+  git bundle verify backups/thaiinvest-restore-2026-05-06-dashboard-nav-theme.bundle
 
-Клон из bundle в новую папку (ветка main):
-  git clone backups/thaiinvest-restore-2026-05-06.bundle restored-thaiinvest
+Клон из bundle в новую папку (после клона будет на том же коммите, что HEAD в bundle):
+  git clone backups/thaiinvest-restore-2026-05-06-dashboard-nav-theme.bundle restored-thaiinvest
   cd restored-thaiinvest && npm ci && npx prisma generate
 
-Подтянуть в уже существующий bare или добавить remote и fetch — см. git bundle --help.
+Перейти на помеченный тег после клона (опционально):
+  git checkout snapshot/dashboard-theme-nav-2026-05-06
+
+================================================================================
+Ранее (если у вас лежит старый файл bundle)
+================================================================================
+Имя могло быть: thaiinvest-restore-2026-05-06.bundle — те же команды verify / clone,
+подставив имя файла.
+
+Подтянуть bundle в существующий репозиторий или bare remote — см. git bundle --help.
