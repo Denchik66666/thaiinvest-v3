@@ -393,7 +393,7 @@ export function DashboardOperationsHistory({
                   {!isBusy ? (
                     <>
                       <span
-                        className="rounded-md bg-primary/14 px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary"
+                        className="rounded-md border border-primary/18 bg-primary/[0.07] px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary backdrop-blur-[2px] dark:border-primary/14 dark:bg-primary/[0.06]"
                         title="Строк с учётом периода и типа"
                       >
                         {filteredOps.length}
@@ -416,7 +416,7 @@ export function DashboardOperationsHistory({
                   <div className="flex flex-wrap items-center justify-end gap-1">
                     {financeTotals.growth > 0 ? (
                       <span
-                        className="inline-flex items-center rounded-md border border-emerald-500/28 bg-emerald-500/[0.11] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-300"
+                        className="inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95"
                         title="Начисления и пополнения в выборке"
                       >
                         +{formatAmount(financeTotals.growth)} ฿
@@ -424,7 +424,7 @@ export function DashboardOperationsHistory({
                     ) : null}
                     {financeTotals.paidOut > 0 ? (
                       <span
-                        className="inline-flex items-center rounded-md border border-sky-500/28 bg-sky-500/[0.11] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-800 dark:text-sky-200"
+                        className="inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95"
                         title="Завершённые выплаты в выборке"
                       >
                         −{formatAmount(financeTotals.paidOut)} ฿
@@ -491,12 +491,18 @@ export function DashboardOperationsHistory({
                       key={id}
                       type="button"
                       size="sm"
-                      variant={opFilter === id ? "primary" : "outline"}
+                      variant="outline"
                       className={cn(
                         financeProminentFilters
-                          ? "h-7 shrink-0 whitespace-nowrap rounded-lg border-border/45 px-2 py-0 text-[10px] font-semibold leading-none sm:h-8 sm:rounded-full sm:px-2.5"
+                          ? "h-7 shrink-0 whitespace-nowrap rounded-lg px-2 py-0 text-[10px] font-semibold leading-none sm:h-8 sm:rounded-full sm:px-2.5"
                           : "h-8 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none md:h-9 md:px-3 md:text-[11px]",
-                        embedded && !financeProminentFilters && "px-2"
+                        embedded && !financeProminentFilters && "px-2",
+                        opFilter === id
+                          ? cn(
+                              "border-primary/30 bg-primary/[0.06] text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md hover:bg-primary/[0.1]",
+                              "dark:border-primary/22 dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:hover:bg-white/[0.07]"
+                            )
+                          : "border-border/42 bg-background/45 text-muted-foreground hover:border-border/55 hover:bg-muted/18 hover:text-foreground dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.04]"
                       )}
                       onClick={() => {
                         setOpFilter(id);
@@ -702,7 +708,7 @@ export function DashboardOperationsHistory({
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background/50"
                         style={{
                           borderColor: isOut
-                            ? "color-mix(in srgb, var(--thai-color-paid) 45%, transparent)"
+                            ? "color-mix(in srgb, var(--thai-color-history-outflow) 45%, transparent)"
                             : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
                         }}
                         aria-hidden
@@ -711,7 +717,7 @@ export function DashboardOperationsHistory({
                           className="h-4 w-4 shrink-0"
                           strokeWidth={2}
                           style={{
-                            color: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                            color: isOut ? "var(--thai-color-history-outflow)" : "var(--thai-color-due)",
                             opacity: 0.92,
                           }}
                         />
@@ -726,8 +732,8 @@ export function DashboardOperationsHistory({
                         <div
                           className="text-[12px] font-semibold tabular-nums"
                           style={{
-                            color: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
-                            WebkitTextFillColor: isOut ? "var(--thai-color-paid)" : "var(--thai-color-due)",
+                            color: isOut ? "var(--thai-color-history-outflow)" : "var(--thai-color-due)",
+                            WebkitTextFillColor: isOut ? "var(--thai-color-history-outflow)" : "var(--thai-color-due)",
                           }}
                         >
                           {isOut ? "−" : ""}

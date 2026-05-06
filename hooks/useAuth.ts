@@ -9,6 +9,8 @@ export interface AuthUser {
   role: string;
   isSystemOwner: boolean;
   avatarUrl?: string | null;
+  /** ISO 8601, дата регистрации учётной записи */
+  createdAt?: string;
 }
 
 export const AUTH_ME_QUERY_KEY = ["auth", "me"] as const;

@@ -33,6 +33,8 @@
   /** Пополнение тела / капитал (≠ начисление процентов — accrued) */
   --thai-color-topup: #0f766e;
   --thai-color-topup-bg: rgba(15, 118, 110, 0.1);
+  /** Завершённое списание по выплате (− в ленте) — нейтрально, без «прибыльного» зелёного */
+  --thai-color-history-outflow: #64748b;
   /** Прогноз начисления к выплате (информация, не «деньги на руках») */
   --thai-color-forecast: #4f46e5;
   --thai-color-forecast-bg: rgba(79, 70, 229, 0.09);
@@ -59,6 +61,7 @@
   --thai-color-card-border: rgba(255, 255, 255, 0.07);
   --thai-color-topup: #5eead4;
   --thai-color-topup-bg: rgba(94, 234, 212, 0.12);
+  --thai-color-history-outflow: #94a3b8;
   --thai-color-forecast: #a5b4fc;
   --thai-color-forecast-bg: rgba(165, 180, 252, 0.1);
   --thai-color-forecast-border: rgba(165, 180, 252, 0.35);

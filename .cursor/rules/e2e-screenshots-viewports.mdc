@@ -1,0 +1,16 @@
+---
+description: Вьюпорты и структура E2E-скриншотов сравнения (темы + desktop/mobile/S25+)
+alwaysApply: true
+---
+
+# Скриншоты сравнения (Playwright)
+
+- Папки под датой и темой: **`screenshots/compare/<дата>_<краткое_название>/`** (как в `PROJECT_AUDIT.md`).
+- Для инвесторских «трёх экранов» (**главная / финансы / профиль**): спека **`tests/e2e/investor-role-three-screens.spec.ts`**.
+- Структура вывода: **`{dark|light}/{desktop|mobile|s25plus}/`** и файлы **`1-dashboard.png`**, **`2-finance.png`**, **`3-profile.png`**.
+- Вьюпорты:
+  - **desktop:** 1280×900
+  - **mobile:** 390×844 (как в `compare-owner-vs-investor-dashboard.spec.ts`)
+  - **Galaxy S25+:** **412×915**
+
+При добавлении новых визуальных спеков не ограничиваться только desktop и только тёмной темой.

@@ -27,6 +27,7 @@ export async function GET() {
           avatarUrl: true,
           role: true,
           isSystemOwner: true,
+          createdAt: true,
         },
       })
     )
@@ -41,6 +42,7 @@ export async function GET() {
         avatarUrl: user.avatarUrl,
         role: user.role,
         isSystemOwner: user.isSystemOwner,
+        createdAt: user.createdAt.toISOString(),
       },
     })
   } catch (error) {
