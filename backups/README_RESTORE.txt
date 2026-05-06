@@ -1,5 +1,7 @@
 Восстановление из файла thaiinvest-restore-2026-05-06.bundle
 --------------------------------------------------------------
+Файл *.bundle в .gitignore — он не попадает в git push. Сохраните копию bundle на диск / облако отдельно.
+
 Проверка целостности:
   git bundle verify backups/thaiinvest-restore-2026-05-06.bundle
 
