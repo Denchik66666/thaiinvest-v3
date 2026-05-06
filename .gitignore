@@ -47,6 +47,7 @@ next-env.d.ts
 # local debug and backup artifacts
 .cursor/debug-*.log
 backup_*.zip
+backups/*.bundle
 db_backup_*.json
 prisma/dev.db
 

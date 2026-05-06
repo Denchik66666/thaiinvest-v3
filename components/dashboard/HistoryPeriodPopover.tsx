@@ -86,7 +86,8 @@ const PRESETS: { id: PeriodPreset; label: string }[] = [
   { id: "all", label: "Всё время" },
 ];
 
-function periodTriggerLabel(period: HistoryPeriodValue): string {
+/** Подпись выбранного периода для UI (сводки, aria). */
+export function formatHistoryPeriodCaption(period: HistoryPeriodValue): string {
   if (period.kind === "preset") {
     return PRESETS.find((p) => p.id === period.preset)?.label ?? "Период";
   }
@@ -427,7 +428,7 @@ export function HistoryPeriodPopover({ value, onChange, className, compact = fal
         type="button"
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={`Период: ${periodTriggerLabel(value)}`}
+        aria-label={`Период: ${formatHistoryPeriodCaption(value)}`}
         onClick={() => {
           setOpen((v) => {
             if (!v) syncDraftFromValue(value);

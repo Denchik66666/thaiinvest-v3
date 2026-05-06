@@ -54,15 +54,20 @@ export async function GET() {
     const decoded = verifyToken(token);
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
-    if (decoded.role !== "INVESTOR") {
-      return NextResponse.json({ error: "Доступно только инвестору" }, { status: 403 });
+    if (decoded.role !== "INVESTOR" && decoded.role !== "OWNER") {
+      return NextResponse.json({ error: "Доступно только инвестору или владельцу сети" }, { status: 403 });
     }
 
     const now = new Date();
 
+    const investorsWhere =
+      decoded.role === "INVESTOR"
+        ? { investorUserId: decoded.userId }
+        : { ownerId: decoded.userId };
+
     const investors = await withDbRetry(() =>
       prisma.investor.findMany({
-        where: { investorUserId: decoded.userId },
+        where: investorsWhere,
         include: {
           payments: true,
         },

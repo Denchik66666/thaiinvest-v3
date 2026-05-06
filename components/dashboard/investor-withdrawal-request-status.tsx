@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { CheckCircle2, ChevronRight, Clock3, XCircle } from "lucide-react";
+
+import { cn, formatCurrency } from "@/lib/utils";
 
 /** Платежи из GET /api/investors?lean=1 (mapPaymentsToPayload). Статусы — как в app/api/payments/route.ts и prisma. */
 export type WithdrawalRequestPayment = {
@@ -13,225 +15,134 @@ export type WithdrawalRequestPayment = {
   acceptedAt?: string | null;
 };
 
-function formatAmount(num: number) {
-  if (!num) return "0";
-  return Number(num).toLocaleString("ru-RU");
+const WITHDRAWAL_TYPES = new Set(["interest", "body", "close"]);
+
+export type LatestWithdrawalRequestPick = {
+  payment: WithdrawalRequestPayment;
+  investorId: number;
+};
+
+export function pickLatestWithdrawalRequest(
+  investors: Array<{ id: number; payments?: WithdrawalRequestPayment[] | null }>
+): LatestWithdrawalRequestPick | null {
+  const candidates: LatestWithdrawalRequestPick[] = [];
+  for (const inv of investors) {
+    for (const p of inv.payments ?? []) {
+      if (!WITHDRAWAL_TYPES.has(p.type)) continue;
+      if (
+        p.status !== "requested" &&
+        p.status !== "pending" &&
+        p.status !== "approved_waiting_accept" &&
+        p.status !== "rejected"
+      ) {
+        continue;
+      }
+      candidates.push({ payment: p, investorId: inv.id });
+    }
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => new Date(b.payment.createdAt).getTime() - new Date(a.payment.createdAt).getTime());
+  return candidates[0] ?? null;
 }
 
-function formatDate(iso: string) {
+function paymentTypeRu(type: string) {
+  if (type === "interest") return "Проценты";
+  if (type === "body") return "Тело";
+  if (type === "close") return "Закрытие";
+  return type;
+}
+
+function formatDateShort(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-const WITHDRAWAL_TYPES = new Set(["interest", "body", "close"]);
-
-export function pickLatestWithdrawalRequest(
-  investors: Array<{ payments?: WithdrawalRequestPayment[] | null }>
-): WithdrawalRequestPayment | null {
-  const candidates: WithdrawalRequestPayment[] = [];
-  for (const inv of investors) {
-    for (const p of inv.payments ?? []) {
-      if (!WITHDRAWAL_TYPES.has(p.type)) continue;
-      if (p.status !== "requested" && p.status !== "pending" && p.status !== "approved_waiting_accept" && p.status !== "rejected") {
-        continue;
-      }
-      candidates.push(p);
-    }
-  }
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return candidates[0] ?? null;
-}
-
 /** Дата «обновления» для UI: в модели Payment нет updatedAt — для одобрения берём approvedAt. */
 function displayDecisionDate(payment: WithdrawalRequestPayment) {
-  return formatDate(payment.approvedAt ?? payment.createdAt);
+  return formatDateShort(payment.approvedAt ?? payment.createdAt);
 }
 
-export function getPaymentStatusBlock(payment: WithdrawalRequestPayment): ReactNode {
+export function InvestorWithdrawalStatusBanner({
+  payment,
+  investorId,
+  investorName,
+  onOpenDecision,
+}: {
+  payment: WithdrawalRequestPayment;
+  investorId: number;
+  /** Подпись позиции в подсказке (компактнее, чем только id) */
+  investorName?: string;
+  /** Переход к экрану, где можно принять выплату / спор (раздел «Отчёты») */
+  onOpenDecision: () => void;
+}) {
   const s = payment.status;
-  if (s === "requested" || s === "pending") {
-    return (
-      <div
-        style={{
-          background: "var(--thai-color-pending-bg)",
-          border: "1px solid var(--thai-color-card-border)",
-          borderRadius: 12,
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "var(--thai-color-pending-bg)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          ⏳
-        </div>
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: "var(--thai-color-due)",
-              marginBottom: 3,
-            }}
-          >
-            Заявка на рассмотрении
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--thai-color-text-secondary)",
-            }}
-          >
-            {formatAmount(payment.amount)} ₿ · подана {formatDate(payment.createdAt)}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--thai-color-text-muted)",
-              marginTop: 2,
-            }}
-          >
-            Ожидает подтверждения владельца сети
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const typeLabel = paymentTypeRu(payment.type);
+  const amountLabel = formatCurrency(payment.amount);
 
-  if (s === "approved_waiting_accept") {
-    return (
-      <div
-        style={{
-          background: "var(--thai-color-approved-bg)",
-          border: "1px solid var(--thai-color-card-border)",
-          borderRadius: 12,
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "var(--thai-color-approved-bg)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          ✅
-        </div>
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: "var(--thai-color-paid)",
-              marginBottom: 3,
-            }}
-          >
-            Заявка одобрена
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--thai-color-text-secondary)",
-            }}
-          >
-            {formatAmount(payment.amount)} ₿ · одобрена {displayDecisionDate(payment)}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--thai-color-text-muted)",
-              marginTop: 2,
-            }}
-          >
-            Подтвердите получение средств
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const variant =
+    s === "requested" || s === "pending" ? "pending" : s === "approved_waiting_accept" ? "approved" : s === "rejected" ? "rejected" : null;
+  if (!variant) return null;
 
-  if (s === "rejected") {
-    return (
-      <div
-        style={{
-          background: "var(--thai-color-rejected-bg)",
-          border: "1px solid var(--thai-color-card-border)",
-          borderRadius: 12,
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "var(--thai-color-rejected-bg)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
-        >
-          ❌
-        </div>
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: "var(--thai-color-rejected)",
-              marginBottom: 3,
-            }}
-          >
-            Заявка отклонена
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--thai-color-text-secondary)",
-            }}
-          >
-            {formatAmount(payment.amount)} ₿ · {displayDecisionDate(payment)}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--thai-color-text-muted)",
-              marginTop: 2,
-            }}
-          >
-            Можно подать новую заявку
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const Icon =
+    variant === "pending" ? Clock3 : variant === "approved" ? CheckCircle2 : XCircle;
 
-  return null;
+  const title =
+    variant === "pending"
+      ? "На рассмотрении"
+      : variant === "approved"
+        ? "Одобрено"
+        : "Отклонено";
+
+  const meta =
+    variant === "pending"
+      ? `${typeLabel} · ${amountLabel} · подана ${formatDateShort(payment.createdAt)}`
+      : variant === "approved"
+        ? `${typeLabel} · ${amountLabel} · одобрена ${displayDecisionDate(payment)}`
+        : `${typeLabel} · ${amountLabel} · ${displayDecisionDate(payment)}`;
+
+  const hint =
+    variant === "pending"
+      ? "Ожидает владельца · отчёты"
+      : variant === "approved"
+        ? "Подтвердите получение · отчёты"
+        : "История и новая заявка · отчёты";
+
+  const ariaLabel =
+    variant === "approved"
+      ? `Заявка одобрена, ${amountLabel}. Открыть отчёты позиции для подтверждения получения`
+      : variant === "pending"
+        ? `Заявка на рассмотрении, ${amountLabel}. Открыть отчёты позиции`
+        : `Заявка отклонена. Открыть отчёты позиции`;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenDecision}
+      aria-label={ariaLabel}
+      className={cn(
+        "thai-investor-withdraw-strip group w-full text-left transition-[transform,box-shadow,border-color] duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        variant === "pending" && "thai-investor-withdraw-strip--pending",
+        variant === "approved" && "thai-investor-withdraw-strip--approved",
+        variant === "rejected" && "thai-investor-withdraw-strip--rejected"
+      )}
+    >
+      <span className="thai-investor-withdraw-strip__accent" aria-hidden />
+      <span className="thai-investor-withdraw-strip__icon" aria-hidden>
+        <Icon className="h-[15px] w-[15px]" strokeWidth={2.2} />
+      </span>
+      <span className="thai-investor-withdraw-strip__main">
+        <span className="thai-investor-withdraw-strip__top">
+          <span className="thai-investor-withdraw-strip__title">{title}</span>
+          <span className="thai-investor-withdraw-strip__chev" aria-hidden>
+            <ChevronRight className="h-3.5 w-3.5 opacity-55 transition group-hover:opacity-90 group-hover:translate-x-[1px]" />
+          </span>
+        </span>
+        <span className="thai-investor-withdraw-strip__meta">{meta}</span>
+        <span className="thai-investor-withdraw-strip__hint">
+          {(investorName ?? `Позиция #${investorId}`).trim()} · {hint}
+        </span>
+      </span>
+    </button>
+  );
 }

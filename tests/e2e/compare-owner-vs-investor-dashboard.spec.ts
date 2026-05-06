@@ -43,11 +43,46 @@ async function setTheme(page: import("@playwright/test").Page, dark: boolean) {
   await page.waitForTimeout(500);
 }
 
-async function gotoDashboard(page: import("@playwright/test").Page) {
-  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-  await page.waitForURL(/\/dashboard(\/)?$/, { timeout: 120_000 });
-  // Дашборд может подгружать данные; для скрина нам важна стабильная отрисовка.
-  await page.waitForTimeout(900);
+async function gotoDashboard(page: import("@playwright/test").Page, role: "OWNER" | "INVESTOR") {
+  const heroSel = role === "OWNER" ? ".thai-owner-hero-panel" : ".thai-investor-hero-panel";
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.goto("/dashboard", { waitUntil: "load", timeout: 120_000 });
+    await page.waitForURL(/\/dashboard(\/)?$/, { timeout: 120_000 });
+    const hero = page.locator(heroSel).first();
+    try {
+      await hero.waitFor({ state: "visible", timeout: 100_000 });
+      break;
+    } catch {
+      if (attempt === 1) throw new Error(`Hero ${heroSel} not visible after reload`);
+      await page.waitForTimeout(800);
+    }
+  }
+
+  const hero = page.locator(heroSel).first();
+
+  await expect(page.getByText("Открытая неделя").first()).toBeVisible({ timeout: 60_000 });
+  if (role === "OWNER") {
+    await expect(page.getByText("Журнал сети").first()).toBeVisible({ timeout: 90_000 });
+  } else {
+    await expect(page.getByText("История операций").first()).toBeVisible({ timeout: 90_000 });
+  }
+
+  if (role === "OWNER") {
+    await expect(page.locator(".thai-owner-payout-hero").getByRole("button", { name: "Финансы" })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByText("Инвесторы в сети").first()).toBeVisible({ timeout: 60_000 });
+  } else {
+    await expect(page.getByText("Доступно к выводу").first()).toBeVisible({ timeout: 60_000 });
+  }
+
+  // После isBusy появляется счётчик рядом с заголовком (единый маркер готовности ленты).
+  await expect(
+    hero.locator(".thai-dashboard-history-embedded").getByTitle("С учётом периода и типа операций")
+  ).toBeVisible({ timeout: 90_000 });
+
+  await page.waitForTimeout(500);
 }
 
 async function shot(
@@ -61,7 +96,7 @@ async function shot(
 }
 
 test("compare OWNER vs INVESTOR /dashboard screenshots", async ({ browser, baseURL }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   const b = baseURL ?? "http://127.0.0.1:3000";
 
   const ownerCtx = await newContextWithLogin(browser, b, CREDS.owner.u, CREDS.owner.p);
@@ -75,14 +110,14 @@ test("compare OWNER vs INVESTOR /dashboard screenshots", async ({ browser, baseU
   await investorPage.setViewportSize({ width: 1280, height: 900 });
 
   for (const theme of ["dark", "light"] as const) {
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await setTheme(ownerPage, theme === "dark");
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await shot(ownerPage, "OWNER", theme, "desktop");
 
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await setTheme(investorPage, theme === "dark");
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await shot(investorPage, "INVESTOR", theme, "desktop");
   }
 
@@ -91,14 +126,14 @@ test("compare OWNER vs INVESTOR /dashboard screenshots", async ({ browser, baseU
   await investorPage.setViewportSize({ width: 390, height: 844 });
 
   for (const theme of ["dark", "light"] as const) {
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await setTheme(ownerPage, theme === "dark");
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await shot(ownerPage, "OWNER", theme, "mobile");
 
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await setTheme(investorPage, theme === "dark");
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await shot(investorPage, "INVESTOR", theme, "mobile");
   }
 
@@ -107,14 +142,14 @@ test("compare OWNER vs INVESTOR /dashboard screenshots", async ({ browser, baseU
   await investorPage.setViewportSize({ width: 412, height: 915 });
 
   for (const theme of ["dark", "light"] as const) {
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await setTheme(ownerPage, theme === "dark");
-    await gotoDashboard(ownerPage);
+    await gotoDashboard(ownerPage, "OWNER");
     await shot(ownerPage, "OWNER", theme, "s25plus");
 
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await setTheme(investorPage, theme === "dark");
-    await gotoDashboard(investorPage);
+    await gotoDashboard(investorPage, "INVESTOR");
     await shot(investorPage, "INVESTOR", theme, "s25plus");
   }
 

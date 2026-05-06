@@ -7,7 +7,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { openWeekDayProgress } from "@/lib/open-week-forecast";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
 import { Text } from "@/components/ui/Text";
-import { InvestorDashboardMetricTiles } from "@/components/dashboard/InvestorOperationsHistory";
+import { DashboardMetricTiles } from "@/components/dashboard/DashboardOperationsHistory";
 
 function buildWeekRangeLabel(daySpan: number): string {
   const monday = getPreviousOrCurrentMonday(new Date());
@@ -66,14 +66,14 @@ export function InvestorPremiumDashboard({
 
       <section
         className={cn(
-          "thai-investor-block thai-investor-hero-panel relative flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border p-4 md:p-5",
-          "border-border/35 bg-gradient-to-b from-card/95 via-card/90 to-card/80",
+          "thai-investor-block thai-investor-hero-panel relative flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border-0 p-4 md:p-5",
+          "bg-gradient-to-b from-card/48 via-card/38 to-card/28",
           "backdrop-blur-xl"
         )}
         style={glassCard}
       >
         <div
-          className="pointer-events-none absolute inset-0 rounded-2xl opacity-[0.65]"
+          className="pointer-events-none absolute inset-0 rounded-2xl opacity-[0.5]"
           style={{
             background:
               "radial-gradient(120% 90% at 50% -8%, color-mix(in srgb, hsl(var(--primary)) 22%, transparent), transparent 58%)",
@@ -137,7 +137,7 @@ export function InvestorPremiumDashboard({
                 >
                   {formatCurrency(payoutDue)}
                 </output>
-                <div className="flex shrink-0 items-stretch border-l border-border/45 py-0.5 pl-2 md:py-1 md:pl-2.5">
+                <div className="flex shrink-0 items-stretch py-0.5 pl-3 md:py-1 md:pl-3.5">
                   <button
                     type="button"
                     className="thai-investor-glass-btn thai-investor-glass-btn--inline thai-investor-glass-btn--dense max-sm:min-w-[6.25rem]"
@@ -150,10 +150,10 @@ export function InvestorPremiumDashboard({
               </div>
             </div>
 
-            <InvestorDashboardMetricTiles body={statsBody} accrued={statsAccrued} paid={statsPaid} />
+            <DashboardMetricTiles body={statsBody} accrued={statsAccrued} paid={statsPaid} accruedTitle="Начислено сейчас" />
           </div>
 
-          <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-border/25 pt-2 md:mt-3 md:pt-2.5">
+          <div className="mt-2 flex min-h-0 flex-1 flex-col pt-2 md:mt-3 md:pt-2.5">
             {historySlot}
           </div>
         </div>

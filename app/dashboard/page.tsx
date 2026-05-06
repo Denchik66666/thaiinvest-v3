@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
-import { UserAvatar } from "@/components/user/UserAvatar";
 import { toast } from "@/lib/notify";
 import { notifyWithAttention } from "@/lib/attention-notify";
 import {
@@ -26,14 +25,16 @@ import {
   subscribeNotificationPreferences,
 } from "@/lib/notification-preferences";
 import {
-  getPaymentStatusBlock,
+  InvestorWithdrawalStatusBanner,
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
 import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
-import { InvestorOperationsHistory } from "@/components/dashboard/InvestorOperationsHistory";
+import { DashboardOperationsHistory } from "@/components/dashboard/DashboardOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
+import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
+import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 
 type InvestorRow = {
   id: number;
@@ -64,21 +65,6 @@ type PaymentRow = {
   approvedAt?: string | null;
 };
 
-function investorLifecycleBadge(status: string): { label: string; dot: string } {
-  switch (status) {
-    case "active":
-      return { label: "Активен", dot: "#22c55e" };
-    case "awaiting_activation":
-      return { label: "Ожидает активации", dot: "#fbbf24" };
-    case "paused":
-      return { label: "Пауза", dot: "#94a3b8" };
-    case "closed":
-      return { label: "Закрыт", dot: "#64748b" };
-    default:
-      return { label: status, dot: "#94a3b8" };
-  }
-}
-
 function subscribeHtmlDark(onStoreChange: () => void) {
   if (typeof document === "undefined") return () => {};
   const el = document.documentElement;
@@ -103,20 +89,20 @@ const DASHBOARD_DARK_ROOT_STYLE: CSSProperties = {
 };
 
 const GLASS_CARD_DARK: CSSProperties = {
-  background: "var(--thai-color-card-bg)",
-  backdropFilter: "blur(20px) saturate(180%)",
-  WebkitBackdropFilter: "blur(20px) saturate(180%)",
-  border: "1px solid var(--thai-color-card-border)",
-  boxShadow: "0 4px 32px rgba(0,0,0,0.3), inset 0 1px 0 var(--thai-color-card-border)",
+  background: "color-mix(in srgb, var(--thai-color-card-bg) 52%, transparent)",
+  backdropFilter: "blur(22px) saturate(165%)",
+  WebkitBackdropFilter: "blur(22px) saturate(165%)",
+  border: "none",
+  boxShadow: "0 18px 40px -24px rgba(0,0,0,0.45)",
   borderRadius: "16px",
 };
 
 const GLASS_CARD_LIGHT: CSSProperties = {
-  background: "rgba(255,255,255,0.72)",
-  backdropFilter: "blur(20px) saturate(180%)",
-  WebkitBackdropFilter: "blur(20px) saturate(180%)",
-  border: "1px solid var(--thai-color-card-border)",
-  boxShadow: "0 4px 32px rgba(139,92,246,0.08)",
+  background: "rgba(255,255,255,0.38)",
+  backdropFilter: "blur(22px) saturate(175%)",
+  WebkitBackdropFilter: "blur(22px) saturate(175%)",
+  border: "none",
+  boxShadow: "0 14px 36px -20px rgba(88, 52, 180, 0.14)",
   borderRadius: "16px",
 };
 
@@ -230,7 +216,13 @@ export default function DashboardPage() {
       ),
     enabled: !!user,
     placeholderData: keepPreviousData,
-    refetchInterval: user?.role === "INVESTOR" ? 30_000 : false,
+    /**
+     * INVESTOR: частый опрос позиции.
+     * OWNER: без опроса заявки из другого браузера не появятся (глобально refetchOnWindowFocus: false).
+     * Лёгкий lean-список раз в 45 с + обновление при возврате на вкладку.
+     */
+    refetchInterval: user?.role === "INVESTOR" ? 30_000 : user?.role === "OWNER" ? 45_000 : false,
+    refetchOnWindowFocus: user?.role === "OWNER",
   });
 
   const openWeekMondayIso = user?.role === "INVESTOR" ? getPreviousOrCurrentMonday(new Date()).toISOString() : "";
@@ -317,10 +309,15 @@ export default function DashboardPage() {
     };
   }, [isInvestor, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
 
-  const latestInvestorWithdrawalRequest = useMemo(() => {
+  const latestInvestorWithdrawalMeta = useMemo(() => {
     if (!isInvestor || investorsQueryError) return null;
     return pickLatestWithdrawalRequest(myInvestors);
   }, [isInvestor, investorsQueryError, myInvestors]);
+
+  const latestWithdrawalInvestorName = useMemo(() => {
+    if (!latestInvestorWithdrawalMeta) return undefined;
+    return myInvestors.find((i) => i.id === latestInvestorWithdrawalMeta.investorId)?.name;
+  }, [latestInvestorWithdrawalMeta, myInvestors]);
 
   const activeInvestorsCount = useMemo(
     () => myInvestors.filter((i) => i.status === "active").length,
@@ -332,6 +329,26 @@ export default function DashboardPage() {
     if (isSuperAdmin) return countRequestedPayments(investors);
     return 0;
   }, [isOwner, isSuperAdmin, myInvestors, investors]);
+
+  const ownerPendingPayments = useMemo((): OwnerPendingPaymentRow[] => {
+    if (!isOwner) return [];
+    const rows: OwnerPendingPaymentRow[] = [];
+    for (const inv of myInvestors) {
+      for (const p of inv.payments ?? []) {
+        if (p.status !== "requested") continue;
+        rows.push({
+          id: p.id,
+          investorId: inv.id,
+          investorName: inv.name,
+          type: p.type,
+          amount: p.amount,
+          comment: p.comment,
+          createdAt: p.createdAt,
+        });
+      }
+    }
+    return rows.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [isOwner, myInvestors]);
 
   const superAdminFilteredInvestors = useMemo(() => {
     if (!isSuperAdmin) return [];
@@ -436,7 +453,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const onScroll = () => setBarScrolled(window.scrollY > 10);
+    const onScroll = () => {
+      const next = window.scrollY > 10;
+      setBarScrolled((prev) => (prev === next ? prev : next));
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -471,7 +491,7 @@ export default function DashboardPage() {
         if (p.status === "rejected") {
           notifyWithAttention("error", `Заявка отклонена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "approved_waiting_accept") {
-          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Отчёты» для решения.`, notifyPrefs);
+          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Финансы» для решения.`, notifyPrefs);
         } else if (p.status === "completed") {
           notifyWithAttention("success", `Выплата завершена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "expired") {
@@ -535,7 +555,7 @@ export default function DashboardPage() {
   }
 
   const showDueAction = canRequestWithdraw && stats.due > 0.005;
-  const showPendingAction = (isOwner || isSuperAdmin) && pendingApprovalsCount > 0;
+  const showPendingAction = isSuperAdmin && pendingApprovalsCount > 0;
 
   const displayStats = isSuperAdmin ? networkStats : stats;
 
@@ -551,12 +571,10 @@ export default function DashboardPage() {
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
         <DashboardTopbar
-          isInvestor={isInvestor}
           barScrolled={barScrolled}
-          glassCard={glassCard}
           username={user.username}
           avatarUrl={user.avatarUrl}
-          investorPositionsCount={myInvestors.length}
+          dashboardPositionsActive={myInvestors.some((i) => i.status === "active")}
         />
 
         {!isInvestor && !isOwner ? (
@@ -600,10 +618,21 @@ export default function DashboardPage() {
             statsPaid={stats.paid}
             forecastStrip={investorForecastStrip}
             paymentStatusSlot={
-              !investorsQueryError && latestInvestorWithdrawalRequest ? getPaymentStatusBlock(latestInvestorWithdrawalRequest) : null
+              !investorsQueryError && latestInvestorWithdrawalMeta ? (
+                <InvestorWithdrawalStatusBanner
+                  payment={latestInvestorWithdrawalMeta.payment}
+                  investorId={latestInvestorWithdrawalMeta.investorId}
+                  investorName={latestWithdrawalInvestorName}
+                  onOpenDecision={() =>
+                    router.push(
+                      `/dashboard/finance?investor=${latestInvestorWithdrawalMeta.investorId}&payment=${latestInvestorWithdrawalMeta.payment.id}`
+                    )
+                  }
+                />
+              ) : null
             }
             historySlot={
-              <InvestorOperationsHistory
+              <DashboardOperationsHistory
                 embedded
                 enabled
                 glassCard={glassCard}
@@ -618,11 +647,12 @@ export default function DashboardPage() {
             nextPayoutLabel={currentWeek.nextPayout}
             stats={stats}
             investors={myInvestors}
+            pendingPayments={ownerPendingPayments}
             loading={loadingInvestors}
             hasData={Boolean(investorsData)}
             onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
-            onOpenReports={() => router.push("/dashboard/reports")}
-            investorBadge={investorLifecycleBadge}
+            onOpenReports={() => router.push("/dashboard/finance")}
+            onOpenInvestorReports={(id) => router.push(`/dashboard/finance?investor=${id}`)}
           />
         ) : (
           <div className="grid grid-cols-2 gap-2">
@@ -653,7 +683,7 @@ export default function DashboardPage() {
         {showPendingAction ? (
           <button
             type="button"
-            onClick={() => router.push("/dashboard/reports")}
+            onClick={() => router.push("/dashboard/finance")}
             className="thai-row-interactive thai-glass w-full p-3 text-left"
             style={glassCard}
           >
@@ -690,11 +720,11 @@ export default function DashboardPage() {
             {loadingInvestors && !investorsData ? (
               <div className="space-y-2.5">
                 {[0, 1].map((i) => (
-                  <div key={i} className="thai-glass animate-pulse p-3" style={glassCard}>
-                    <div className="h-4 w-36 rounded-md bg-muted/45" />
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div key={i} className="animate-pulse space-y-3 rounded-2xl bg-muted/10 p-3.5 dark:bg-white/[0.04]">
+                    <div className="h-4 w-36 rounded-md bg-muted/40 dark:bg-white/10" />
+                    <div className="grid grid-cols-3 gap-2">
                       {[0, 1, 2].map((j) => (
-                        <div key={j} className="h-10 rounded-lg bg-muted/30" />
+                        <div key={j} className="h-10 rounded-lg bg-muted/25 dark:bg-white/[0.06]" />
                       ))}
                     </div>
                   </div>
@@ -704,29 +734,18 @@ export default function DashboardPage() {
               <Text className="block py-6 text-center text-sm text-muted-foreground">Нет позиций в выбранном фильтре.</Text>
             ) : (
               <div className="space-y-2.5">
-                {superAdminFilteredInvestors.map((inv) => {
-                  const life = investorLifecycleBadge(inv.status);
-                  return (
+                {superAdminFilteredInvestors.map((inv) => (
                     <button
                       key={inv.id}
                       type="button"
                       onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                      className="thai-row-interactive thai-glass w-full border-0 p-3.5 text-left"
-                      style={glassCard}
+                      className={cn(
+                        "thai-row-interactive thai-dashboard-list-row w-full rounded-2xl p-3.5 text-left",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      )}
                     >
                       <div className="flex items-start gap-3">
-                        <UserAvatar name={inv.name} size={44} className="shrink-0 ring-2 ring-border/30 shadow-sm" />
-                        <div className="min-w-0 flex-1">
-                          <Text className="font-semibold leading-tight tracking-tight">{inv.name}</Text>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full shadow-[0_0_10px_currentColor]"
-                              style={{ backgroundColor: life.dot, color: life.dot }}
-                              aria-hidden
-                            />
-                            <Text className="text-[11px] font-medium text-muted-foreground">{life.label}</Text>
-                          </div>
-                        </div>
+                        <InvestorPositionAvatarHeading name={inv.name} status={inv.status} className="min-w-0 flex-1 items-start" />
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2 text-left">
                         <div>
@@ -749,8 +768,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </button>
-                  );
-                })}
+                ))}
               </div>
             )}
           </section>
@@ -760,9 +778,8 @@ export default function DashboardPage() {
         {selectedInvestorCard ? (
           <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="thai-glass w-full max-w-md space-y-4 p-5 shadow-2xl" style={glassCard}>
-              <div className="flex items-center justify-between">
-                <Text className="text-base font-semibold">{selectedInvestorCard.name}</Text>
-                <Text className="text-xs text-muted-foreground">{selectedInvestorCard.status}</Text>
+              <div className="min-w-0">
+                <InvestorPositionAvatarHeading name={selectedInvestorCard.name} status={selectedInvestorCard.status} />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <MiniStat label="Тело" value={formatCurrency(selectedInvestorCard.body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
@@ -866,14 +883,14 @@ export default function DashboardPage() {
               </form>
               <div className="thai-glass space-y-2 p-3" style={glassCard}>
                 <Text className="text-xs text-muted-foreground">
-                  История выплат, запросы на пополнение тела и действия по ним (принять, отклонить, спор) — в разделе «Отчёты» для этой позиции.
+                  История выплат, запросы на пополнение тела и действия по ним (принять, отклонить, спор) — в разделе «Финансы» для этой позиции.
                 </Text>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="w-full"
-                  onClick={() => router.push(`/dashboard/reports?investor=${selectedInvestorCard.id}`)}
+                  onClick={() => router.push(`/dashboard/finance?investor=${selectedInvestorCard.id}`)}
                 >
                   Открыть отчёты
                 </Button>

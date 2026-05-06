@@ -281,3 +281,19 @@ body {
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
 }
+
+/* «Финансы»: без видимой полосы у окна — скролл страницы пальцем/колесом сохраняется */
+html.thai-finance-touch-scroll {
+  scrollbar-width: none;
+}
+html.thai-finance-touch-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+html.thai-finance-touch-scroll body {
+  scrollbar-width: none;
+}
+html.thai-finance-touch-scroll body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

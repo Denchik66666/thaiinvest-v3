@@ -66,6 +66,7 @@
 | HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
 |------|---------|------------|---------------|------------------------|
 | **GET** | `/api/investors/[id]/weekly-ledger` | Недельная «бухгалтерия» по инвестору | **OWNER** — свой неприватный; **INVESTOR** — привязка к позиции; **SUPER_ADMIN** — без доп. ограничения в этом фрагменте | `verifyToken`; блоки `OWNER` / `INVESTOR` — `app/api/investors/[id]/weekly-ledger/route.ts`. |
+| **GET** | `/api/investors/operations-history` | Объединённая лента операций для главной дашборда (`items`: недели, платежи, пополнения и т.д.) | Только **INVESTOR** (`investorUserId`) и **OWNER** (`ownerId` по общим позициям); **SUPER_ADMIN** и прочие — **403** | `verifyToken`; `decoded.role` не `INVESTOR`/`OWNER` — **403**; выборка `prisma.investor.findMany` по `investorsWhere` — `app/api/investors/operations-history/route.ts`. На клиенте кеш React Query разведён по ключу с суффиксом области (`investor` \| `owner`). |
 | **GET** | `/api/investors/private-create-context` | Контекст лимитов для создания приватного инвестора | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/investors/private-create-context/route.ts`. |
 | **POST** | `/api/investors/become-semen-investor` | Спец-сценарий создания позиции (семя) | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/investors/become-semen-investor/route.ts`. |
 

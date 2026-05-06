@@ -64,7 +64,8 @@
   --thai-color-forecast-border: rgba(165, 180, 252, 0.35);
 }
 
-/* Лента истории инвестора: заполняет оставшуюся высоту экрана внутри flex-цепочки */
+/* Лента истории на дашборде (общая для инвестора и владельца): высота внутри flex-цепочки */
+.thai-dashboard-history-scroll,
 .thai-investor-history-scroll,
 .thai-owner-history-scroll {
   min-height: 12rem;
@@ -75,8 +76,8 @@
 .thai-investor-forecast-strip,
 .thai-owner-forecast-strip {
   border-radius: 0.65rem;
-  border: 1px solid var(--thai-color-forecast-border);
-  background: var(--thai-color-forecast-bg);
+  border: none;
+  background: color-mix(in srgb, var(--thai-color-forecast-bg) 58%, transparent);
   color: var(--thai-color-forecast);
   font-size: 0.6875rem;
   line-height: 1.35;
@@ -88,21 +89,20 @@
   font-size: 0.625rem;
   line-height: 1.3;
   padding: 0.3rem 0.55rem;
-  border-color: color-mix(in srgb, var(--thai-color-forecast-border) 75%, transparent);
-  background: color-mix(in srgb, var(--thai-color-forecast-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--thai-color-forecast-bg) 42%, transparent);
   color: color-mix(in srgb, var(--thai-color-forecast) 88%, var(--thai-color-text-secondary));
 }
 
 .theme-linear.dark .thai-investor-forecast-strip--quiet,
 .theme-linear.dark .thai-owner-forecast-strip--quiet {
-  border-color: color-mix(in srgb, var(--thai-color-forecast-border) 55%, transparent);
-  background: color-mix(in srgb, var(--thai-color-forecast-bg) 55%, transparent);
+  background: color-mix(in srgb, var(--thai-color-forecast-bg) 38%, transparent);
 }
 
 /**
  * Премиум-золото сумм (прогноз «+… ฿», ожидаемое начисление +0 ฿ в ленте и т.п.) —
  * та же палитра, что у .thai-investor-thermo-fill.
  */
+.thai-dashboard-premium-gold-amount,
 .thai-investor-premium-gold-amount,
 .thai-investor-forecast-strip__amount {
   font-weight: 650;
@@ -112,6 +112,7 @@
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .thai-dashboard-premium-gold-amount,
   .thai-investor-premium-gold-amount,
   .thai-investor-forecast-strip__amount {
     background: linear-gradient(
@@ -129,6 +130,7 @@
   }
 }
 
+.theme-linear.dark .thai-dashboard-premium-gold-amount,
 .theme-linear.dark .thai-investor-premium-gold-amount,
 .theme-linear.dark .thai-investor-forecast-strip__amount {
   color: hsl(48 92% 62%);
@@ -139,6 +141,7 @@
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .theme-linear.dark .thai-dashboard-premium-gold-amount,
   .theme-linear.dark .thai-investor-premium-gold-amount,
   .theme-linear.dark .thai-investor-forecast-strip__amount {
     background: linear-gradient(
@@ -434,18 +437,12 @@
 /* Единая hero-карточка инвестора (градусник + метрики + история) */
 .thai-investor-hero-panel,
 .thai-owner-hero-panel {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 14%, var(--thai-color-card-border)),
-    0 28px 56px -32px color-mix(in srgb, hsl(var(--primary)) 24%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  box-shadow: 0 26px 52px -30px color-mix(in srgb, hsl(var(--primary)) 22%, transparent);
 }
 
 .theme-linear.dark .thai-investor-hero-panel,
 .theme-linear.dark .thai-owner-hero-panel {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 22%, transparent),
-    0 32px 64px -28px color-mix(in srgb, hsl(var(--primary)) 32%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  box-shadow: 0 28px 56px -26px color-mix(in srgb, hsl(var(--primary)) 26%, transparent);
 }
 
 .thai-investor-thermo-wrap--in-hero,
@@ -484,15 +481,320 @@
 
 .thai-investor-payout-hero,
 .thai-owner-payout-hero {
-  background: rgba(251, 191, 36, 0.06);
-  border: 1px solid rgba(251, 191, 36, 0.2);
-  box-shadow:
-    0 0 20px rgba(251, 191, 36, 0.08),
-    0 12px 40px -24px color-mix(in srgb, var(--thai-color-due) 25%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--thai-color-due) 12%, transparent);
+  background: rgba(251, 191, 36, 0.045);
+  border: none;
+  box-shadow: 0 14px 36px -28px color-mix(in srgb, var(--thai-color-due) 18%, transparent);
   border-radius: 14px;
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+}
+
+/** Две плитки: «за всё время» и «текущая неделя» — стекло и золото как у прогноза */
+.thai-investor-accrual-twin {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+@media (min-width: 480px) {
+  .thai-investor-accrual-twin {
+    gap: 0.5rem;
+  }
+}
+
+.thai-investor-accrual-twin__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem 0.5rem;
+  background: color-mix(in srgb, var(--thai-color-card-bg) 42%, transparent);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, hsl(var(--primary)) 12%, transparent),
+    0 10px 28px -22px color-mix(in srgb, hsl(var(--primary)) 22%, transparent);
+  border: 1px solid color-mix(in srgb, hsl(var(--primary)) 14%, transparent);
+}
+
+.theme-linear.dark .thai-investor-accrual-twin__cell {
+  background: color-mix(in srgb, var(--thai-color-card-bg) 38%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, hsl(var(--primary)) 10%, transparent),
+    0 12px 36px -24px rgba(0, 0, 0, 0.55);
+  border-color: color-mix(in srgb, hsl(var(--primary)) 18%, transparent);
+}
+
+.thai-investor-accrual-twin__cell--skeleton {
+  min-height: 4.25rem;
+  animation: thai-pulse-soft 1.4s ease-in-out infinite;
+  border-color: transparent;
+}
+
+.thai-investor-accrual-twin__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+  line-height: 1.15;
+}
+
+.thai-investor-accrual-twin__value {
+  font-size: clamp(0.95rem, 2vw + 0.65rem, 1.15rem);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.thai-investor-accrual-twin__hint {
+  font-size: 10px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--muted-foreground) 88%, transparent);
+}
+
+.thai-investor-accrual-twin__footnote {
+  margin-top: 0.15rem;
+  font-size: 9px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+}
+
+@keyframes thai-pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+/* Раздел «Финансы» — лента движений */
+.thai-finance-movements {
+  width: 100%;
+}
+
+.thai-finance-move-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+@media (min-width: 480px) {
+  .thai-finance-move-summary-grid {
+    gap: 0.55rem;
+  }
+}
+
+.thai-finance-move-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: 14px;
+  padding: 0.55rem 0.65rem 0.5rem;
+  background: color-mix(in srgb, var(--thai-color-card-bg) 44%, transparent);
+  backdrop-filter: blur(18px) saturate(165%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
+  border: 1px solid color-mix(in srgb, hsl(var(--primary)) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, hsl(var(--primary)) 12%, transparent),
+    0 10px 28px -22px color-mix(in srgb, hsl(var(--primary)) 22%, transparent);
+}
+
+.theme-linear.dark .thai-finance-move-summary-card {
+  background: color-mix(in srgb, var(--thai-color-card-bg) 36%, transparent);
+  border-color: color-mix(in srgb, hsl(var(--primary)) 18%, transparent);
+}
+
+.thai-finance-move-summary-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted-foreground) 90%, transparent);
+}
+
+.thai-finance-move-summary-value {
+  font-size: clamp(0.95rem, 2vw + 0.62rem, 1.12rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.thai-finance-move-summary-hint {
+  font-size: 9px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+}
+
+.thai-finance-move-count-pill {
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, hsl(var(--primary)) 14%, transparent);
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+}
+
+.thai-finance-move-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--background) 55%, transparent);
+  color: var(--muted-foreground);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.thai-finance-move-icon-btn:hover {
+  border-color: color-mix(in srgb, hsl(var(--primary)) 35%, transparent);
+  color: var(--foreground);
+}
+
+.thai-finance-move-icon-btn--active {
+  border-color: color-mix(in srgb, hsl(var(--primary)) 45%, transparent);
+  background: color-mix(in srgb, hsl(var(--primary)) 12%, transparent);
+  color: hsl(var(--primary));
+}
+
+.thai-finance-move-filter-chip {
+  border-color: color-mix(in srgb, var(--border) 40%, transparent) !important;
+  background: color-mix(in srgb, var(--background) 35%, transparent) !important;
+}
+
+.thai-finance-move-filter-chip-active {
+  box-shadow: 0 6px 20px -10px color-mix(in srgb, hsl(var(--primary)) 35%, transparent);
+}
+
+.thai-finance-move-panel-inner {
+  background: color-mix(in srgb, var(--thai-color-card-bg) 38%, transparent);
+}
+
+.thai-finance-move-day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+}
+
+.thai-finance-move-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  transition: background 0.15s ease;
+}
+
+.thai-finance-move-row:hover {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.thai-finance-move-row--ghost {
+  opacity: 0.92;
+}
+
+.thai-finance-move-row--topup {
+  background: var(--thai-color-topup-bg);
+}
+
+.thai-finance-move-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  background: color-mix(in srgb, var(--background) 45%, transparent);
+  color: var(--foreground);
+}
+
+.thai-finance-move-icon--accrual {
+  border-color: color-mix(in srgb, var(--thai-color-accrued) 42%, transparent);
+  color: var(--thai-color-accrued);
+}
+
+.thai-finance-move-icon--paid {
+  border-color: color-mix(in srgb, var(--thai-color-paid) 42%, transparent);
+  color: var(--thai-color-paid);
+}
+
+.thai-finance-move-icon--due {
+  border-color: color-mix(in srgb, var(--thai-color-due) 42%, transparent);
+  color: var(--thai-color-due);
+}
+
+.thai-finance-move-icon--topup {
+  border-color: color-mix(in srgb, var(--thai-color-topup) 45%, transparent);
+  color: var(--thai-color-topup);
+}
+
+.thai-finance-move-title {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+
+.thai-finance-move-sub {
+  margin-top: 0.1rem;
+  font-size: 10px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--muted-foreground) 94%, transparent);
+}
+
+.thai-finance-move-note {
+  margin-top: 0.2rem;
+  font-size: 9px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--muted-foreground) 88%, transparent);
+}
+
+.thai-finance-move-comment {
+  margin-top: 0.35rem;
+  border-radius: 10px;
+  padding: 0.35rem 0.5rem;
+  font-size: 10px;
+  line-height: 1.35;
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
+.thai-finance-move-amt-col {
+  flex-shrink: 0;
+  text-align: right;
+  line-height: 1.2;
+  min-width: 4.5rem;
+}
+
+.thai-finance-move-amt {
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.thai-finance-move-amt-secondary {
+  margin-top: 0.15rem;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.thai-finance-move-amt-muted {
+  margin-top: 0.15rem;
+  font-size: 9px;
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
 }
 
 .thai-investor-glass-btn,
@@ -504,13 +806,11 @@
   margin-top: 14px;
   padding: 12px 16px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--thai-color-card-border) 85%, transparent);
-  background: color-mix(in srgb, var(--thai-color-card-bg) 65%, transparent);
+  border: none;
+  background: color-mix(in srgb, var(--thai-color-card-bg) 48%, transparent);
   backdrop-filter: blur(20px) saturate(175%);
   -webkit-backdrop-filter: blur(20px) saturate(175%);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--thai-color-text-primary) 6%, transparent),
-    0 8px 28px -16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 28px -18px rgba(0, 0, 0, 0.35);
   font-weight: 600;
   font-size: 0.9375rem;
   color: var(--thai-color-due);
@@ -523,9 +823,7 @@
 .thai-investor-glass-btn:hover:not(:disabled),
 .thai-owner-glass-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--thai-color-text-primary) 8%, transparent),
-    0 12px 36px -14px color-mix(in srgb, var(--thai-color-due) 22%, transparent);
+  box-shadow: 0 14px 38px -16px color-mix(in srgb, var(--thai-color-due) 24%, transparent);
 }
 
 .thai-investor-glass-btn:disabled,
@@ -553,18 +851,1103 @@
   font-size: 0.75rem;
 }
 
-.thai-investor-avatar-ring[data-has-positions="true"] {
-  box-shadow:
-    0 0 20px color-mix(in srgb, var(--thai-color-paid) 30%, transparent),
-    0 0 40px color-mix(in srgb, var(--thai-color-paid) 10%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-paid) 35%, transparent);
+/**
+ * «Инвесторы в сети» — заявка на вывод: графит, серебристый акцент, без «кислотного» контраста.
+ */
+.thai-owner-lux-withdraw-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
+.thai-owner-lux-withdraw-rail {
+  position: relative;
+  border-radius: 11px;
+}
+
+.thai-owner-lux-withdraw-rail__accent {
+  position: absolute;
+  top: 14%;
+  bottom: 14%;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(220 18% 88%) 52%, transparent) 0%,
+    color-mix(in srgb, hsl(220 12% 62%) 38%, transparent) 52%,
+    color-mix(in srgb, hsl(220 16% 42%) 26%, transparent) 100%
+  );
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__accent {
+  opacity: 0.72;
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.62) 0%,
+    rgba(100, 116, 139, 0.42) 100%
+  );
+}
+
+.thai-owner-lux-withdraw-rail__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.38rem 0.65rem;
+  padding: 0.32rem 0.48rem 0.38rem 0.66rem;
+  margin-left: 1px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.088);
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.074) 0%,
+    rgba(255, 255, 255, 0.02) 38%,
+    rgba(4, 6, 12, 0.88) 58%,
+    rgba(2, 4, 10, 0.94) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.065),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    0 10px 28px -18px rgba(0, 0, 0, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__body {
+  border-color: rgba(15, 23, 42, 0.09);
+  background: linear-gradient(
+    152deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(247, 248, 252, 0.95) 46%,
+    rgba(232, 235, 244, 0.93) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+    0 8px 24px -16px rgba(15, 23, 42, 0.14);
+}
+
+.thai-owner-lux-withdraw-rail__meta {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 9.5rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.26rem 0.52rem;
+}
+
+.thai-owner-lux-withdraw-rail__eyebrow {
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(208, 218, 235, 0.58);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__eyebrow {
+  color: rgba(71, 85, 105, 0.62);
+}
+
+.thai-owner-lux-withdraw-rail__line {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.thai-owner-lux-withdraw-rail__kind {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(226, 232, 245, 0.82);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__kind {
+  color: rgba(30, 41, 59, 0.82);
+}
+
+.thai-owner-lux-withdraw-rail__sep {
+  width: 3px;
+  height: 3px;
+  flex-shrink: 0;
+  align-self: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__sep {
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.thai-owner-lux-withdraw-rail__sep--dim {
+  opacity: 0.52;
+}
+
+.thai-owner-lux-withdraw-rail__amount {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(248, 250, 255, 0.94);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__amount {
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.thai-owner-lux-withdraw-rail__when {
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(196, 208, 228, 0.48);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-rail__when {
+  color: rgba(100, 116, 139, 0.62);
+}
+
+.thai-owner-lux-withdraw-rail__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.thai-owner-lux-withdraw-approve {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.625rem;
+  padding: 0 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: hsl(222 24% 11%);
+  background: linear-gradient(165deg, hsl(220 14% 94%) 0%, hsl(220 12% 82%) 42%, hsl(220 10% 71%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 4px 14px -6px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.22s ease,
+    filter 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.thai-owner-lux-withdraw-approve::after {
+  content: "";
+  position: absolute;
+  inset: -45% -35%;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.42) 49%,
+    transparent 60%
+  );
+  opacity: 0;
+  transform: translateX(-48%);
+  transition:
+    opacity 0.35s ease,
+    transform 0.55s ease;
+}
+
+.thai-owner-lux-withdraw-approve:hover:not(:disabled)::after {
+  opacity: 0.52;
+  transform: translateX(38%);
+}
+
+.thai-owner-lux-withdraw-approve:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  border-color: rgba(255, 255, 255, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 8px 22px -10px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.thai-owner-lux-withdraw-approve:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.thai-owner-lux-withdraw-approve:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-approve {
+  color: hsl(222 28% 10%);
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 4px 16px -8px rgba(15, 23, 42, 0.22),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.thai-owner-lux-withdraw-decline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.625rem;
+  padding: 0 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(210, 218, 235, 0.62);
+  background: rgba(255, 255, 255, 0.028);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.thai-owner-lux-withdraw-decline:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: rgba(238, 242, 252, 0.88);
+  background: rgba(255, 255, 255, 0.058);
+}
+
+.thai-owner-lux-withdraw-decline:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-decline {
+  border-color: rgba(15, 23, 42, 0.14);
+  color: rgba(71, 85, 105, 0.72);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-withdraw-decline:hover:not(:disabled) {
+  border-color: rgba(15, 23, 42, 0.22);
+  color: rgba(30, 41, 59, 0.92);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+/** Прочие оповещения по выплате — та же визуальная линия */
+.thai-owner-lux-alert-strip {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.048) 0%,
+    rgba(10, 12, 20, 0.74) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.048);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+
+.thai-owner-lux-alert-strip:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(14, 16, 26, 0.78) 100%
+  );
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip {
+  border-color: rgba(15, 23, 42, 0.09);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(241, 243, 249, 0.94) 100%
+  );
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip:hover {
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+.thai-owner-lux-alert-strip__icon {
+  color: rgba(186, 198, 220, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip__icon {
+  color: rgba(100, 116, 139, 0.62);
+}
+
+.thai-owner-lux-alert-strip__text {
+  color: rgba(222, 230, 245, 0.82);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip__text {
+  color: rgba(51, 65, 85, 0.88);
+}
+
+.thai-owner-lux-alert-strip__link {
+  color: rgba(196, 208, 232, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip__link {
+  color: rgba(79, 70, 229, 0.78);
+}
+
+.thai-owner-lux-alert-strip:hover .thai-owner-lux-alert-strip__link {
+  color: rgba(236, 242, 255, 0.94);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-alert-strip:hover .thai-owner-lux-alert-strip__link {
+  color: rgba(67, 56, 202, 0.92);
+}
+
+/** Инвестор — компактный статус заявки на вывод (главная), линия как у OWNER lux */
+.thai-investor-withdraw-strip {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 12px;
+  padding: 0.36rem 0.46rem 0.4rem 0.34rem;
+  border: 1px solid rgba(255, 255, 255, 0.088);
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgba(255, 255, 255, 0.018) 38%,
+    rgba(4, 6, 12, 0.88) 58%,
+    rgba(2, 4, 10, 0.94) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 10px 28px -18px rgba(0, 0, 0, 0.65);
+}
+
+.thai-investor-withdraw-strip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.theme-linear:not(.dark) .thai-investor-withdraw-strip {
+  border-color: rgba(15, 23, 42, 0.09);
+  background: linear-gradient(
+    152deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(246, 247, 252, 0.96) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 8px 22px -14px rgba(15, 23, 42, 0.12);
+}
+
+.theme-linear:not(.dark) .thai-investor-withdraw-strip:hover {
+  border-color: rgba(15, 23, 42, 0.13);
+}
+
+.thai-investor-withdraw-strip__accent {
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.thai-investor-withdraw-strip--pending .thai-investor-withdraw-strip__accent {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--thai-color-due) 62%, transparent),
+    color-mix(in srgb, var(--thai-color-due) 26%, transparent)
+  );
+}
+
+.thai-investor-withdraw-strip--approved .thai-investor-withdraw-strip__accent {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--thai-color-paid) 68%, transparent),
+    color-mix(in srgb, var(--thai-color-paid) 30%, transparent)
+  );
+}
+
+.thai-investor-withdraw-strip--rejected .thai-investor-withdraw-strip__accent {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--thai-color-rejected) 58%, transparent),
+    color-mix(in srgb, var(--thai-color-rejected) 26%, transparent)
+  );
+}
+
+.thai-investor-withdraw-strip__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.6rem;
+  margin-left: 0.26rem;
+}
+
+.thai-investor-withdraw-strip--pending .thai-investor-withdraw-strip__icon {
+  color: color-mix(in srgb, var(--thai-color-due) 82%, white);
+}
+
+.thai-investor-withdraw-strip--approved .thai-investor-withdraw-strip__icon {
+  color: color-mix(in srgb, var(--thai-color-paid) 85%, white);
+}
+
+.thai-investor-withdraw-strip--rejected .thai-investor-withdraw-strip__icon {
+  color: color-mix(in srgb, var(--thai-color-rejected) 78%, white);
+}
+
+.thai-investor-withdraw-strip__main {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.32rem;
+}
+
+.thai-investor-withdraw-strip__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.thai-investor-withdraw-strip__title {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.thai-investor-withdraw-strip--pending .thai-investor-withdraw-strip__title {
+  color: color-mix(in srgb, var(--thai-color-due) 68%, white);
+}
+
+.thai-investor-withdraw-strip--approved .thai-investor-withdraw-strip__title {
+  color: color-mix(in srgb, var(--thai-color-paid) 74%, white);
+}
+
+.thai-investor-withdraw-strip--rejected .thai-investor-withdraw-strip__title {
+  color: color-mix(in srgb, var(--thai-color-rejected) 72%, white);
+}
+
+.thai-investor-withdraw-strip__chev {
+  flex-shrink: 0;
+  color: rgba(200, 212, 232, 0.4);
+}
+
+.theme-linear:not(.dark) .thai-investor-withdraw-strip__chev {
+  color: rgba(100, 116, 139, 0.45);
+}
+
+.thai-investor-withdraw-strip__meta {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.28;
+  color: rgba(238, 242, 252, 0.88);
+}
+
+.theme-linear:not(.dark) .thai-investor-withdraw-strip__meta {
+  color: rgba(30, 41, 59, 0.9);
+}
+
+.thai-investor-withdraw-strip__hint {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.53125rem;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+  color: rgba(176, 190, 212, 0.46);
+}
+
+.theme-linear:not(.dark) .thai-investor-withdraw-strip__hint {
+  color: rgba(100, 116, 139, 0.58);
+}
+
+@keyframes thai-report-payment-row-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+  45% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, hsl(var(--primary)) 38%, transparent),
+      0 0 26px -10px color-mix(in srgb, hsl(var(--primary)) 32%, transparent);
+  }
+}
+
+.thai-report-payment-row--pulse {
+  animation: thai-report-payment-row-pulse 1.05s ease-in-out 3;
+}
+
+@keyframes thai-owner-lux-approve-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/** Модалка одобрения вывода — та же линия, что «lux»-рейл в карточке инвестора */
+.thai-owner-lux-approve-modal__surface {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  animation: thai-owner-lux-approve-modal-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.thai-owner-lux-approve-modal__accent {
+  position: absolute;
+  top: 11%;
+  bottom: 11%;
+  left: 0;
+  z-index: 1;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(220 18% 88%) 52%, transparent) 0%,
+    color-mix(in srgb, hsl(220 12% 62%) 38%, transparent) 52%,
+    color-mix(in srgb, hsl(220 16% 42%) 26%, transparent) 100%
+  );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__accent {
+  opacity: 0.72;
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.62) 0%,
+    rgba(100, 116, 139, 0.42) 100%
+  );
+}
+
+.thai-owner-lux-approve-modal__panel {
+  position: relative;
+  margin-left: 2px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.022) 34%,
+    rgba(4, 6, 12, 0.92) 58%,
+    rgba(2, 4, 10, 0.97) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 22px 56px -22px rgba(0, 0, 0, 0.82),
+    0 0 0 1px rgba(109, 40, 217, 0.06);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__panel {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: linear-gradient(
+    154deg,
+    rgba(255, 255, 255, 0.99) 0%,
+    rgba(248, 249, 253, 0.97) 48%,
+    rgba(236, 239, 247, 0.95) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+    0 18px 44px -18px rgba(15, 23, 42, 0.18),
+    0 0 0 1px rgba(139, 92, 246, 0.06);
+}
+
+.thai-owner-lux-approve-modal__pad {
+  padding: 0.72rem 0.78rem 0.82rem;
+}
+
+@media (min-width: 640px) {
+  .thai-owner-lux-approve-modal__pad {
+    padding: 0.82rem 0.92rem 0.92rem;
+  }
+}
+
+.thai-owner-lux-approve-modal__eyebrow {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(200, 212, 232, 0.52);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__eyebrow {
+  color: rgba(71, 85, 105, 0.58);
+}
+
+.thai-owner-lux-approve-modal__id-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.12rem 0.42rem 0.14rem;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(214, 224, 242, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__id-pill {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.thai-owner-lux-approve-modal__sum {
+  margin-top: 0.38rem;
+  font-size: clamp(1.28rem, 5.4vw, 1.48rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: rgba(252, 253, 255, 0.96);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__sum {
+  color: rgba(15, 23, 42, 0.94);
+}
+
+.thai-owner-lux-approve-modal__chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.1rem 0.48rem 0.12rem;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(210, 220, 238, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__chip {
+  border-color: rgba(15, 23, 42, 0.09);
+  background: rgba(248, 250, 252, 0.92);
+  color: rgba(71, 85, 105, 0.82);
+}
+
+.thai-owner-lux-approve-modal__sum-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  margin-top: 0.35rem;
+}
+
+.thai-owner-lux-approve-modal__sum-row .thai-owner-lux-approve-modal__sum,
+.thai-owner-lux-approve-modal__sum-row .thai-owner-lux-approve-modal__chip {
+  margin-top: 0;
+}
+
+.thai-owner-lux-approve-modal__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.42rem 0.65rem;
+  margin-top: 0.62rem;
+  padding-top: 0.58rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__grid {
+  border-top-color: rgba(15, 23, 42, 0.08);
+}
+
+.thai-owner-lux-approve-modal__fact-label {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(176, 190, 212, 0.48);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__fact-label {
+  color: rgba(100, 116, 139, 0.62);
+}
+
+.thai-owner-lux-approve-modal__fact-value {
+  margin-top: 0.12rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: rgba(236, 240, 248, 0.9);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__fact-value {
+  color: rgba(30, 41, 59, 0.92);
+}
+
+.thai-owner-lux-approve-modal__flow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-top: 0.55rem;
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(188, 200, 222, 0.52);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__flow {
+  color: rgba(100, 116, 139, 0.72);
+}
+
+.thai-owner-lux-approve-modal__flow-step {
+  color: rgba(222, 232, 248, 0.72);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__flow-step {
+  color: rgba(51, 65, 85, 0.82);
+}
+
+.thai-owner-lux-approve-modal__inv-note {
+  margin-top: 0.48rem;
+  max-height: 3.75rem;
+  overflow-y: auto;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 0.38rem 0.48rem;
+  font-size: 0.625rem;
+  line-height: 1.45;
+  color: rgba(214, 224, 242, 0.78);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__inv-note {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.94);
+  color: rgba(51, 65, 85, 0.88);
+}
+
+.thai-owner-lux-approve-modal__inv-note-label {
+  margin-bottom: 0.18rem;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(176, 190, 212, 0.48);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__inv-note-label {
+  color: rgba(100, 116, 139, 0.62);
+}
+
+.thai-owner-lux-approve-modal__label {
+  margin-top: 0.55rem;
+  display: block;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: rgba(188, 200, 222, 0.58);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__label {
+  color: rgba(71, 85, 105, 0.72);
+}
+
+.thai-owner-lux-approve-modal__textarea {
+  margin-top: 0.32rem;
+  width: 100%;
+  resize: vertical;
+  min-height: 3.25rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.42rem 0.52rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: rgba(238, 242, 252, 0.94);
+  outline: none;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.thai-owner-lux-approve-modal__textarea::placeholder {
+  color: rgba(176, 190, 212, 0.42);
+}
+
+.thai-owner-lux-approve-modal__textarea:focus-visible {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.22);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__textarea {
+  border-color: rgba(15, 23, 42, 0.11);
+  background: rgba(255, 255, 255, 0.96);
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__textarea::placeholder {
+  color: rgba(100, 116, 139, 0.42);
+}
+
+.theme-linear:not(.dark) .thai-owner-lux-approve-modal__textarea:focus-visible {
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18);
+}
+
+.thai-owner-lux-approve-modal__footer {
+  display: flex;
+  gap: 0.42rem;
+  margin-top: 0.62rem;
+}
+
+.thai-owner-lux-approve-modal__footer .thai-owner-lux-withdraw-decline {
+  flex: 0 0 auto;
+}
+
+.thai-owner-lux-approve-modal__footer .thai-owner-lux-withdraw-approve {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 1.875rem;
+  padding: 0 0.62rem;
+}
+
+.thai-dashboard-avatar-ring[data-has-positions="true"],
+.thai-investor-avatar-ring[data-has-positions="true"] {
+  box-shadow:
+    0 0 14px color-mix(in srgb, var(--thai-color-paid) 14%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-paid) 32%, transparent);
+}
+
+.thai-dashboard-avatar-ring[data-has-positions="false"],
 .thai-investor-avatar-ring[data-has-positions="false"] {
   box-shadow:
-    0 0 20px color-mix(in srgb, var(--thai-color-rejected) 28%, transparent),
-    0 0 40px color-mix(in srgb, var(--thai-color-rejected) 10%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-rejected) 30%, transparent);
+    0 0 12px color-mix(in srgb, var(--thai-color-rejected) 11%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-rejected) 26%, transparent);
+}
+
+/**
+ * Панель «Запросы и подтверждения» на главной OWNER — выразительное стекло.
+ */
+.thai-owner-requests-panel {
+  position: relative;
+  isolation: isolate;
+}
+
+.theme-linear.dark .thai-owner-requests-panel,
+.dark .thai-owner-requests-panel {
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.048) 52%,
+    rgba(24, 22, 40, 0.42) 100%
+  );
+  backdrop-filter: blur(22px) saturate(168%);
+  -webkit-backdrop-filter: blur(22px) saturate(168%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 0 0 1px rgba(109, 40, 217, 0.07);
+}
+
+.theme-linear:not(.dark) .thai-owner-requests-panel {
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(248, 245, 255, 0.9) 48%,
+    rgba(255, 255, 255, 0.92) 100%
+  );
+  backdrop-filter: blur(18px) saturate(178%);
+  -webkit-backdrop-filter: blur(18px) saturate(178%);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  box-shadow:
+    0 12px 40px rgba(88, 52, 180, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.thai-owner-requests-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.55;
+  background: radial-gradient(120% 85% at 18% -15%, rgba(139, 92, 246, 0.14), transparent 52%);
+}
+
+.dark .thai-owner-requests-panel::after,
+.theme-linear.dark .thai-owner-requests-panel::after {
+  opacity: 0.42;
+  background: radial-gradient(115% 80% at 22% -12%, rgba(167, 139, 250, 0.18), transparent 56%);
+}
+
+/**
+ * Карточки позиций «Инвесторы в сети» (OWNER): без blur,
+ * контур и заливка ~90% прозрачности (alpha ~0.1 / фон ещё легче).
+ */
+.thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row {
+  position: relative;
+  border-radius: 1rem !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.theme-linear.dark .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row,
+.dark .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row {
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.062) 0%,
+    rgba(255, 255, 255, 0.02) 38%,
+    rgba(4, 6, 12, 0.42) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.105) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.065),
+    0 14px 42px -26px rgba(0, 0, 0, 0.62) !important;
+}
+
+.theme-linear:not(.dark) .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row {
+  background: linear-gradient(
+    172deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(249, 250, 253, 0.92) 52%,
+    rgba(238, 241, 248, 0.9) 100%
+  ) !important;
+  border: 1px solid rgba(15, 23, 42, 0.09) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 12px 34px -22px rgba(15, 23, 42, 0.14) !important;
+}
+
+.thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row:hover {
+  transform: translateY(-1px);
+  z-index: 5;
+}
+
+.theme-linear.dark .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row:hover,
+.dark .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row:hover {
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.078) 0%,
+    rgba(255, 255, 255, 0.026) 40%,
+    rgba(8, 10, 18, 0.52) 100%
+  ) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.theme-linear:not(.dark) .thai-row-interactive.thai-owner-network-investor-card.thai-dashboard-list-row:hover {
+  background: linear-gradient(
+    172deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(252, 252, 254, 0.96) 100%
+  ) !important;
+  border-color: rgba(15, 23, 42, 0.13) !important;
+}
+
+.theme-linear.dark .thai-owner-network-investor-card .thai-owner-lux-metric,
+.dark .thai-owner-network-investor-card .thai-owner-lux-metric {
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.065) !important;
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.045) 0%,
+    rgba(255, 255, 255, 0.012) 100%
+  ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.042);
+}
+
+.theme-linear.dark .thai-owner-network-investor-card .thai-owner-lux-metric:hover,
+.dark .thai-owner-network-investor-card .thai-owner-lux-metric:hover {
+  background: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.062) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  ) !important;
+}
+
+.theme-linear:not(.dark) .thai-owner-network-investor-card .thai-owner-lux-metric {
+  border-radius: 10px !important;
+  border: 1px solid rgba(15, 23, 42, 0.07) !important;
+  background: rgba(255, 255, 255, 0.52) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 4px 14px -12px rgba(15, 23, 42, 0.12);
+}
+
+.theme-linear:not(.dark) .thai-owner-network-investor-card .thai-owner-lux-metric:hover {
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+@keyframes thai-owner-investor-attention-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.065),
+      0 14px 42px -26px rgba(0, 0, 0, 0.62),
+      0 0 0 0 transparent;
+  }
+  42% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.085),
+      0 14px 42px -26px rgba(0, 0, 0, 0.62),
+      0 0 0 2px rgba(210, 220, 238, 0.42),
+      0 0 28px -8px rgba(230, 236, 248, 0.22);
+  }
+  70% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 14px 42px -26px rgba(0, 0, 0, 0.62),
+      0 0 0 1px rgba(190, 200, 222, 0.28);
+  }
+}
+
+.thai-owner-investor-attention {
+  animation: thai-owner-investor-attention-pulse 1.05s ease-in-out 3;
+}
+
+@keyframes thai-owner-investor-attention-pulse-light {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      0 12px 34px -22px rgba(15, 23, 42, 0.14),
+      0 0 0 0 transparent;
+  }
+  42% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      0 12px 34px -22px rgba(15, 23, 42, 0.16),
+      0 0 0 2px rgba(148, 163, 184, 0.38),
+      0 0 24px -8px rgba(148, 163, 184, 0.22);
+  }
+  70% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      0 12px 34px -22px rgba(15, 23, 42, 0.14),
+      0 0 0 1px rgba(148, 163, 184, 0.26);
+  }
+}
+
+.theme-linear:not(.dark) .thai-owner-investor-attention {
+  animation-name: thai-owner-investor-attention-pulse-light;
 }
 
 /* Дополнительные токены поверх theme-linear / .dark */
@@ -797,6 +2180,31 @@
 
 .theme-linear:not(.dark) .thai-row-interactive:hover {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/**
+ * Строки списка на главном дашборде (инвесторы в сети и т.п.):
+ * без стеклянной подложки — только лёгкий hover, чтобы не было «молока» на фоне героя.
+ */
+.thai-row-interactive.thai-dashboard-list-row {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.thai-row-interactive.thai-dashboard-list-row:hover {
+  transform: translateY(-1px);
+  box-shadow: none !important;
+}
+
+.theme-linear.dark .thai-row-interactive.thai-dashboard-list-row:hover {
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.theme-linear:not(.dark) .thai-row-interactive.thai-dashboard-list-row:hover {
+  background: rgba(0, 0, 0, 0.035) !important;
 }
 
 /* Модальные оверлеи */

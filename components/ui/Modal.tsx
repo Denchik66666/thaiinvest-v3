@@ -8,9 +8,11 @@ interface ModalProps {
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  /** Подложка (blur / непрозрачность) под премиум-поверхности */
+  backdropClassName?: string;
 }
 
-export function Modal({ open, onClose, children, className }: ModalProps) {
+export function Modal({ open, onClose, children, className, backdropClassName }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -32,8 +34,8 @@ export function Modal({ open, onClose, children, className }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      <div
+        className={cn("absolute inset-0 bg-black/80 backdrop-blur-sm", backdropClassName)}
         onClick={onClose}
       />
       

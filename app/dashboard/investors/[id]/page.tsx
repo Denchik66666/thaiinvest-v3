@@ -60,10 +60,12 @@ type InvestorDetailResponse = {
 };
 
 type LedgerResponse = {
+  note?: string;
   summary: {
     weeks: number;
     totalAccruedAdded: number;
     totalInterestPaid: number;
+    totalBodyPaid?: number;
   };
   rows: Array<{
     weekStart: string;
@@ -229,11 +231,11 @@ export default function InvestorDetailPage() {
         <div className={DASHBOARD_STICKY_BAR_CLASS}>
           <button
             type="button"
-            onClick={() => router.push("/dashboard/investors")}
+            onClick={() => router.back()}
             className="thai-glass flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-medium transition hover:brightness-[1.03] dark:hover:brightness-110"
           >
             <ChevronLeft className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-            <span className="truncate">К списку</span>
+            <span className="truncate">Назад</span>
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
@@ -263,10 +265,10 @@ export default function InvestorDetailPage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push(`/dashboard/reports?investor=${investor.id}`)}
+              onClick={() => router.push(`/dashboard/finance?investor=${investor.id}`)}
               className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
             >
-              <Text className="text-sm font-semibold text-foreground">Отчёты по инвестору</Text>
+              <Text className="text-sm font-semibold text-foreground">Финансы по инвестору</Text>
               <Text className="mt-1 text-xs text-muted-foreground">Очереди, история выплат и аудит</Text>
             </button>
           </div>
@@ -337,30 +339,43 @@ export default function InvestorDetailPage() {
               </div>
               <div className="thai-stat-tile thai-glass border border-border/35 text-center">
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Начислено
+                  Сумма недель
                 </Text>
                 <Text className="text-xl font-bold tabular-nums" style={{ color: "#60a5fa" }}>
                   ฿{ledgerData.summary.totalAccruedAdded.toLocaleString("ru-RU")}
                 </Text>
+                <Text className="mt-1 block text-[10px] leading-tight text-muted-foreground/90">
+                  Начисления по закрытым неделям в модели реестра
+                </Text>
               </div>
               <div className="thai-stat-tile thai-glass border border-border/35 text-center">
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Выплачено
+                  Выплачено %
                 </Text>
                 <Text className="text-xl font-bold tabular-nums" style={{ color: "#4ade80" }}>
                   ฿{ledgerData.summary.totalInterestPaid.toLocaleString("ru-RU")}
                 </Text>
+                <Text className="mt-1 block text-[10px] leading-tight text-muted-foreground/90">
+                  Проценты по строкам реестра
+                </Text>
               </div>
               <div className="thai-stat-tile thai-glass border border-border/35 text-center">
                 <Text className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Баланс
+                  Остаток в реестре
                 </Text>
                 <Text className="text-xl font-bold tabular-nums" style={{ color: "#fbbf24" }}>
                   ฿
                   {(ledgerData.summary.totalAccruedAdded - ledgerData.summary.totalInterestPaid).toLocaleString("ru-RU")}
                 </Text>
+                <Text className="mt-1 block text-[10px] leading-tight text-muted-foreground/90">
+                  Сумма недель минус выплаты %
+                </Text>
               </div>
             </div>
+
+            {ledgerData.note ? (
+              <Text className="text-[11px] leading-snug text-muted-foreground">{ledgerData.note}</Text>
+            ) : null}
 
             <Text className="text-xs font-medium text-muted-foreground">Последние недели</Text>
             <div className="space-y-1.5 md:space-y-2">

@@ -1,6 +1,5 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
@@ -10,59 +9,45 @@ import NotificationBell from "@/components/notifications/NotificationBell";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export type DashboardTopbarProps = {
-  isInvestor: boolean;
   barScrolled: boolean;
-  glassCard: CSSProperties;
   username: string;
   avatarUrl?: string | null;
-  investorPositionsCount?: number;
+  /** Единое правило для всех ролей: есть ли активные позиции в кабинете (кольцо аватара как у эталона инвестора). */
+  dashboardPositionsActive: boolean;
 };
 
 export function DashboardTopbar({
-  isInvestor,
   barScrolled,
-  glassCard,
   username,
   avatarUrl,
-  investorPositionsCount = 0,
+  dashboardPositionsActive,
 }: DashboardTopbarProps) {
   const router = useRouter();
 
   return (
     <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-2 px-2 py-1.5",
-            isInvestor && "rounded-2xl",
-            !isInvestor && "thai-glass rounded-2xl"
-          )}
-          style={!isInvestor ? glassCard : undefined}
-        >
+        <div className="flex shrink-0 items-center gap-2 rounded-2xl px-2 py-1.5">
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
             className="relative shrink-0 rounded-full outline-none transition hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
             aria-label="Профиль — аватар"
           >
-            {isInvestor ? (
-              <span
-                className={cn(
-                  "thai-investor-avatar-ring relative block rounded-full p-[2px]",
-                  "transition-[box-shadow] duration-500"
-                )}
-                data-has-positions={investorPositionsCount > 0 ? "true" : "false"}
-              >
-                <UserAvatar
-                  name={username}
-                  src={avatarUrl}
-                  size={42}
-                  className="!ring-0 bg-transparent [&_img]:object-cover"
-                />
-              </span>
-            ) : (
-              <UserAvatar name={username} src={avatarUrl} size={38} />
-            )}
+            <span
+              className={cn(
+                "thai-dashboard-avatar-ring relative block rounded-full p-[2px]",
+                "transition-[box-shadow] duration-300 ease-out"
+              )}
+              data-has-positions={dashboardPositionsActive ? "true" : "false"}
+            >
+              <UserAvatar
+                name={username}
+                src={avatarUrl}
+                size={42}
+                className="!ring-0 bg-transparent [&_img]:object-cover"
+              />
+            </span>
           </button>
           <button
             type="button"
@@ -73,12 +58,7 @@ export function DashboardTopbar({
             )}
             aria-label={`Профиль — ${username}`}
           >
-            <span
-              className={cn(
-                "thai-dashboard-nick-matte-gold truncate font-semibold tracking-tight",
-                isInvestor ? "text-sm" : "text-base"
-              )}
-            >
+            <span className="thai-dashboard-nick-matte-gold truncate text-sm font-semibold tracking-tight">
               {username}
             </span>
             <span className="shrink-0 text-muted-foreground" aria-hidden>
@@ -95,4 +75,3 @@ export function DashboardTopbar({
     </div>
   );
 }
-

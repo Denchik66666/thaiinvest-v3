@@ -399,10 +399,10 @@ export default function DashboardManagePage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push("/dashboard/reports")}
+              onClick={() => router.push("/dashboard/finance")}
               className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
             >
-              <Text className="text-sm font-semibold text-foreground">Отчёты и очереди</Text>
+              <Text className="text-sm font-semibold text-foreground">Финансы и очереди</Text>
               <Text className="mt-1 text-xs text-muted-foreground">Выводы, пополнения тела, аудит действий</Text>
             </button>
             <button

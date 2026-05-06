@@ -149,8 +149,8 @@ test("all dashboard pages screenshots dark + light", async ({ browser, baseURL }
       await expect(adminPage.getByRole("button", { name: "Главная" })).toBeVisible({ timeout: 120_000 });
       await adminPage.waitForTimeout(600);
     }},
-    { slug: "reports", path: "/dashboard/reports", wait: async () => {
-      await expect(adminPage.getByText("Отчёты", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+    { slug: "finance", path: "/dashboard/finance", wait: async () => {
+      await expect(adminPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
       await adminPage.waitForTimeout(600);
     }},
   ];
@@ -175,10 +175,12 @@ test("all dashboard pages screenshots dark + light", async ({ browser, baseURL }
 
   for (const theme of ["dark", "light"] as const) {
     await setTheme(invPage, theme === "dark");
-    await gotoDashboardPath(invPage, "/dashboard");
-    await expect(invPage.getByText("Доступно к выводу", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+    await gotoDashboardPath(invPage, "/dashboard/finance");
+    await expect(invPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
+    await expect(invPage.getByText("История операций", { exact: false }).first()).toBeVisible({ timeout: 120_000 });
     await invPage.waitForTimeout(400);
-    await shot(invPage, "finance", theme);
+    /** Отдельное имя файла — не перезаписываем finance-{theme}.png со страницы OWNER/SUPER_ADMIN */
+    await shot(invPage, "investor-finance", theme);
   }
 
   await invContext.close();

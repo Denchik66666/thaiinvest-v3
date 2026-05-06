@@ -308,9 +308,9 @@ export function BusinessRateControlCenter({
             <button
               type="button"
               className="font-medium text-primary underline"
-              onClick={() => router.push("/dashboard/reports")}
+              onClick={() => router.push("/dashboard/finance")}
             >
-              Отчёты
+              Финансы
             </button>
             .
           </p>
