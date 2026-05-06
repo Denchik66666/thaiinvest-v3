@@ -11,6 +11,7 @@ import { Container } from "@/components/ui/Container";
 import { BusinessRateControlCenter } from "@/components/manage/BusinessRateControlCenter";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -374,7 +375,13 @@ export default function DashboardManagePage() {
             </div>
           )}
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
-            <Button onClick={() => setShowModal(true)} size="sm" className="w-full" disabled={createDisabled}>
+            <Button
+              onClick={() => setShowModal(true)}
+              size="sm"
+              variant="outline"
+              className={cn("w-full", glassAccentSurface)}
+              disabled={createDisabled}
+            >
               Создать инвестора
             </Button>
             <Button 

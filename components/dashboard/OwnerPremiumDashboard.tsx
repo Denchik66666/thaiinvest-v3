@@ -103,7 +103,7 @@ export function OwnerPremiumDashboard({
           className="pointer-events-none absolute inset-0 rounded-2xl opacity-[0.5]"
           style={{
             background:
-              "radial-gradient(120% 90% at 50% -8%, color-mix(in srgb, hsl(var(--primary)) 22%, transparent), transparent 58%)",
+              "radial-gradient(120% 90% at 50% -8%, color-mix(in srgb, hsl(var(--primary)) 14%, transparent), transparent 58%)",
           }}
           aria-hidden
         />

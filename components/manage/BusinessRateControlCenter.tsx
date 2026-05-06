@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { useAppDialogs } from "@/components/feedback/AppDialogsProvider";
+import { cn } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import {
   type BusinessRateHistoryRow,
   formatRuDate,
@@ -293,7 +295,12 @@ export function BusinessRateControlCenter({
                 className="min-h-0 resize-none text-sm"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              variant="outline"
+              className={cn("w-full", glassAccentSurface)}
+              disabled={isSubmitting}
+            >
               {isSubmitting ? "Сохраняем..." : "Сохранить ставку"}
             </Button>
           </form>
@@ -401,7 +408,13 @@ export function BusinessRateControlCenter({
                           />
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          <Button type="submit" size="sm" disabled={planSectionBusy}>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            variant="outline"
+                            disabled={planSectionBusy}
+                            className={glassAccentSurface}
+                          >
                             {rowBusy ? "Сохраняем…" : "Сохранить"}
                           </Button>
                           <Button type="button" size="sm" variant="outline" disabled={planSectionBusy} onClick={cancelPlanEdit}>

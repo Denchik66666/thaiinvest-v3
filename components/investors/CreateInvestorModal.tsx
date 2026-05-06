@@ -9,6 +9,7 @@ import { Text } from "@/components/ui/Text";
 import { FormGroup } from "@/components/ui/FormGroup";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { cn, formatCurrency } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
 
 export interface InvestorForm {
@@ -314,7 +315,12 @@ export function CreateInvestorModal({
             <Button variant="outline" type="button" onClick={onClose} disabled={loading} className="flex-1">
               Отмена
             </Button>
-            <Button type="submit" disabled={loading || privateOver} className="flex-1">
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={loading || privateOver}
+              className={cn("flex-1", glassAccentSurface)}
+            >
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />

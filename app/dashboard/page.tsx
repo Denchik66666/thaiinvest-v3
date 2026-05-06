@@ -28,12 +28,12 @@ import {
   InvestorWithdrawalStatusBanner,
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
-import { WeekCycleStrip } from "@/components/dashboard/WeekCycleStrip";
 import { DashboardOperationsHistory } from "@/components/dashboard/DashboardOperationsHistory";
 import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
+import { SuperAdminDashboardHome } from "@/components/dashboard/SuperAdminDashboardHome";
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 
 type InvestorRow = {
@@ -555,7 +555,6 @@ export default function DashboardPage() {
   }
 
   const showDueAction = canRequestWithdraw && stats.due > 0.005;
-  const showPendingAction = isSuperAdmin && pendingApprovalsCount > 0;
 
   const displayStats = isSuperAdmin ? networkStats : stats;
 
@@ -564,7 +563,7 @@ export default function DashboardPage() {
       <div
         className={cn(
           "thai-dashboard-root py-4 pb-28 md:py-8 md:pb-28",
-          isInvestor || isOwner
+          isInvestor || isOwner || isSuperAdmin
             ? "flex min-h-[calc(100dvh-5.5rem)] flex-col space-y-3 md:space-y-4"
             : "min-h-screen space-y-4 md:space-y-5"
         )}
@@ -576,36 +575,6 @@ export default function DashboardPage() {
           avatarUrl={user.avatarUrl}
           dashboardPositionsActive={myInvestors.some((i) => i.status === "active")}
         />
-
-        {!isInvestor && !isOwner ? (
-          <section
-            className="thai-glass relative overflow-hidden border p-3 md:p-5"
-            style={{
-              ...glassCard,
-              borderColor: "color-mix(in srgb, hsl(var(--primary)) 22%, var(--thai-color-card-border))",
-              boxShadow: [
-                glassCard.boxShadow,
-                "0 0 48px -20px color-mix(in srgb, hsl(var(--primary)) 28%, transparent)",
-              ]
-                .filter(Boolean)
-                .join(", "),
-            }}
-          >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_80%_at_50%_-20%,color-mix(in_srgb,hsl(var(--primary))_22%,transparent),transparent_65%)]"
-            />
-            <div className="relative">
-              <h1 className="text-[15px] font-bold leading-snug tracking-tight text-foreground md:text-lg">{headlineLine1}</h1>
-              <div className="mt-3 border-t border-border/25 pt-3">
-                <WeekCycleStrip
-                  payoutLabel={currentWeek.nextPayout}
-                  cycleHint="По правилам цикла выплаты — понедельник; не дата из заявки на вывод."
-                />
-              </div>
-            </div>
-          </section>
-        ) : null}
 
         {isInvestor ? (
           <InvestorPremiumDashboard
@@ -655,125 +624,49 @@ export default function DashboardPage() {
             onOpenInvestorReports={(id) => router.push(`/dashboard/finance?investor=${id}`)}
           />
         ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <StatTile primary title="Тело в сети" value={displayStats.capital} className="col-span-2" />
-            <StatTile
-              title="Начислено"
-              value={displayStats.accrued}
-              valueClassName="text-lg md:text-xl"
-              valueStyle={{ color: "var(--thai-color-accrued)" }}
-            />
-            <StatTile
-              title="Выплачено"
-              value={displayStats.paid}
-              valueClassName="text-lg md:text-xl"
-              valueStyle={{ color: "var(--thai-color-paid)" }}
-            />
-            <StatTile
-              title="К выплате"
-              value={displayStats.due}
-              valueClassName="text-lg md:text-xl"
-              valueStyle={{ color: "var(--thai-color-due)" }}
-            />
-          </div>
+          <SuperAdminDashboardHome
+            glassCard={glassCard}
+            headline={headlineLine1}
+            nextPayoutLabel={currentWeek.nextPayout}
+            statsSummary={
+              <div className="grid grid-cols-2 gap-2">
+                <StatTile primary title="Тело в сети" value={displayStats.capital} className="col-span-2" />
+                <StatTile
+                  title="Начислено"
+                  value={displayStats.accrued}
+                  valueClassName="text-lg md:text-xl"
+                  valueStyle={{ color: "var(--thai-color-accrued)" }}
+                />
+                <StatTile
+                  title="Выплачено"
+                  value={displayStats.paid}
+                  valueClassName="text-lg md:text-xl"
+                  valueStyle={{ color: "var(--thai-color-paid)" }}
+                />
+                <StatTile
+                  title="К выплате"
+                  value={displayStats.due}
+                  valueClassName="text-lg md:text-xl"
+                  valueStyle={{ color: "var(--thai-color-due)" }}
+                />
+              </div>
+            }
+            limitSlot={superAdminPrivateLimitCard}
+            pendingApprovalsCount={pendingApprovalsCount}
+            onOpenFinance={() => router.push("/dashboard/finance")}
+            quickActions={[
+              { label: "Управление", onClick: () => router.push("/dashboard/manage") },
+              { label: "Реестр", onClick: () => router.push("/dashboard/investors") },
+              { label: "Финансы", onClick: () => router.push("/dashboard/finance") },
+            ]}
+            saInvestorFilter={saInvestorFilter}
+            setSaInvestorFilter={setSaInvestorFilter}
+            loadingInvestors={loadingInvestors}
+            hasInvestorsData={Boolean(investorsData)}
+            filteredInvestors={superAdminFilteredInvestors}
+            onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
+          />
         )}
-
-        {superAdminPrivateLimitCard}
-
-        {showPendingAction ? (
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/finance")}
-            className="thai-row-interactive thai-glass w-full p-3 text-left"
-            style={glassCard}
-          >
-            <Text className="text-sm font-semibold text-foreground">
-              {pendingApprovalsCount} заявок ожидают → Рассмотреть
-            </Text>
-          </button>
-        ) : null}
-
-        {!isInvestor ? (
-          isOwner ? null : (
-          <section className="space-y-2">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Инвесторы</Text>
-            <div className="thai-segmented" role="tablist" aria-label="Фильтр инвесторов">
-              {(
-                [
-                  { key: "all" as const, label: "Все" },
-                  { key: "common" as const, label: "Общая" },
-                  { key: "private" as const, label: "Приватная" },
-                ] as const
-              ).map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={saInvestorFilter === key}
-                  onClick={() => setSaInvestorFilter(key)}
-                  className={cn("thai-segmented-item", saInvestorFilter === key && "active")}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {loadingInvestors && !investorsData ? (
-              <div className="space-y-2.5">
-                {[0, 1].map((i) => (
-                  <div key={i} className="animate-pulse space-y-3 rounded-2xl bg-muted/10 p-3.5 dark:bg-white/[0.04]">
-                    <div className="h-4 w-36 rounded-md bg-muted/40 dark:bg-white/10" />
-                    <div className="grid grid-cols-3 gap-2">
-                      {[0, 1, 2].map((j) => (
-                        <div key={j} className="h-10 rounded-lg bg-muted/25 dark:bg-white/[0.06]" />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : superAdminFilteredInvestors.length === 0 ? (
-              <Text className="block py-6 text-center text-sm text-muted-foreground">Нет позиций в выбранном фильтре.</Text>
-            ) : (
-              <div className="space-y-2.5">
-                {superAdminFilteredInvestors.map((inv) => (
-                    <button
-                      key={inv.id}
-                      type="button"
-                      onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                      className={cn(
-                        "thai-row-interactive thai-dashboard-list-row w-full rounded-2xl p-3.5 text-left",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <InvestorPositionAvatarHeading name={inv.name} status={inv.status} className="min-w-0 flex-1 items-start" />
-                      </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-left">
-                        <div>
-                          <Text className="text-xs text-muted-foreground">Тело</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-text-primary)" }}>
-                            {formatCurrency(inv.body)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-xs text-muted-foreground">Начислено</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-accrued)" }}>
-                            {formatCurrency(inv.accrued)}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text className="text-xs text-muted-foreground">К выплате</Text>
-                          <Text className="mt-0.5 text-sm font-semibold tabular-nums" style={{ color: "var(--thai-color-due)" }}>
-                            {formatCurrency(inv.due)}
-                          </Text>
-                        </div>
-                      </div>
-                    </button>
-                ))}
-              </div>
-            )}
-          </section>
-          )
-        ) : null}
 
         {selectedInvestorCard ? (
           <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">

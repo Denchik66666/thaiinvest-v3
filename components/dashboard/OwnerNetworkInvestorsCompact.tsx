@@ -13,6 +13,7 @@ import { OwnerWithdrawApproveModal } from "@/components/dashboard/OwnerWithdrawA
 import { Text } from "@/components/ui/Text";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import { cn, formatCurrency } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 
 export type OwnerNetworkInvestorPaymentHint = {
   id: number;
@@ -253,7 +254,11 @@ export function OwnerNetworkInvestorsCompact({
         >
           Инвесторы в сети
         </Text>
-        <button type="button" onClick={onOpenReports} className="shrink-0 text-[10px] font-semibold text-primary hover:underline">
+        <button
+          type="button"
+          onClick={onOpenReports}
+          className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", glassAccentSurface)}
+        >
           Финансы
         </button>
       </div>

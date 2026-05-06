@@ -36,6 +36,7 @@ import {
   subscribeNotificationPreferences,
 } from "@/lib/notification-preferences";
 import { NOTIFICATION_PRESETS, matchNotificationPresetId } from "@/lib/notification-presets";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 
 type AccountPatchResponse = {
   success: boolean;
@@ -136,12 +137,6 @@ function ProfileFieldLabel({ children }: { children: React.ReactNode }) {
     <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{children}</div>
   );
 }
-
-/** Кнопки действий внутри стеклянного профиля — без «кислотного» сплошного primary */
-const profileGlassActionBtn =
-  "border border-primary/30 bg-white/[0.07] text-foreground backdrop-blur-md transition-all duration-200 " +
-  "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)] hover:bg-primary/[0.07] hover:border-primary/40 hover:brightness-100 " +
-  "dark:border-primary/22 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:hover:bg-primary/[0.1]";
 
 function SettingToggleRow({
   title,
@@ -513,7 +508,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
                     className={cn(
                       "shrink-0 rounded-lg focus-visible:ring-primary/30",
                       editing
-                        ? profileGlassActionBtn
+                        ? glassAccentSurface
                         : "border-transparent text-primary hover:bg-white/[0.06] dark:hover:bg-white/[0.05]"
                     )}
                     onClick={() => {
@@ -646,7 +641,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className={cn("mt-1 w-full rounded-lg sm:w-auto focus-visible:ring-primary/30", profileGlassActionBtn)}
+                    className={cn("mt-1 w-full rounded-lg sm:w-auto focus-visible:ring-primary/30", glassAccentSurface)}
                     disabled={passwordMutation.isPending}
                     onClick={() => {
                       if (!currentPassword) {

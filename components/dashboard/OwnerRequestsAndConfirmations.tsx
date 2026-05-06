@@ -6,6 +6,8 @@ import { ChevronRight } from "lucide-react";
 
 import { Text } from "@/components/ui/Text";
 import { apiClient } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import {
   OwnerBodyTopupAwaitingQueue,
@@ -79,7 +81,10 @@ export function OwnerRequestsAndConfirmations({
         <button
           type="button"
           onClick={onOpenReports}
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/12 px-2.5 py-1 text-[10px] font-semibold text-primary ring-1 ring-primary/20 transition hover:bg-primary/18 hover:ring-primary/30"
+          className={cn(
+            "inline-flex shrink-0 items-center gap-0.5 rounded-full px-2.5 py-1 text-[10px] font-semibold",
+            glassAccentSurface
+          )}
         >
           Финансы
           <ChevronRight className="h-3 w-3 opacity-80" aria-hidden />
@@ -92,7 +97,10 @@ export function OwnerRequestsAndConfirmations({
             type="button"
             onClick={onJumpToWithdrawals}
             aria-label="Перейти к заявке на вывод у карточки инвестора ниже"
-            className="flex w-full items-center justify-between gap-2 rounded-xl bg-primary/11 px-2.5 py-2 text-left ring-1 ring-primary/14 transition hover:bg-primary/15 hover:ring-primary/22 md:px-3"
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left md:px-3",
+              glassAccentSurface
+            )}
           >
             <span className="min-w-0 text-[11px] leading-snug">
               <span className="font-semibold text-foreground">
