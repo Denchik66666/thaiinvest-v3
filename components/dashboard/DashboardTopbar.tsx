@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 
 export type DashboardTopbarProps = {
   barScrolled: boolean;
@@ -70,7 +69,6 @@ export function DashboardTopbar({
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <NotificationBell />
-        <ThemeToggle />
       </div>
     </div>
   );

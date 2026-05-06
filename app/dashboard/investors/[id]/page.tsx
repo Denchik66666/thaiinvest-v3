@@ -13,7 +13,6 @@ import { Input } from "@/components/ui/Input";
 import { InvestorCard } from "@/components/investors/InvestorCard";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -239,7 +238,6 @@ export default function InvestorDetailPage() {
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle />
           </div>
         </div>
 

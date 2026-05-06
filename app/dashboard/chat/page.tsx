@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/Input";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 
 type ChatContext = {
@@ -164,7 +163,6 @@ function ChatPageInner() {
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle />
             <button
               type="button"
               onClick={() => router.push("/dashboard/profile")}

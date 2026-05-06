@@ -85,7 +85,7 @@ async function newContextSuperAdmin(browser: Browser, baseURL: string) {
 }
 
 test.describe("нижний бар по ролям", () => {
-  test("INVESTOR: Главная, Финансы, Профиль — без лишних вкладок", async ({ browser, baseURL }) => {
+  test("INVESTOR: Главная, Финансы — профиль только из шапки", async ({ browser, baseURL }) => {
     const b = baseURL ?? "http://127.0.0.1:3000";
     const ctx = await newContextInvestor(browser, b);
     const page = await ctx.newPage();
@@ -94,7 +94,7 @@ test.describe("нижний бар по ролям", () => {
     const nav = bottomNav(page);
     await expect(nav.getByText("Главная", { exact: true })).toBeVisible();
     await expect(nav.getByText("Финансы", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Профиль", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Профиль", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Отчёты", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Инвесторы", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Управление", { exact: true })).toHaveCount(0);

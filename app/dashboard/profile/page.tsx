@@ -758,7 +758,7 @@ function ProfileBody({ user, refresh }: { user: AuthUser; refresh: () => Promise
           ) : null}
         </div>
 
-        <MobileBottomNav active="profile" />
+        <MobileBottomNav />
       </div>
     </Container>
   );

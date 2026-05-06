@@ -16,7 +16,6 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 
 import { CreateInvestorModal } from "@/components/investors/CreateInvestorModal";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
@@ -296,7 +295,6 @@ export default function DashboardManagePage() {
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle />
           </div>
         </div>
 

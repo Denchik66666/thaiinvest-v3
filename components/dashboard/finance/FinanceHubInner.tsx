@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
@@ -143,41 +142,37 @@ export function FinanceHubInner() {
         className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28"
         style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
       >
-        <div className="thai-dashboard-sticky-bar sticky top-0 z-30 -mx-1 mb-2 flex flex-col gap-2 rounded-xl px-2 py-2">
-          <div className="thai-hero-accent shrink-0" aria-hidden />
-          <div className="flex items-start gap-1.5 sm:items-center">
-            <button
-              type="button"
-              onClick={goHistoryBack}
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground outline-none",
-                "transition hover:bg-muted/25 active:bg-muted/35",
-                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              )}
-              aria-label="Назад"
-            >
-              <ArrowLeft className="h-[1.35rem] w-[1.35rem]" strokeWidth={2.25} aria-hidden />
-            </button>
-            <div className="min-w-0 flex-1 pt-0.5 sm:pt-0">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Text className="text-base font-bold leading-none tracking-tight md:text-[17px]">Финансы</Text>
-                {user.role !== "SUPER_ADMIN" ? (
-                  <span className="rounded-md border border-border/45 bg-muted/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none text-muted-foreground">
-                    {myInvestors.length === 1 ? "1 позиция" : `${myInvestors.length} позиций`}
-                  </span>
-                ) : (
-                  <span className="rounded-md border border-border/45 bg-muted/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                    Обзор
-                  </span>
+        <div
+          className={cn(
+            "sticky top-0 z-30 -mx-1 mb-2 rounded-2xl px-2 py-2.5",
+            "border border-white/[0.18] bg-white/[0.42] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/[0.32]",
+            "shadow-[0_8px_32px_-12px_rgba(0,0,0,0.14),inset_0_1px_0_0_rgba(255,255,255,0.55)]",
+            "dark:border-white/[0.09] dark:bg-[#0d0d14]/32 dark:supports-[backdrop-filter]:bg-[#0d0d14]/22",
+            "dark:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.08)]"
+          )}
+        >
+          <div className="grid grid-cols-[minmax(2.75rem,auto)_1fr_minmax(2.75rem,auto)] items-center gap-1">
+            <div className="flex justify-start">
+              <button
+                type="button"
+                onClick={goHistoryBack}
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground outline-none",
+                  "transition hover:bg-muted/30 active:bg-muted/45",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 )}
-              </div>
-              <Text className="mt-1 max-w-[min(100%,18rem)] text-[10px] leading-snug text-muted-foreground sm:max-w-none">
-                Строка ленты · полная карточка
-              </Text>
+                aria-label="Назад"
+              >
+                <ArrowLeft className="h-[1.35rem] w-[1.35rem]" strokeWidth={2.25} aria-hidden />
+              </button>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <div className="min-w-0 px-1 text-center">
+              <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground md:text-lg">
+                Финансы
+              </h1>
+            </div>
+            <div className="flex justify-end pr-0.5">
               <NotificationBell />
-              <ThemeToggle />
             </div>
           </div>
         </div>

@@ -18,7 +18,6 @@ import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
-import ThemeToggle from "@/components/ThemeToggle";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
 
 type Network = "all" | "common" | "private";
@@ -270,7 +269,6 @@ export default function InvestorsListPage() {
           </button>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle />
           </div>
         </div>
 

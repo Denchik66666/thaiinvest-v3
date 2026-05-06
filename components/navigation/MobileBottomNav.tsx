@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
-export type BottomNavKey = "home" | "finance" | "investors" | "manage" | "chat" | "profile";
+export type BottomNavKey = "home" | "finance" | "investors" | "manage" | "chat";
 
 type Tab = {
   key: BottomNavKey;
@@ -47,15 +47,6 @@ function IconManage({ active }: { active: boolean }) {
   );
 }
 
-function IconProfile({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={active ? "text-foreground" : "text-muted-foreground"}>
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
 function tabMatchesPath(tab: Tab, pathname: string | null): boolean {
   if (!pathname) return false;
   if (tab.key === "home") return pathname === "/dashboard" || pathname === "/dashboard/";
@@ -75,7 +66,6 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
       return [
         { key: "home", label: "Главная", path: "/dashboard" },
         { key: "finance", label: "Финансы", path: "/dashboard/finance" },
-        { key: "profile", label: "Профиль", path: "/dashboard/profile" },
       ];
     }
     return [
@@ -118,7 +108,6 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
                 {tab.key === "finance" ? <IconFinance {...iconProps} /> : null}
                 {tab.key === "investors" ? <IconInvestors {...iconProps} /> : null}
                 {tab.key === "manage" ? <IconManage {...iconProps} /> : null}
-                {tab.key === "profile" ? <IconProfile {...iconProps} /> : null}
               </span>
               <span className="truncate max-w-full">{tab.label}</span>
             </button>
