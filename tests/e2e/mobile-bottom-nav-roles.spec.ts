@@ -102,7 +102,7 @@ test.describe("нижний бар по ролям", () => {
     await ctx.close();
   });
 
-  test("OWNER: Главная, Инвесторы, Управление, Финансы", async ({ browser, baseURL }) => {
+  test("OWNER: Главная, Финансы, Управление — без Инвесторы; профиль из шапки", async ({ browser, baseURL }) => {
     const b = baseURL ?? "http://127.0.0.1:3000";
     const ctx = await newContextOwner(browser, b);
     const page = await ctx.newPage();
@@ -110,16 +110,16 @@ test.describe("нижний бар по ролям", () => {
     await page.waitForLoadState("networkidle");
     const nav = bottomNav(page);
     await expect(nav.getByText("Главная", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Инвесторы", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Управление", { exact: true })).toBeVisible();
     await expect(nav.getByText("Финансы", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Управление", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Инвесторы", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Отчёты", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Профиль", { exact: true })).toHaveCount(0);
     await nav.screenshot({ path: "screenshots/bottom-nav/OWNER.png" });
     await ctx.close();
   });
 
-  test("SUPER_ADMIN: Главная, Инвесторы, Управление, Финансы", async ({ browser, baseURL }) => {
+  test("SUPER_ADMIN: Главная, Финансы, Управление — без Инвесторы; профиль из шапки", async ({ browser, baseURL }) => {
     const b = baseURL ?? "http://127.0.0.1:3000";
     const ctx = await newContextSuperAdmin(browser, b);
     const page = await ctx.newPage();
@@ -127,10 +127,11 @@ test.describe("нижний бар по ролям", () => {
     await page.waitForLoadState("networkidle");
     const nav = bottomNav(page);
     await expect(nav.getByText("Главная", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Инвесторы", { exact: true })).toBeVisible();
-    await expect(nav.getByText("Управление", { exact: true })).toBeVisible();
     await expect(nav.getByText("Финансы", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Управление", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Инвесторы", { exact: true })).toHaveCount(0);
     await expect(nav.getByText("Отчёты", { exact: true })).toHaveCount(0);
+    await expect(nav.getByText("Профиль", { exact: true })).toHaveCount(0);
     await nav.screenshot({ path: "screenshots/bottom-nav/SUPER_ADMIN.png" });
     await ctx.close();
   });

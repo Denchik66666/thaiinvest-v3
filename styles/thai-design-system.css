@@ -102,16 +102,17 @@
 }
 
 /**
- * Премиум-золото сумм (прогноз «+… ฿», ожидаемое начисление +0 ฿ в ленте и т.п.) —
- * та же палитра, что у .thai-investor-thermo-fill.
+ * Премиум-акцент сумм (прогноз, лента): приглушённый шампань, без glow — не «ювелирный глянец».
  */
 .thai-dashboard-premium-gold-amount,
 .thai-investor-premium-gold-amount,
 .thai-investor-forecast-strip__amount {
   font-weight: 650;
   letter-spacing: 0.02em;
-  color: hsl(36 78% 28%);
-  -webkit-text-fill-color: hsl(36 78% 28%);
+  color: hsl(34 42% 30%);
+  -webkit-text-fill-color: hsl(34 42% 30%);
+  text-shadow: none;
+  filter: none;
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
@@ -120,11 +121,9 @@
   .thai-investor-forecast-strip__amount {
     background: linear-gradient(
       105deg,
-      color-mix(in srgb, hsl(32 78% 22%) 92%, black) 0%,
-      hsl(38 82% 34%) 28%,
-      hsl(43 86% 44%) 55%,
-      hsl(48 90% 50%) 82%,
-      color-mix(in srgb, hsl(48 100% 88%) 45%, hsl(43 95% 52%)) 100%
+      hsl(32 38% 26%) 0%,
+      hsl(36 44% 34%) 45%,
+      hsl(40 48% 40%) 100%
     );
     -webkit-background-clip: text;
     background-clip: text;
@@ -133,14 +132,41 @@
   }
 }
 
+.dark .thai-dashboard-premium-gold-amount,
+.dark .thai-investor-premium-gold-amount,
+.dark .thai-investor-forecast-strip__amount {
+  color: hsl(43 28% 72%);
+  -webkit-text-fill-color: hsl(43 28% 72%);
+  text-shadow: none;
+  filter: none;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .dark .thai-dashboard-premium-gold-amount,
+  .dark .thai-investor-premium-gold-amount,
+  .dark .thai-investor-forecast-strip__amount {
+    background: linear-gradient(
+      105deg,
+      hsl(38 26% 52%) 0%,
+      hsl(42 30% 64%) 48%,
+      hsl(46 34% 74%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    filter: none;
+  }
+}
+
 .theme-linear.dark .thai-dashboard-premium-gold-amount,
 .theme-linear.dark .thai-investor-premium-gold-amount,
 .theme-linear.dark .thai-investor-forecast-strip__amount {
-  color: hsl(48 92% 62%);
-  -webkit-text-fill-color: hsl(48 92% 62%);
-  text-shadow:
-    0 0 12px color-mix(in srgb, hsl(43 100% 52%) 50%, transparent),
-    0 0 22px color-mix(in srgb, hsl(38 90% 45%) 28%, transparent);
+  color: hsl(43 28% 72%);
+  -webkit-text-fill-color: hsl(43 28% 72%);
+  text-shadow: none;
+  filter: none;
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
@@ -149,19 +175,39 @@
   .theme-linear.dark .thai-investor-forecast-strip__amount {
     background: linear-gradient(
       105deg,
-      hsl(38 82% 36%) 0%,
-      hsl(43 86% 52%) 38%,
-      hsl(48 92% 62%) 62%,
-      hsl(51 100% 74%) 88%,
-      color-mix(in srgb, hsl(48 100% 90%) 50%, hsl(43 95% 58%)) 100%
+      hsl(38 26% 52%) 0%,
+      hsl(42 30% 64%) 48%,
+      hsl(46 34% 74%) 100%
     );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
     -webkit-text-fill-color: transparent;
     text-shadow: none;
-    filter: drop-shadow(0 0 10px color-mix(in srgb, hsl(43 100% 52%) 42%, transparent));
+    filter: none;
   }
+}
+
+/**
+ * Явно матовые суммы (напр. «к выплате» на карточках): сплошной цвет, без клипа градиента.
+ */
+.thai-dashboard-premium-matte-amount {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: hsl(34 38% 34%);
+  -webkit-text-fill-color: hsl(34 38% 34%);
+  text-shadow: none;
+  filter: none;
+}
+
+.dark .thai-dashboard-premium-matte-amount {
+  color: hsl(43 22% 70%);
+  -webkit-text-fill-color: hsl(43 22% 70%);
+}
+
+.theme-linear.dark .thai-dashboard-premium-matte-amount {
+  color: hsl(44 24% 74%);
+  -webkit-text-fill-color: hsl(44 24% 74%);
 }
 
 /**

@@ -469,7 +469,7 @@ export default function InvestorsListPage() {
           </div>
         )}
 
-        <MobileBottomNav active="investors" />
+        <MobileBottomNav active="manage" />
       </div>
     </Container>
   );

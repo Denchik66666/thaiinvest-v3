@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import type { CSSProperties, ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 
@@ -14,16 +14,31 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { DashboardOperationsHistory } from "@/components/dashboard/DashboardOperationsHistory";
+import {
+  FinanceInvestorAccordionCards,
+  type FinanceInvestorAccordionExpanded,
+} from "@/components/dashboard/finance/FinanceInvestorAccordionCards";
 import { FinanceOperationDetailModal } from "@/components/dashboard/finance/FinanceOperationDetailModal";
 import type { FinanceOperationItem } from "@/types/finance-operations";
+import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 
 type LeanInvestor = {
   id: number;
+  name: string;
+  handle?: string | null;
+  investorUser?: { username: string } | null;
+  linkedUser?: { id: number; username: string } | null;
+  body: number;
+  accrued: number;
+  due: number;
+  status: string;
   isPrivate?: boolean;
   linkedUserId?: number | null;
   investorUserId?: number | null;
   owner?: { username: string };
+  payments?: { status: string }[];
 };
 
 const DASHBOARD_DARK_ROOT_STYLE: CSSProperties = {
@@ -69,8 +84,10 @@ function serverHtmlDark() {
 
 export function FinanceHubInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const [detailItem, setDetailItem] = useState<FinanceOperationItem | null>(null);
+  const [networkExpanded, setNetworkExpanded] = useState(false);
 
   const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
   const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
@@ -83,8 +100,13 @@ export function FinanceHubInner() {
       ),
     enabled: !!user,
     placeholderData: keepPreviousData,
-    refetchInterval: user?.role === "INVESTOR" ? 30_000 : user?.role === "OWNER" ? 45_000 : false,
-    refetchOnWindowFocus: user?.role === "OWNER",
+    refetchInterval:
+      user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
+        ? 30_000
+        : user?.role === "OWNER"
+          ? 45_000
+          : false,
+    refetchOnWindowFocus: user?.role === "OWNER" || user?.role === "SUPER_ADMIN",
   });
 
   const myInvestors = useMemo(() => {
@@ -96,9 +118,134 @@ export function FinanceHubInner() {
     return investors.filter((inv) => inv.investorUserId === user.id);
   }, [investorsData, user]);
 
-  const movementsEnabled = user?.role === "INVESTOR" || user?.role === "OWNER";
+  const rawInvestorParam = searchParams.get("investor");
+  const investorIdFromUrl = useMemo(() => {
+    if (!rawInvestorParam) return null;
+    const n = Number(rawInvestorParam);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [rawInvestorParam]);
+
+  const validatedInvestorFilterId = useMemo(() => {
+    if (investorIdFromUrl == null) return null;
+    if (!myInvestors.some((i) => i.id === investorIdFromUrl)) return null;
+    return investorIdFromUrl;
+  }, [investorIdFromUrl, myInvestors]);
+
+  useEffect(() => {
+    if (investorIdFromUrl == null) return;
+    if (investorsData == null) return;
+    if (validatedInvestorFilterId != null) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("investor");
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard/finance?${qs}` : "/dashboard/finance");
+  }, [investorIdFromUrl, validatedInvestorFilterId, investorsData, searchParams, router]);
+
+  useEffect(() => {
+    if (validatedInvestorFilterId != null) setNetworkExpanded(false);
+  }, [validatedInvestorFilterId]);
+
+  const accordionExpanded: FinanceInvestorAccordionExpanded = useMemo(() => {
+    if (validatedInvestorFilterId != null) return { kind: "investor", id: validatedInvestorFilterId };
+    if (networkExpanded) return { kind: "network" };
+    return { kind: "collapsed" };
+  }, [validatedInvestorFilterId, networkExpanded]);
+
+  const effectiveFilterInvestorId = accordionExpanded.kind === "investor" ? accordionExpanded.id : null;
+
+  const networkTotals = useMemo(
+    () => ({
+      body: myInvestors.reduce((s, i) => s + (i.body ?? 0), 0),
+      accrued: myInvestors.reduce((s, i) => s + (i.accrued ?? 0), 0),
+      due: myInvestors.reduce((s, i) => s + (i.due ?? 0), 0),
+    }),
+    [myInvestors]
+  );
+
+  const movementsEnabled =
+    user?.role === "INVESTOR" || user?.role === "OWNER" || user?.role === "SUPER_ADMIN";
   const operationsHistoryScope = user?.role === "OWNER" ? "owner" : "investor";
-  const backFallbackHref = user?.role === "INVESTOR" ? "/dashboard" : "/dashboard/manage";
+  const backFallbackHref =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN" ? "/dashboard" : "/dashboard/manage";
+
+  const showInvestorFilter =
+    (user?.role === "OWNER" || user?.role === "SUPER_ADMIN") && myInvestors.length > 0;
+
+  const pushInvestorQuery = useCallback(
+    (next: number | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("payment");
+      if (next == null) params.delete("investor");
+      else params.set("investor", String(next));
+      const qs = params.toString();
+      router.replace(qs ? `/dashboard/finance?${qs}` : "/dashboard/finance");
+    },
+    [router, searchParams]
+  );
+
+  const onToggleNetwork = useCallback(() => {
+    if (validatedInvestorFilterId != null) {
+      pushInvestorQuery(null);
+      setNetworkExpanded(true);
+      return;
+    }
+    setNetworkExpanded((v) => !v);
+  }, [validatedInvestorFilterId, pushInvestorQuery]);
+
+  const onToggleInvestor = useCallback(
+    (id: number) => {
+      setNetworkExpanded(false);
+      if (validatedInvestorFilterId === id) {
+        pushInvestorQuery(null);
+        return;
+      }
+      pushInvestorQuery(id);
+    },
+    [validatedInvestorFilterId, pushInvestorQuery]
+  );
+
+  const investorCardsSlot = showInvestorFilter
+    ? ({
+        renderFeed,
+        opFilter,
+        applyOperationFilter,
+      }: {
+        renderFeed: (investorId: number | null) => ReactNode;
+        opFilter: FinanceOperationsHistoryOpFilter;
+        applyOperationFilter: (filter: FinanceOperationsHistoryOpFilter) => void;
+      }) => (
+        <FinanceInvestorAccordionCards
+          investors={myInvestors.map((inv) => ({
+            id: inv.id,
+            name: inv.name,
+            handle: investorDisplayHandle(inv),
+            due: inv.due ?? 0,
+            body: inv.body ?? 0,
+            accrued: inv.accrued ?? 0,
+            status: inv.status ?? "",
+            isPrivate: inv.isPrivate,
+            requestedPayments: inv.payments?.filter((p) => p.status === "requested").length ?? 0,
+          }))}
+          networkTotals={networkTotals}
+          expanded={accordionExpanded}
+          onToggleNetwork={onToggleNetwork}
+          onToggleInvestor={onToggleInvestor}
+          onOpenInvestorProfile={(id) => router.push(`/dashboard/investors/${id}`)}
+          renderFeed={renderFeed}
+          opFilter={opFilter}
+          onApplyMetricFilter={(filter, scope) => {
+            if (scope.kind === "network") {
+              if (validatedInvestorFilterId != null) pushInvestorQuery(null);
+              setNetworkExpanded(true);
+            } else {
+              setNetworkExpanded(false);
+              if (validatedInvestorFilterId !== scope.id) pushInvestorQuery(scope.id);
+            }
+            applyOperationFilter(filter);
+          }}
+        />
+      )
+    : undefined;
 
   const goHistoryBack = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -177,13 +324,6 @@ export function FinanceHubInner() {
           </div>
         </div>
 
-        {user.role === "SUPER_ADMIN" ? (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-900 dark:text-amber-100/90">
-            Лента операций API привязана к ролям инвестора и владельца. Войдите под таким пользователем, чтобы видеть
-            движения, или пользуйтесь разделами управления.
-          </div>
-        ) : null}
-
         <section className="flex flex-col overflow-visible rounded-xl border border-border/25 p-2 sm:p-3 md:rounded-2xl md:p-4" style={glassCard}>
           <DashboardOperationsHistory
             embedded
@@ -191,8 +331,11 @@ export function FinanceHubInner() {
             financePageScroll
             enabled={movementsEnabled}
             glassCard={glassCard}
-            showMultiPositionLabels={myInvestors.length > 1}
+            showMultiPositionLabels={effectiveFilterInvestorId == null && myInvestors.length > 1}
             operationsHistoryScope={operationsHistoryScope}
+            filterInvestorId={effectiveFilterInvestorId}
+            financeInvestorCardsSlot={investorCardsSlot}
+            financeSuppressBottomFeed={showInvestorFilter}
             onOperationClick={(item) => setDetailItem(item)}
           />
         </section>

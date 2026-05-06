@@ -42,6 +42,7 @@ type InvestorRouteRow = {
   investorUserId: number | null
   owner: { id: number; username: string; role: string }
   investorUser: { id: number; username: string } | null
+  linkedUser: { id: number; username: string } | null
   payments: InvestorRoutePaymentRow[]
 }
 type InvestorCreateTxClient = Pick<PrismaClient, 'user' | 'investor'>
@@ -159,6 +160,12 @@ export async function GET(request: NextRequest) {
               username: true,
             },
           },
+          linkedUser: {
+            select: {
+              id: true,
+              username: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }))
@@ -231,6 +238,9 @@ export async function GET(request: NextRequest) {
           updatedAt: inv.updatedAt,
           owner: inv.owner,
           investorUser: inv.investorUser,
+          linkedUser: inv.linkedUser
+            ? { id: inv.linkedUser.id, username: inv.linkedUser.username }
+            : null,
           payments: mapPaymentsToPayload(invPayments),
         }
 
@@ -257,6 +267,12 @@ export async function GET(request: NextRequest) {
           },
         },
         investorUser: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+        linkedUser: {
           select: {
             id: true,
             username: true,
@@ -297,6 +313,9 @@ export async function GET(request: NextRequest) {
         updatedAt: inv.updatedAt,
         owner: inv.owner,
         investorUser: inv.investorUser,
+        linkedUser: inv.linkedUser
+          ? { id: inv.linkedUser.id, username: inv.linkedUser.username }
+          : null,
         payments: mapPaymentsToPayload(inv.payments),
       }
 

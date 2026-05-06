@@ -4,14 +4,22 @@ import { cn, initialsTwoLetters } from "@/lib/utils";
 
 type Props = {
   name: string;
+  /** Без фото: две буквы из этого текста (ник/handle и т.п.); иначе из `name`. */
+  initialsFrom?: string | null;
   src?: string | null;
   size?: number;
   className?: string;
 };
 
+function sourceForInitials(name: string, initialsFrom?: string | null): string {
+  const nick = initialsFrom?.trim().replace(/^@+/, "") ?? "";
+  if (nick.length > 0) return nick;
+  return String(name ?? "").trim() || "?";
+}
+
 /** Круглый аватар: фото или две буквы; фон нейтральный, без «плашки». */
-export function UserAvatar({ name, src, size = 36, className }: Props) {
-  const initials = initialsTwoLetters(name || "?");
+export function UserAvatar({ name, initialsFrom, src, size = 36, className }: Props) {
+  const initials = initialsTwoLetters(sourceForInitials(name, initialsFrom));
   const photoSrc = src?.trim() ? src : undefined;
   const initialsFontPx = Math.max(8, Math.round(size * 0.34));
 

@@ -21,7 +21,7 @@ async function newContextWithLogin(browser: Browser, baseURL: string, u: string,
   return ctx;
 }
 
-test("GET /api/investors/operations-history — INVESTOR и OWNER 200, SUPER_ADMIN 403", async ({
+test("GET /api/investors/operations-history — INVESTOR, OWNER и SUPER_ADMIN 200", async ({
   browser,
   baseURL,
 }) => {
@@ -42,7 +42,9 @@ test("GET /api/investors/operations-history — INVESTOR и OWNER 200, SUPER_ADM
 
   const adminCtx = await newContextWithLogin(browser, b, CREDS.admin.u, CREDS.admin.p);
   const adminRes = await adminCtx.request.get("/api/investors/operations-history");
-  expect(adminRes.status()).toBe(403);
+  expect(adminRes.status()).toBe(200);
+  const adminJson = (await adminRes.json()) as { items?: unknown };
+  expect(Array.isArray(adminJson.items)).toBe(true);
 
   await investorCtx.close();
   await ownerCtx.close();

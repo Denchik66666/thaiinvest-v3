@@ -9,6 +9,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import { StatusBadge } from "@/components/investors/InvestorsTable";
 import { cn, formatCurrency } from "@/lib/utils";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,8 @@ import { toast } from "@/lib/notify";
 type Investor = {
   id: number;
   name: string;
+  handle?: string | null;
+  linkedUser?: { id: number; username: string } | null;
   owner: { id: number; username: string; role: string };
   body: number;
   rate: number;
@@ -86,7 +89,11 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <UserAvatar name={investor.name} size={48} />
+            <UserAvatar
+              name={investor.name}
+              initialsFrom={investorDisplayHandle(investor) ?? undefined}
+              size={48}
+            />
             <div className="min-w-0">
               <Text className="text-base font-semibold text-foreground md:text-lg">{investor.name}</Text>
               <Text className="text-xs text-muted-foreground">

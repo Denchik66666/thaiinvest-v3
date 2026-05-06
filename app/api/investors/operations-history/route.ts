@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
@@ -45,7 +46,7 @@ function injectSyntheticCurrentWeek(merged: MergedHistoryWeek[], investorCount: 
   return [row, ...merged];
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("token")?.value;
@@ -54,8 +55,11 @@ export async function GET() {
     const decoded = verifyToken(token);
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
-    if (decoded.role !== "INVESTOR" && decoded.role !== "OWNER") {
-      return NextResponse.json({ error: "Доступно только инвестору или владельцу сети" }, { status: 403 });
+    if (decoded.role !== "INVESTOR" && decoded.role !== "OWNER" && decoded.role !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "Доступно только инвестору, владельцу сети или супер-админу (личные позиции)" },
+        { status: 403 }
+      );
     }
 
     const now = new Date();
@@ -63,7 +67,9 @@ export async function GET() {
     const investorsWhere =
       decoded.role === "INVESTOR"
         ? { investorUserId: decoded.userId }
-        : { ownerId: decoded.userId };
+        : decoded.role === "OWNER"
+          ? { ownerId: decoded.userId }
+          : { linkedUserId: decoded.userId, isPrivate: false };
 
     const investors = await withDbRetry(() =>
       prisma.investor.findMany({
@@ -75,7 +81,21 @@ export async function GET() {
       })
     );
 
-    const ids = investors.map((i) => i.id);
+    let scopedInvestors = investors;
+    const investorIdRaw = request.nextUrl.searchParams.get("investorId");
+    if (investorIdRaw != null && investorIdRaw !== "") {
+      const nid = Number(investorIdRaw);
+      if (!Number.isFinite(nid) || nid <= 0 || !Number.isInteger(nid)) {
+        return NextResponse.json({ error: "Некорректный investorId" }, { status: 400 });
+      }
+      const found = investors.find((i) => i.id === nid);
+      if (!found) {
+        return NextResponse.json({ error: "Позиция не найдена в доступной сети" }, { status: 404 });
+      }
+      scopedInvestors = [found];
+    }
+
+    const ids = scopedInvestors.map((i) => i.id);
     if (ids.length === 0) {
       return NextResponse.json({ items: [] satisfies FinanceOperationItem[] });
     }
@@ -116,7 +136,7 @@ export async function GET() {
       }
     }
 
-    const rowSets = investors.map((inv) =>
+    const rowSets = scopedInvestors.map((inv) =>
       buildWeeklyLedgerRows(
         {
           activationDate: inv.activationDate,
@@ -131,7 +151,7 @@ export async function GET() {
     );
 
     let merged = mergeLedgerWeeks(rowSets);
-    merged = injectSyntheticCurrentWeek(merged, investors.length);
+    merged = injectSyntheticCurrentWeek(merged, scopedInvestors.length);
 
     const weekItems: FinanceOperationItem[] = merged.map((w) => ({
       kind: "week_accrual" as const,
@@ -179,7 +199,7 @@ export async function GET() {
     }));
 
     /** Начальное тело при создании позиции — в ленте как пополнение (без BodyTopUpRequest). */
-    const topUpFromCreation: FinanceOperationItem[] = investors.map((inv) => {
+    const topUpFromCreation: FinanceOperationItem[] = scopedInvestors.map((inv) => {
       const auditJson = firstCreateAuditByInvestorId.get(inv.id) ?? null;
       const initialBody = parseInitialBodyFromAudit(auditJson) ?? inv.body;
       return {

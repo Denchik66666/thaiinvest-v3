@@ -2,7 +2,7 @@
 
 /** Общая лента операций для главной дашборда (INVESTOR / OWNER). Вёрстка — нейтральные `thai-dashboard-*`. */
 
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,8 +15,10 @@ import type { FinanceOperationItem } from "@/types/finance-operations";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { HistoryPeriodPopover, sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
+import { FinanceOperationsSubFeed } from "@/components/dashboard/finance/FinanceOperationsSubFeed";
+import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 
-type OpFilter = "all" | "accrual" | "payout" | "request" | "topup";
+type OpFilter = FinanceOperationsHistoryOpFilter;
 
 const PAGE_FIRST = 8;
 const PAGE_MORE = 40;
@@ -180,6 +182,20 @@ export type DashboardOperationsHistoryProps = {
   financePageScroll?: boolean;
   /** Раздел «Финансы»: полная карточка операции в модалке. На главной не передаётся. */
   onOperationClick?: (item: FinanceOperationItem) => void;
+  /** Рядом с выбором периода (напр. legacy-слоты). */
+  financeSecondaryFiltersSlot?: ReactNode;
+  /** Под фильтрами периода и типа: полоса карточек позиций (Финансы владельца / SA). Режим функции — под каждой карточкой своя лента через renderFeed. */
+  financeInvestorCardsSlot?:
+    | ReactNode
+    | ((ctx: {
+        renderFeed: (investorId: number | null) => ReactNode;
+        opFilter: OpFilter;
+        applyOperationFilter: (filter: OpFilter) => void;
+      }) => ReactNode);
+  /** Серверная выборка сводки/шапки по позиции (`GET …?investorId=`); для аккордеона совпадает с открытой карточкой или «вся сеть». */
+  filterInvestorId?: number | null;
+  /** Страница «Финансы» с аккордеоном: общая лента снизу скрыта, операции только в renderFeed под карточкой. */
+  financeSuppressBottomFeed?: boolean;
 };
 
 function operationRowInteractiveProps(onOperationClick: ((item: FinanceOperationItem) => void) | undefined, item: FinanceOperationItem) {
@@ -208,8 +224,13 @@ export function DashboardOperationsHistory({
   financeProminentFilters = false,
   financePageScroll = false,
   onOperationClick,
+  financeSecondaryFiltersSlot,
+  financeInvestorCardsSlot,
+  filterInvestorId,
+  financeSuppressBottomFeed = false,
 }: DashboardOperationsHistoryProps) {
   const queryClient = useQueryClient();
+  const financeCardsLayout = Boolean(financeProminentFilters && financeInvestorCardsSlot);
   const [expanded, setExpanded] = useState(false);
   const [embeddedExpanded, setEmbeddedExpanded] = useState(embeddedInitiallyExpanded);
 
@@ -221,9 +242,17 @@ export function DashboardOperationsHistory({
   /** Не опрашиваем тяжёлый endpoint в фоне, пока журнал свёрнут (OWNER). */
   const opsPollingActive = enabled && (!embeddedCollapsible || embeddedExpanded);
 
+  const investorHistoryKey = filterInvestorId != null ? filterInvestorId : "all";
+
   const { data: opsData, isLoading: opsLoading } = useQuery({
-    queryKey: ["investors", "operations-history", operationsHistoryScope] as const,
-    queryFn: () => apiClient.get<{ items: FinanceOperationItem[] }>("/api/investors/operations-history"),
+    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey] as const,
+    queryFn: () => {
+      const qs =
+        filterInvestorId != null && Number.isFinite(filterInvestorId)
+          ? `?investorId=${encodeURIComponent(String(filterInvestorId))}`
+          : "";
+      return apiClient.get<{ items: FinanceOperationItem[] }>(`/api/investors/operations-history${qs}`);
+    },
     enabled,
     staleTime: 45_000,
     refetchInterval: opsPollingActive ? 60_000 : false,
@@ -278,6 +307,26 @@ export function DashboardOperationsHistory({
           ? `Показать ещё (${Math.min(filteredOps.length, PAGE_MORE) - PAGE_FIRST})`
           : `Показать все (+${filteredOps.length - visibleCap})`;
 
+  const opFilterPairs = financeProminentFilters
+    ? (
+        [
+          ["all", "Все"],
+          ["accrual", "Начисл."],
+          ["payout", "Выплаты"],
+          ["request", "Заявки"],
+          ["topup", "Пополн."],
+        ] as const
+      )
+    : (
+        [
+          ["all", "Все"],
+          ["accrual", "Начисления"],
+          ["payout", "Выплаты"],
+          ["request", "Заявки"],
+          ["topup", "Пополнения"],
+        ] as const
+      );
+
   const historyHeader = embedded ? (
     embeddedCollapsible ? (
       <button
@@ -287,9 +336,7 @@ export function DashboardOperationsHistory({
             const next = !v;
             if (!v && next) {
               setVisibleCap(SHOW_ALL_HISTORY_CAP);
-              void queryClient.invalidateQueries({
-                queryKey: ["investors", "operations-history", operationsHistoryScope],
-              });
+              void queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
             }
             return next;
           })
@@ -383,11 +430,11 @@ export function DashboardOperationsHistory({
             className={cn(
               "relative z-10",
               financeProminentFilters &&
-                "rounded-xl border border-border/35 bg-gradient-to-br from-card/70 via-card/45 to-muted/12 p-2.5 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.45)] backdrop-blur-md dark:from-card/35 dark:via-card/22 dark:to-muted/8 md:p-3"
+                "rounded-xl border border-border/35 bg-gradient-to-br from-card/70 via-card/45 to-muted/12 p-2 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.45)] backdrop-blur-md dark:from-card/35 dark:via-card/22 dark:to-muted/8 md:p-2.5"
             )}
           >
             {financeProminentFilters ? (
-              <div className="mb-2 flex flex-wrap items-end justify-between gap-x-3 gap-y-2 border-b border-border/20 pb-2">
+              <div className="mb-1.5 flex flex-wrap items-end justify-between gap-x-2 gap-y-1.5 border-b border-border/20 pb-1.5">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Лента</span>
                   {!isBusy ? (
@@ -444,84 +491,139 @@ export function DashboardOperationsHistory({
             ) : null}
             <div
               className={cn(
-                "flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center",
-                financeProminentFilters && "pt-0.5"
+                "flex min-w-0 pt-0.5",
+                financeProminentFilters
+                  ? "flex-row items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  : cn("gap-2", financeCardsLayout ? "flex-col" : "flex-col sm:flex-row sm:items-center")
               )}
             >
-              <div className="flex shrink-0 items-center gap-2">
-                {financeProminentFilters ? (
-                  <span className="hidden text-[9px] font-semibold uppercase tracking-wide text-muted-foreground sm:inline">
-                    Фильтр
-                  </span>
-                ) : null}
-                <HistoryPeriodPopover
-                  className="shrink-0"
-                  compact={embedded && !financeProminentFilters}
-                  value={periodValue}
-                  onChange={(next) => {
-                    setPeriodValue(next);
-                    resetVisibleCap();
-                  }}
-                />
-              </div>
-              <div className="min-w-0 flex-1 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex w-max items-center gap-1 pr-1 sm:gap-1.5 sm:pr-2">
-                  {(
-                    financeProminentFilters
-                      ? (
-                          [
-                            ["all", "Все"],
-                            ["accrual", "Начисл."],
-                            ["payout", "Выплаты"],
-                            ["request", "Заявки"],
-                            ["topup", "Пополн."],
-                          ] as const
-                        )
-                      : (
-                          [
-                            ["all", "Все"],
-                            ["accrual", "Начисления"],
-                            ["payout", "Выплаты"],
-                            ["request", "Заявки"],
-                            ["topup", "Пополнения"],
-                          ] as const
-                        )
-                  ).map(([id, label]) => (
-                    <Button
-                      key={id}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        financeProminentFilters
-                          ? "h-7 shrink-0 whitespace-nowrap rounded-lg px-2 py-0 text-[10px] font-semibold leading-none sm:h-8 sm:rounded-full sm:px-2.5"
-                          : "h-8 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none md:h-9 md:px-3 md:text-[11px]",
-                        embedded && !financeProminentFilters && "px-2",
-                        opFilter === id
-                          ? cn(
-                              "border-primary/30 bg-primary/[0.06] text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md hover:bg-primary/[0.1]",
-                              "dark:border-primary/22 dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:hover:bg-white/[0.07]"
-                            )
-                          : "border-border/42 bg-background/45 text-muted-foreground hover:border-border/55 hover:bg-muted/18 hover:text-foreground dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.04]"
-                      )}
-                      onClick={() => {
-                        setOpFilter(id);
+              {financeProminentFilters ? (
+                <>
+                  <HistoryPeriodPopover
+                    triggerVariant="toolbar"
+                    className="shrink-0"
+                    value={periodValue}
+                    onChange={(next) => {
+                      setPeriodValue(next);
+                      resetVisibleCap();
+                    }}
+                  />
+                  {financeSecondaryFiltersSlot ? (
+                    <div className="flex shrink-0">{financeSecondaryFiltersSlot}</div>
+                  ) : null}
+                  <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
+                    {opFilterPairs.map(([id, label]) => (
+                      <Button
+                        key={id}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          "h-7 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none",
+                          opFilter === id
+                            ? cn(
+                                "border-primary/30 bg-primary/[0.06] text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md hover:bg-primary/[0.1]",
+                                "dark:border-primary/22 dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:hover:bg-white/[0.07]"
+                              )
+                            : "border-border/42 bg-background/45 text-muted-foreground hover:border-border/55 hover:bg-muted/18 hover:text-foreground dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.04]"
+                        )}
+                        onClick={() => {
+                          setOpFilter(id);
+                          resetVisibleCap();
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <HistoryPeriodPopover
+                      className="shrink-0"
+                      compact={embedded && !financeProminentFilters}
+                      value={periodValue}
+                      onChange={(next) => {
+                        setPeriodValue(next);
                         resetVisibleCap();
                       }}
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+                    />
+                    {financeSecondaryFiltersSlot ? (
+                      <div className="flex min-w-0 shrink-0">{financeSecondaryFiltersSlot}</div>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1 overflow-x-auto py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <div className="flex w-max items-center gap-1 pr-1 sm:gap-1.5 sm:pr-2">
+                      {opFilterPairs.map(([id, label]) => (
+                        <Button
+                          key={id}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={cn(
+                            "h-8 shrink-0 whitespace-nowrap rounded-full px-2.5 py-0 text-[10px] font-semibold leading-none md:h-9 md:px-3 md:text-[11px]",
+                            embedded && !financeProminentFilters && "px-2",
+                            opFilter === id
+                              ? cn(
+                                  "border-primary/30 bg-primary/[0.06] text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md hover:bg-primary/[0.1]",
+                                  "dark:border-primary/22 dark:bg-white/[0.05] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] dark:hover:bg-white/[0.07]"
+                                )
+                              : "border-border/42 bg-background/45 text-muted-foreground hover:border-border/55 hover:bg-muted/18 hover:text-foreground dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.04]"
+                          )}
+                          onClick={() => {
+                            setOpFilter(id);
+                            resetVisibleCap();
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             {financeProminentFilters ? (
-              <p className="mt-2 border-t border-border/15 pt-2 text-[9px] leading-snug text-muted-foreground">
-                Суммы справа — только видимые строки. Нажмите строку ниже для подробностей.
-              </p>
+              <div className="mt-1.5 space-y-1.5 border-t border-border/15 pt-1.5">
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  {financeInvestorCardsSlot
+                    ? financeSuppressBottomFeed
+                      ? "Период и тип задают выборку. Карточка — лента под ней; метрики на карточке тоже задают тип."
+                      : "Сверху — период и тип операций. Карточка позиции — лента событий ниже. Суммы справа по текущей выборке."
+                    : "Суммы справа — только видимые строки. Нажмите строку ниже для подробностей."}
+                </p>
+                {financeInvestorCardsSlot ? (
+                  typeof financeInvestorCardsSlot === "function" ? (
+                    financeInvestorCardsSlot({
+                      renderFeed: (investorId) => (
+                        <FinanceOperationsSubFeed
+                          operationsHistoryScope={operationsHistoryScope}
+                          filterInvestorId={investorId}
+                          periodValue={periodValue}
+                          opFilter={opFilter}
+                          financePageScroll={financePageScroll}
+                          showMultiPositionLabels={investorId != null ? false : showMultiPositionLabels}
+                          enabled={enabled && opsPollingActive}
+                          onOperationClick={onOperationClick}
+                        />
+                      ),
+                      opFilter,
+                      applyOperationFilter: (filter) => {
+                        setOpFilter(filter);
+                        resetVisibleCap();
+                      },
+                    })
+                  ) : (
+                    <div>{financeInvestorCardsSlot}</div>
+                  )
+                ) : null}
+              </div>
             ) : null}
           </div>
 
+          {!financeSuppressBottomFeed ? (
+            <>
           <div
             className={cn(
               "relative z-0 rounded-xl border-0",
@@ -762,6 +864,8 @@ export function DashboardOperationsHistory({
             >
               {pagingLabel}
             </button>
+          ) : null}
+            </>
           ) : null}
         </div>
   ) : null;

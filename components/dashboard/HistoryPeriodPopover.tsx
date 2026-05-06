@@ -6,7 +6,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -108,9 +108,20 @@ type HistoryPeriodPopoverProps = {
   onChange: (next: HistoryPeriodValue) => void;
   className?: string;
   compact?: boolean;
+  /**
+   * Панель «Финансы»: только значок календаря в одной строке с чипами типов, без подписи «Период».
+   * По умолчанию — прежний вид (подпись + иконка).
+   */
+  triggerVariant?: "default" | "toolbar";
 };
 
-export function HistoryPeriodPopover({ value, onChange, className, compact = false }: HistoryPeriodPopoverProps) {
+export function HistoryPeriodPopover({
+  value,
+  onChange,
+  className,
+  compact = false,
+  triggerVariant = "default",
+}: HistoryPeriodPopoverProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -435,44 +446,76 @@ export function HistoryPeriodPopover({ value, onChange, className, compact = fal
             return !v;
           });
         }}
+        title={triggerVariant === "toolbar" ? formatHistoryPeriodCaption(value) : undefined}
         className={cn(
           "group inline-flex max-w-full items-center gap-2 rounded-xl border text-left outline-none transition duration-200 ease-out",
-          compact ? "gap-1.5 rounded-lg px-2 py-1" : "gap-2 rounded-xl px-2.5 py-1.5",
-          "border-border/55 bg-gradient-to-br from-background/70 to-muted/25 backdrop-blur-md",
-          "hover:border-primary/40 hover:from-background/85 hover:to-muted/35 hover:shadow-[0_8px_28px_-8px_hsl(var(--primary)/0.22)]",
-          open &&
-            "border-primary/50 from-background/90 to-muted/40 ring-2 ring-primary/25 shadow-[0_10px_32px_-10px_hsl(var(--primary)/0.35)]"
+          triggerVariant === "toolbar"
+            ? "h-7 shrink-0 gap-1.5 rounded-full border-border/42 bg-background/45 px-2 backdrop-blur-md hover:border-primary/35 hover:bg-muted/22 dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.05]"
+            : cn(compact ? "gap-1.5 rounded-lg px-2 py-1" : "gap-2 rounded-xl px-2.5 py-1.5"),
+          triggerVariant !== "toolbar" &&
+            cn(
+              "border-border/55 bg-gradient-to-br from-background/70 to-muted/25 backdrop-blur-md",
+              "hover:border-primary/40 hover:from-background/85 hover:to-muted/35 hover:shadow-[0_8px_28px_-8px_hsl(var(--primary)/0.22)]",
+              open &&
+                "border-primary/50 from-background/90 to-muted/40 ring-2 ring-primary/25 shadow-[0_10px_32px_-10px_hsl(var(--primary)/0.35)]"
+            ),
+          triggerVariant === "toolbar" &&
+            open &&
+            "border-primary/38 bg-primary/[0.08] ring-1 ring-primary/22 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] dark:bg-white/[0.06]"
         )}
       >
-        <CalendarDays
-          className={cn(
-            compact ? "h-3 w-3" : "h-3.5 w-3.5",
-            "shrink-0 text-muted-foreground transition duration-200",
-            "group-hover:text-primary",
-            open && "text-primary"
-          )}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75",
-              compact ? "text-[8px]" : "text-[9px]"
-            )}
-          >
-            Период
+        {triggerVariant === "toolbar" ? (
+          <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/[0.14] to-primary/[0.06] ring-1 ring-primary/25 transition duration-200 dark:from-primary/[0.12] dark:to-primary/[0.05]">
+            <CalendarDays
+              className="h-[15px] w-[15px] shrink-0 text-primary/95 dark:text-primary/90"
+              strokeWidth={2.35}
+              aria-hidden
+            />
           </span>
-        </span>
-        <ChevronRight
-          className={cn(
-            compact ? "h-3 w-3" : "h-3.5 w-3.5",
-            "shrink-0 text-muted-foreground transition duration-200",
-            open && "rotate-90 text-primary"
-          )}
-          strokeWidth={2}
-          aria-hidden
-        />
+        ) : (
+          <CalendarDays
+            className={cn(
+              compact ? "h-3 w-3" : "h-3.5 w-3.5",
+              "shrink-0 text-muted-foreground transition duration-200",
+              "group-hover:text-primary",
+              open && "text-primary"
+            )}
+            strokeWidth={2}
+            aria-hidden
+          />
+        )}
+        {triggerVariant !== "toolbar" ? (
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75",
+                compact ? "text-[8px]" : "text-[9px]"
+              )}
+            >
+              Период
+            </span>
+          </span>
+        ) : null}
+        {triggerVariant === "toolbar" ? (
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-muted-foreground transition duration-200",
+              open && "rotate-180 text-primary"
+            )}
+            strokeWidth={2}
+            aria-hidden
+          />
+        ) : (
+          <ChevronRight
+            className={cn(
+              compact ? "h-3 w-3" : "h-3.5 w-3.5",
+              "shrink-0 text-muted-foreground transition duration-200",
+              open && "rotate-90 text-primary"
+            )}
+            strokeWidth={2}
+            aria-hidden
+          />
+        )}
       </button>
       {open && popoverNode ? createPortal(popoverNode, document.body) : null}
     </div>

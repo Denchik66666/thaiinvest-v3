@@ -487,7 +487,7 @@ export default function InvestorDetailPage() {
           </div>
         ) : null}
 
-        <MobileBottomNav active={isAdmin ? "investors" : "home"} />
+        <MobileBottomNav active={isAdmin ? "manage" : "home"} />
       </div>
     </Container>
   );

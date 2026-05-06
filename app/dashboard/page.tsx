@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
 import { sumExpectedFullOpenWeekAccrualGross } from "@/lib/open-week-forecast";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
@@ -33,12 +34,14 @@ import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremium
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
-import { SuperAdminDashboardHome } from "@/components/dashboard/SuperAdminDashboardHome";
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 
 type InvestorRow = {
   id: number;
   name: string;
+  handle?: string | null;
+  investorUser?: { username: string } | null;
+  linkedUser?: { id: number; username: string } | null;
   body: number;
   rate: number;
   accrued: number;
@@ -126,32 +129,6 @@ function getCurrentWeek() {
   return { start: format(monday), end: format(sunday), nextPayout: format(nextMonday) };
 }
 
-function countRequestedPayments(rows: InvestorRow[]) {
-  let n = 0;
-  for (const inv of rows) {
-    for (const p of inv.payments ?? []) {
-      if (p.status === "requested") n += 1;
-    }
-  }
-  return n;
-}
-
-/** Сумма и лимит личной сети SUPER_ADMIN (как в getPrivateInvestorCreateContext). */
-function superAdminPrivateNetworkUsedAndLimit(rows: InvestorRow[], username: string, userId: number) {
-  const commonCandidates = rows
-    .filter((inv) => !inv.isPrivate && inv.linkedUserId === userId)
-    .sort((a, b) => b.id - a.id);
-  const limit = commonCandidates[0]?.body ?? 0;
-  const used = rows
-    .filter((inv) => inv.isPrivate && inv.owner.username === username)
-    .reduce((sum, inv) => sum + (inv.body || 0), 0);
-  return { used, limit };
-}
-
-function formatLimitBtc(amount: number) {
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(amount) + " ₿";
-}
-
 function DashboardAuthSkeleton() {
   const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
   const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
@@ -175,8 +152,6 @@ function DashboardAuthSkeleton() {
   );
 }
 
-type SuperAdminInvestorFilter = "all" | "common" | "private";
-
 export default function DashboardPage() {
   const { user, loading: authLoading, refresh: refreshAuth } = useAuth();
   const router = useRouter();
@@ -190,7 +165,6 @@ export default function DashboardPage() {
   });
   const [pageVisible, setPageVisible] = useState(true);
   const [barScrolled, setBarScrolled] = useState(false);
-  const [saInvestorFilter, setSaInvestorFilter] = useState<SuperAdminInvestorFilter>("all");
   const notifyPrefs = useSyncExternalStore(
     subscribeNotificationPreferences,
     readNotificationPreferences,
@@ -221,18 +195,26 @@ export default function DashboardPage() {
      * OWNER: без опроса заявки из другого браузера не появятся (глобально refetchOnWindowFocus: false).
      * Лёгкий lean-список раз в 45 с + обновление при возврате на вкладку.
      */
-    refetchInterval: user?.role === "INVESTOR" ? 30_000 : user?.role === "OWNER" ? 45_000 : false,
+    refetchInterval:
+      user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
+        ? 30_000
+        : user?.role === "OWNER"
+          ? 45_000
+          : false,
     refetchOnWindowFocus: user?.role === "OWNER",
   });
 
-  const openWeekMondayIso = user?.role === "INVESTOR" ? getPreviousOrCurrentMonday(new Date()).toISOString() : "";
+  const openWeekMondayIso =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
+      ? getPreviousOrCurrentMonday(new Date()).toISOString()
+      : "";
   const { data: investorBusinessRate } = useQuery({
     queryKey: ["system", "business-rate", openWeekMondayIso] as const,
     queryFn: () =>
       apiClient.get<{ success: boolean; current: { rate: number } | null }>(
         `/api/system/business-rate?at=${encodeURIComponent(openWeekMondayIso)}`
       ),
-    enabled: !!user && user.role === "INVESTOR",
+    enabled: !!user && (user.role === "INVESTOR" || user.role === "SUPER_ADMIN"),
     staleTime: 60_000,
   });
 
@@ -259,24 +241,12 @@ export default function DashboardPage() {
   }, [myInvestors]);
 
   const investorForecastFullWeek =
-    user?.role === "INVESTOR"
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
       ? sumExpectedFullOpenWeekAccrualGross(
           myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
           investorBusinessRate?.current?.rate ?? null
         )
       : null;
-
-  const networkStats = useMemo(() => {
-    return investors.reduce(
-      (acc, inv) => ({
-        capital: acc.capital + (inv.body || 0),
-        accrued: acc.accrued + (inv.accrued || 0),
-        paid: acc.paid + (inv.paid || 0),
-        due: acc.due + (inv.due || 0),
-      }),
-      { capital: 0, accrued: 0, paid: 0, due: 0 }
-    );
-  }, [investors]);
 
   const bestDueInvestor = useMemo(() => {
     const list = myInvestors.filter((i) => i.due > 0.005);
@@ -296,7 +266,12 @@ export default function DashboardPage() {
   const isInvestor = user?.role === "INVESTOR";
 
   const investorForecastStrip = useMemo(() => {
-    if (!isInvestor || myInvestors.length === 0 || investorForecastFullWeek == null || investorForecastFullWeek < 0.005) {
+    if (
+      (!isInvestor && !isSuperAdmin) ||
+      myInvestors.length === 0 ||
+      investorForecastFullWeek == null ||
+      investorForecastFullWeek < 0.005
+    ) {
       return null;
     }
     const amt = new Intl.NumberFormat("ru-RU", {
@@ -307,12 +282,12 @@ export default function DashboardPage() {
       amountPlusBaht: `+${amt} ฿`,
       payoutDate: currentWeek.nextPayout,
     };
-  }, [isInvestor, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
+  }, [isInvestor, isSuperAdmin, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
 
   const latestInvestorWithdrawalMeta = useMemo(() => {
-    if (!isInvestor || investorsQueryError) return null;
+    if ((!isInvestor && !isSuperAdmin) || investorsQueryError) return null;
     return pickLatestWithdrawalRequest(myInvestors);
-  }, [isInvestor, investorsQueryError, myInvestors]);
+  }, [isInvestor, isSuperAdmin, investorsQueryError, myInvestors]);
 
   const latestWithdrawalInvestorName = useMemo(() => {
     if (!latestInvestorWithdrawalMeta) return undefined;
@@ -323,12 +298,6 @@ export default function DashboardPage() {
     () => myInvestors.filter((i) => i.status === "active").length,
     [myInvestors]
   );
-
-  const pendingApprovalsCount = useMemo(() => {
-    if (isOwner) return countRequestedPayments(myInvestors);
-    if (isSuperAdmin) return countRequestedPayments(investors);
-    return 0;
-  }, [isOwner, isSuperAdmin, myInvestors, investors]);
 
   const ownerPendingPayments = useMemo((): OwnerPendingPaymentRow[] => {
     if (!isOwner) return [];
@@ -350,97 +319,10 @@ export default function DashboardPage() {
     return rows.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
   }, [isOwner, myInvestors]);
 
-  const superAdminFilteredInvestors = useMemo(() => {
-    if (!isSuperAdmin) return [];
-    if (saInvestorFilter === "common") return investors.filter((i) => !i.isPrivate);
-    if (saInvestorFilter === "private") return investors.filter((i) => i.isPrivate);
-    return investors;
-  }, [isSuperAdmin, investors, saInvestorFilter]);
-
-  const superAdminPrivateLimitCard = useMemo(() => {
-    if (!isSuperAdmin || !user) return null;
-    const { used, limit } = superAdminPrivateNetworkUsedAndLimit(investors, user.username, user.id);
-    const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-    const free = Math.max(0, limit - used);
-    const barBg =
-      percent > 80
-        ? "linear-gradient(90deg,#ef4444,#f97316)"
-        : percent > 50
-          ? "linear-gradient(90deg,#f59e0b,var(--thai-color-due))"
-          : "linear-gradient(90deg,#7c3aed,#a78bfa)";
-    const barShadow = percent > 80 ? "0 0 8px rgba(239,68,68,0.5)" : "0 0 8px rgba(124,58,237,0.4)";
-    const footerColor = percent > 80 ? "var(--thai-color-rejected)" : percent > 50 ? "var(--thai-color-due)" : "#a78bfa";
-    const footerText =
-      percent > 80
-        ? "⚠ Лимит почти исчерпан"
-        : percent > 50
-          ? "Использовано больше половины"
-          : "Свободно: " + formatLimitBtc(free);
-    return (
-      <div
-        style={{
-          background: "rgba(124,58,237,0.08)",
-          border: "1px solid rgba(124,58,237,0.25)",
-          borderRadius: 14,
-          padding: "14px 16px",
-          marginBottom: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--thai-color-text-secondary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-            }}
-          >
-            Лимит личной сети
-          </div>
-          <div style={{ fontSize: 12, color: "var(--thai-color-text-secondary)" }}>
-            {formatLimitBtc(used)} из {formatLimitBtc(limit)}
-          </div>
-        </div>
-        <div
-          style={{
-            height: 6,
-            borderRadius: 3,
-            background: "var(--thai-color-card-bg)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              width: `${percent}%`,
-              borderRadius: 3,
-              background: barBg,
-              transition: "width 0.6s ease",
-              boxShadow: barShadow,
-            }}
-          />
-        </div>
-        <div style={{ fontSize: 12, marginTop: 8, color: footerColor }}>{footerText}</div>
-      </div>
-    );
-  }, [isSuperAdmin, user, investors]);
-
   const headlineLine1 = useMemo(() => {
-    if (isOwner) {
-      return `Моя сеть · ${activeInvestorsCount} активных инвесторов`;
-    }
-    if (isSuperAdmin) {
-      return `Общая сеть · ${investors.length} инвесторов · Следующая выплата ${currentWeek.nextPayout}`;
-    }
-    return "";
-  }, [isOwner, isSuperAdmin, currentWeek, activeInvestorsCount, investors.length]);
+    if (!isOwner) return "";
+    return `Моя сеть · ${activeInvestorsCount} активных инвесторов`;
+  }, [isOwner, activeInvestorsCount]);
 
   const paymentStatusRef = useRef<Record<string, string> | null>(null);
 
@@ -463,7 +345,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== "INVESTOR") return;
+    if (user?.role !== "INVESTOR" && user?.role !== "SUPER_ADMIN") return;
     const key = `investor-payment-status-map:${user.id}`;
     const currentMap: Record<string, string> = {};
     for (const inv of myInvestors) {
@@ -556,8 +438,6 @@ export default function DashboardPage() {
 
   const showDueAction = canRequestWithdraw && stats.due > 0.005;
 
-  const displayStats = isSuperAdmin ? networkStats : stats;
-
   return (
     <Container>
       <div
@@ -576,7 +456,7 @@ export default function DashboardPage() {
           dashboardPositionsActive={myInvestors.some((i) => i.status === "active")}
         />
 
-        {isInvestor ? (
+        {isInvestor || isSuperAdmin ? (
           <InvestorPremiumDashboard
             glassCard={glassCard}
             payoutDue={stats.due}
@@ -623,56 +503,17 @@ export default function DashboardPage() {
             onOpenReports={() => router.push("/dashboard/finance")}
             onOpenInvestorReports={(id) => router.push(`/dashboard/finance?investor=${id}`)}
           />
-        ) : (
-          <SuperAdminDashboardHome
-            glassCard={glassCard}
-            headline={headlineLine1}
-            nextPayoutLabel={currentWeek.nextPayout}
-            statsSummary={
-              <div className="grid grid-cols-2 gap-2">
-                <StatTile primary title="Тело в сети" value={displayStats.capital} className="col-span-2" />
-                <StatTile
-                  title="Начислено"
-                  value={displayStats.accrued}
-                  valueClassName="text-lg md:text-xl"
-                  valueStyle={{ color: "var(--thai-color-accrued)" }}
-                />
-                <StatTile
-                  title="Выплачено"
-                  value={displayStats.paid}
-                  valueClassName="text-lg md:text-xl"
-                  valueStyle={{ color: "var(--thai-color-paid)" }}
-                />
-                <StatTile
-                  title="К выплате"
-                  value={displayStats.due}
-                  valueClassName="text-lg md:text-xl"
-                  valueStyle={{ color: "var(--thai-color-due)" }}
-                />
-              </div>
-            }
-            limitSlot={superAdminPrivateLimitCard}
-            pendingApprovalsCount={pendingApprovalsCount}
-            onOpenFinance={() => router.push("/dashboard/finance")}
-            quickActions={[
-              { label: "Управление", onClick: () => router.push("/dashboard/manage") },
-              { label: "Реестр", onClick: () => router.push("/dashboard/investors") },
-              { label: "Финансы", onClick: () => router.push("/dashboard/finance") },
-            ]}
-            saInvestorFilter={saInvestorFilter}
-            setSaInvestorFilter={setSaInvestorFilter}
-            loadingInvestors={loadingInvestors}
-            hasInvestorsData={Boolean(investorsData)}
-            filteredInvestors={superAdminFilteredInvestors}
-            onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
-          />
-        )}
+        ) : null}
 
         {selectedInvestorCard ? (
           <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
             <div className="thai-glass w-full max-w-md space-y-4 p-5 shadow-2xl" style={glassCard}>
               <div className="min-w-0">
-                <InvestorPositionAvatarHeading name={selectedInvestorCard.name} status={selectedInvestorCard.status} />
+                <InvestorPositionAvatarHeading
+                  name={selectedInvestorCard.name}
+                  avatarInitialsSource={investorDisplayHandle(selectedInvestorCard)}
+                  status={selectedInvestorCard.status}
+                />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <MiniStat label="Тело" value={formatCurrency(selectedInvestorCard.body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
@@ -794,70 +635,6 @@ export default function DashboardPage() {
         <MobileBottomNav active="home" />
       </div>
     </Container>
-  );
-}
-
-function StatTile({
-  title,
-  value,
-  valueClassName,
-  valueStyle,
-  className,
-  primary,
-}: {
-  title: string;
-  value: number;
-  valueClassName?: string;
-  valueStyle?: CSSProperties;
-  className?: string;
-  primary?: boolean;
-}) {
-  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
-  const glassStyle = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
-
-  if (primary) {
-    const primaryStyle: CSSProperties = {
-      ...glassStyle,
-      background: `linear-gradient(135deg, rgba(109,40,217,0.2) 0%, var(--thai-color-card-bg) 100%), ${
-        isDark ? "var(--thai-color-card-bg)" : "rgba(255,255,255,0.65)"
-      }`,
-    };
-    return (
-      <div className={cn("thai-stat-tile thai-glass thai-stat-primary", className)} style={primaryStyle}>
-        <span
-          className="thai-stat-label"
-          style={{
-            fontSize: "0.6rem",
-            letterSpacing: "0.18em",
-            opacity: 0.45,
-            textTransform: "uppercase",
-          }}
-        >
-          {title}
-        </span>
-        <span
-          className={cn("tabular-nums block", valueClassName)}
-          style={{
-            fontSize: "2.8rem",
-            fontWeight: 300,
-            letterSpacing: "-0.02em",
-            lineHeight: 1,
-            ...valueStyle,
-            color: "var(--thai-color-text-primary)",
-          }}
-        >
-          {formatCurrency(value)}
-        </span>
-      </div>
-    );
-  }
-  return (
-    <div className={cn("thai-stat-tile thai-glass", className)} style={glassStyle}>
-      <Text className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</Text>
-      <div className={cn("mt-1 tabular-nums font-bold tracking-tight", valueClassName)} style={valueStyle}>
-        {formatCurrency(value)}
-      </div>
-    </div>
   );
 }
 

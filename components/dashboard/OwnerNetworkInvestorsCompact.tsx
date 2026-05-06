@@ -13,6 +13,7 @@ import { OwnerWithdrawApproveModal } from "@/components/dashboard/OwnerWithdrawA
 import { Text } from "@/components/ui/Text";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import { cn, formatCurrency } from "@/lib/utils";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 
 export type OwnerNetworkInvestorPaymentHint = {
@@ -26,6 +27,8 @@ export type OwnerNetworkInvestorPaymentHint = {
 export type OwnerNetworkInvestorRow = {
   id: number;
   name: string;
+  handle?: string | null;
+  investorUser?: { username: string } | null;
   body: number;
   accrued: number;
   due: number;
@@ -178,10 +181,12 @@ function CompactMetricButton({
 /** Тот же паттерн, что и в `DashboardTopbar`: кольцо `thai-dashboard-avatar-ring`, ник `thai-dashboard-nick-matte-gold`, стрелка › */
 function TopbarStyleInvestorIdentity({
   name,
+  avatarInitialsSource,
   positionsActive,
   onOpenProfile,
 }: {
   name: string;
+  avatarInitialsSource?: string | null;
   positionsActive: boolean;
   onOpenProfile: () => void;
 }) {
@@ -306,6 +311,7 @@ export function OwnerNetworkInvestorsCompact({
                 <div className="flex min-w-0 items-start gap-2">
                   <TopbarStyleInvestorIdentity
                     name={inv.name}
+                    avatarInitialsSource={investorDisplayHandle(inv)}
                     positionsActive={positionsActive}
                     onOpenProfile={() => onOpenInvestor(inv.id)}
                   />

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
-export type BottomNavKey = "home" | "finance" | "investors" | "manage" | "chat";
+export type BottomNavKey = "home" | "finance" | "manage";
 
 type Tab = {
   key: BottomNavKey;
@@ -29,15 +29,6 @@ function IconFinance({ active }: { active: boolean }) {
   );
 }
 
-function IconInvestors({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={active ? "text-foreground" : "text-muted-foreground"}>
-      <path d="M7.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM16.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
-      <path d="M3.5 19c.5-2.6 2.4-4 4-4s3.5 1.4 4 4M12.5 19c.5-2.6 2.4-4 4-4s3.5 1.4 4 4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function IconManage({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={active ? "text-foreground" : "text-muted-foreground"}>
@@ -52,6 +43,14 @@ function tabMatchesPath(tab: Tab, pathname: string | null): boolean {
   if (tab.key === "home") return pathname === "/dashboard" || pathname === "/dashboard/";
   if (tab.key === "finance") {
     return pathname === "/dashboard/finance" || pathname.startsWith("/dashboard/finance/");
+  }
+  if (tab.key === "manage") {
+    return (
+      pathname === "/dashboard/manage" ||
+      pathname.startsWith("/dashboard/manage/") ||
+      pathname === "/dashboard/investors" ||
+      pathname.startsWith("/dashboard/investors/")
+    );
   }
   return pathname === tab.path || pathname.startsWith(`${tab.path}/`);
 }
@@ -68,11 +67,11 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
         { key: "finance", label: "Финансы", path: "/dashboard/finance" },
       ];
     }
+    /** OWNER, SUPER_ADMIN: профиль только из шапки (аватар / ник), без вкладки «Инвесторы». */
     return [
       { key: "home", label: "Главная", path: "/dashboard" },
-      { key: "investors", label: "Инвесторы", path: "/dashboard/investors" },
-      { key: "manage", label: "Управление", path: "/dashboard/manage" },
       { key: "finance", label: "Финансы", path: "/dashboard/finance" },
+      { key: "manage", label: "Управление", path: "/dashboard/manage" },
     ];
   }, [user?.role]);
 
@@ -106,7 +105,6 @@ export default function MobileBottomNav({ active }: { active?: BottomNavKey }) {
               <span className="relative flex h-7 w-7 items-center justify-center">
                 {tab.key === "home" ? <IconHome {...iconProps} /> : null}
                 {tab.key === "finance" ? <IconFinance {...iconProps} /> : null}
-                {tab.key === "investors" ? <IconInvestors {...iconProps} /> : null}
                 {tab.key === "manage" ? <IconManage {...iconProps} /> : null}
               </span>
               <span className="truncate max-w-full">{tab.label}</span>

@@ -18,6 +18,7 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
+import { SuperAdminNetworkOverviewCard } from "@/components/dashboard/SuperAdminNetworkOverviewCard";
 import { CreateInvestorModal } from "@/components/investors/CreateInvestorModal";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
 import type { BusinessRateHistoryRow } from "@/lib/business-rate-history-display";
@@ -358,6 +359,8 @@ export default function DashboardManagePage() {
               </CollapsibleSection>
             </div>
           )}
+
+          {isSuperAdmin ? <SuperAdminNetworkOverviewCard /> : null}
 
           <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Действия</Text>
           {!loadingReadiness && !systemReady && (
