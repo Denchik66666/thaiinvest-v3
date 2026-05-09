@@ -203,6 +203,11 @@ export type DashboardOperationsHistoryProps = {
   financeSuppressBottomFeed?: boolean;
   /** SUPER_ADMIN на «Финансы»: фильтр сети для лент без выбранной позиции. */
   financeSuperAdminNetwork?: "common" | "private" | "all" | null;
+  /**
+   * SUPER_ADMIN на главной: лента только по позициям «Семён» (`linkedCommon=1`), не по всей общей сети.
+   * Не использовать на странице «Финансы».
+   */
+  superAdminLinkedCommonHome?: boolean;
   /** Если задан вместе с `onOperationClick`, интерактивны только подходящие строки (напр. только выплаты на главной). */
   operationRowPredicate?: (item: FinanceOperationItem) => boolean;
 };
@@ -254,6 +259,7 @@ export function DashboardOperationsHistory({
   filterInvestorId,
   financeSuppressBottomFeed = false,
   financeSuperAdminNetwork = null,
+  superAdminLinkedCommonHome = false,
   operationRowPredicate,
 }: DashboardOperationsHistoryProps) {
   const queryClient = useQueryClient();
@@ -285,14 +291,22 @@ export function DashboardOperationsHistory({
   const opsPollingActive = opsHistoryEnabled && (!embeddedCollapsible || embeddedExpanded);
 
   const investorHistoryKey = filterInvestorId != null ? filterInvestorId : "all";
-  const bottomHistoryNetSeg = financeSuperAdminNetwork ?? "-";
+  const bottomHistoryNetSeg = superAdminLinkedCommonHome ? "linkedCommonHome" : (financeSuperAdminNetwork ?? "-");
 
   const { data: opsData, isLoading: opsLoading } = useQuery({
-    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey, bottomHistoryNetSeg] as const,
+    queryKey: [
+      "investors",
+      "operations-history",
+      operationsHistoryScope,
+      investorHistoryKey,
+      bottomHistoryNetSeg,
+    ] as const,
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterInvestorId != null && Number.isFinite(filterInvestorId)) {
         params.set("investorId", String(filterInvestorId));
+      } else if (superAdminLinkedCommonHome) {
+        params.set("linkedCommon", "1");
       } else if (financeSuperAdminNetwork) {
         params.set("network", financeSuperAdminNetwork);
       }

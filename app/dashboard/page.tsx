@@ -485,6 +485,7 @@ export default function DashboardPage() {
                 enabled
                 glassCard={glassCard}
                 showMultiPositionLabels={myInvestors.length > 1}
+                superAdminLinkedCommonHome={isSuperAdmin}
                 operationRowPredicate={(item) => item.kind === "payment"}
                 onOperationClick={(item) => {
                   if (item.kind !== "payment") return;

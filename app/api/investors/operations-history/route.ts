@@ -2,6 +2,7 @@
  * GET /api/investors/operations-history
  *
  * Тело: `{ items: FinanceOperationItem[], meta?: { investorSelection } }`.
+ * При SUPER_ADMIN + `linkedCommon=1` без `investorId` — только позиции «Семёна» на главной (общая сеть + linkedUser / isSystemOwner).
  * При SUPER_ADMIN + `network=all` без `investorId` отбор ограничен (см. `superAdminFinanceMaxPositions`);
  * если строк больше лимита — `meta.investorSelection.investorPositions.moreAvailable === true`
  * и заголовок `X-Thaiinvest-Investor-Selection-Partial: 1`.
@@ -82,6 +83,11 @@ export async function GET(request: NextRequest) {
     const now = new Date();
 
     const networkRaw = request.nextUrl.searchParams.get("network");
+    const linkedCommonHome =
+      decoded.role === "SUPER_ADMIN" &&
+      request.nextUrl.searchParams.get("linkedCommon") === "1" &&
+      (request.nextUrl.searchParams.get("investorId") == null || request.nextUrl.searchParams.get("investorId") === "");
+
     const superAdminNetwork =
       decoded.role === "SUPER_ADMIN" &&
       (networkRaw === "private" || networkRaw === "common" || networkRaw === "all")
@@ -109,6 +115,12 @@ export async function GET(request: NextRequest) {
         Number.isInteger(investorIdEarly)
       ) {
         investorsWhere = {};
+      } else if (linkedCommonHome) {
+        /** Главная SUPER_ADMIN: позиции, привязанные к аккаунту Семёна, + базовая `isSystemOwner` (если без linkedUser). */
+        investorsWhere = {
+          isPrivate: false,
+          OR: [{ linkedUserId: decoded.userId }, { isSystemOwner: true }],
+        };
       } else if (superAdminNetwork === "common") {
         investorsWhere = { isPrivate: false };
       } else if (superAdminNetwork === "private") {
@@ -131,7 +143,11 @@ export async function GET(request: NextRequest) {
     }
 
     const cacheNetworkSeg =
-      decoded.role === "SUPER_ADMIN" && investorId == null ? String(superAdminNetwork ?? "common") : "";
+      decoded.role === "SUPER_ADMIN" && investorId == null
+        ? linkedCommonHome
+          ? "linkedCommon"
+          : String(superAdminNetwork ?? "common")
+        : "";
     const cacheKey = `${decoded.userId}:${decoded.role}:${investorId == null ? "all" : String(investorId)}:${cacheNetworkSeg}`;
     cacheKeyForStale = cacheKey;
     const cached = memoryCache.get(cacheKey);
