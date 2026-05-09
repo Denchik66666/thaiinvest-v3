@@ -1,5 +1,6 @@
 "use client";
 
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { formatCurrency, cn } from "@/lib/utils";
 
 /** Строка списка — совпадает с данными GET /api/investors */
@@ -15,8 +16,9 @@ export type InvestorTableRow = {
   due: number;
   status: string;
   isPrivate: boolean;
-  owner: { username: string; role: string };
+  owner: { id: number; username: string; role: string };
   investorUser?: { id: number; username: string } | null;
+  linkedUser?: { id: number; username: string } | null;
   payments: Array<{ status: string }>;
   entryDate: string;
   activationDate: string;
@@ -124,20 +126,35 @@ function RowDots({ inv }: { inv: InvestorTableRow }) {
   );
 }
 
+function bodyTopUpRowDisabled(inv: InvestorTableRow, pendingIds: ReadonlySet<number>) {
+  if (inv.isPrivate) return { disabled: true as const, title: "Пополнение только в общей сети" };
+  if (inv.status === "closed") return { disabled: true as const, title: "Позиция закрыта" };
+  if (!inv.investorUser && !inv.linkedUser) return { disabled: true as const, title: "Нужен кабинет или привязка для подтверждения" };
+  if (pendingIds.has(inv.id)) return { disabled: true as const, title: "Уже есть запрос на подтверждении" };
+  return { disabled: false as const, title: "Запросить пополнение тела" };
+}
+
 export function InvestorsTable({
   investors,
   onOpenInvestor,
   onResetCredentials,
   onDeleteInvestor,
+  onRequestBodyTopUp,
+  bodyTopUpPendingIds,
   showNetwork = true,
 }: {
   investors: InvestorTableRow[];
   onOpenInvestor?: (investorId: number) => void;
   onResetCredentials?: (investorId: number) => void;
   onDeleteInvestor?: (investorId: number) => void;
+  /** OWNER: открыть сценарий пополнения (модалка на странице-родителе). */
+  onRequestBodyTopUp?: (inv: InvestorTableRow) => void;
+  bodyTopUpPendingIds?: ReadonlySet<number>;
   showNetwork?: boolean;
 }) {
   const rowClickable = typeof onOpenInvestor === "function";
+  const pendingTopUp = bodyTopUpPendingIds ?? new Set<number>();
+  const showBodyTopUpCol = typeof onRequestBodyTopUp === "function";
 
   if (investors.length === 0) {
     return (
@@ -154,10 +171,15 @@ export function InvestorsTable({
     <div className="space-y-2 md:space-y-3">
       <div className="thai-glass desktop-table overflow-hidden rounded-2xl">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-left">
+          <table className="w-full min-w-[1000px] border-collapse text-left">
             <thead>
               <tr className="border-b border-border/50 bg-muted/25">
-                <th className={cn(th, "w-[22%]")}>Позиция</th>
+                <th
+                  className={cn(th, "w-[22%]")}
+                  title="Крупный текст: публичный ник (логин аккаунта инвестора или привязанного пользователя; см. investorDisplayHandle). Ниже: владелец; если имя и Отчество другое — оно второй строкой. «без кабинета» — нет ни логина, ни сохранённого handle."
+                >
+                  Позиция
+                </th>
                 <th className={cn(th, "w-[7%]")}>Вход</th>
                 <th className={cn(th, "w-[9%] text-right tabular-nums")}>Тело</th>
                 <th className={cn(th, "w-[6%] text-center")}>%</th>
@@ -169,6 +191,11 @@ export function InvestorsTable({
                 <th className={cn(th, "w-[5%] text-right")} title="Сигналы">
                   ●
                 </th>
+                {showBodyTopUpCol ? (
+                  <th className={cn(th, "w-[8%] text-center")} title="Запрос пополнения тела (общая сеть)">
+                    Попол.
+                  </th>
+                ) : null}
                 {(onDeleteInvestor || onResetCredentials) && (
                   <th className={cn(th, "w-[12%] text-center")}>…</th>
                 )}
@@ -176,6 +203,9 @@ export function InvestorsTable({
             </thead>
             <tbody className="divide-y divide-border/40">
               {investors.map((inv) => {
+                const nick = investorDisplayHandle(inv);
+                const primary = nick ?? inv.name;
+                const showLegal = nick != null && inv.name.trim() !== nick.trim();
                 const hot = inv.due > 0.005 || rowNeedsAttention(inv);
                 return (
                   <tr
@@ -188,20 +218,25 @@ export function InvestorsTable({
                     onClick={() => onOpenInvestor?.(inv.id)}
                   >
                     <td className="px-2 py-2 align-middle first:pl-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">{inv.name}</div>
+                      {/*
+                        Элемент «Позиция» (десктоп):
+                        — строка 1 (жирная): primary = логин из кабинета/привязки, иначе имя и Отчество (inv.name).
+                        — строка 2 (мелкая): владелец; при другом юридическом имени — «· Имя»; без аккаунта — «без кабинета».
+                      */}
+                      <div
+                        className="min-w-0"
+                        title={[
+                          `Строка 1 (крупно): «${primary}»`,
+                          nick ? `← публичный ник (аккаунт)` : `← имя и Отчество (нет логина/handle)`,
+                          `Владелец: ${inv.owner.username}`,
+                          `Имя и Отчество (БД): ${inv.name}`,
+                        ].join("\n")}
+                      >
+                        <div className="truncate text-sm font-semibold text-foreground">{primary}</div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                           <span className="truncate">{inv.owner.username}</span>
-                          {inv.investorUser?.username ? (
-                            <span className="rounded border border-border/50 bg-background/60 px-1 font-mono text-[10px] text-foreground/90">
-                              {inv.investorUser.username}
-                            </span>
-                          ) : (
-                            <span style={{ color: "#fbbf24" }}>без кабинета</span>
-                          )}
-                          {inv.handle ? (
-                            <span className="truncate text-muted-foreground/80">@{inv.handle}</span>
-                          ) : null}
+                          {showLegal ? <span className="truncate">· {inv.name}</span> : null}
+                          {!nick ? <span style={{ color: "#fbbf24" }}>без кабинета</span> : null}
                         </div>
                       </div>
                     </td>
@@ -240,11 +275,47 @@ export function InvestorsTable({
                         <NetworkBadge isPrivate={inv.isPrivate} />
                       </td>
                     ) : null}
-                    <td className="px-2 py-2 align-middle last:pr-3">
+                    <td
+                      className={cn(
+                        "px-2 py-2 align-middle",
+                        !showBodyTopUpCol && !(onDeleteInvestor || onResetCredentials) && "pr-3"
+                      )}
+                    >
                       <RowDots inv={inv} />
                     </td>
+                    {showBodyTopUpCol && onRequestBodyTopUp ? (
+                      <td
+                        className={cn(
+                          "px-2 py-2 align-middle text-center",
+                          !(onDeleteInvestor || onResetCredentials) && "pr-3"
+                        )}
+                      >
+                        {(() => {
+                          const st = bodyTopUpRowDisabled(inv, pendingTopUp);
+                          return (
+                            <button
+                              type="button"
+                              className={cn(
+                                "rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition",
+                                st.disabled
+                                  ? "cursor-not-allowed border-border/40 text-muted-foreground/55"
+                                  : "border-[color:color-mix(in_srgb,var(--thai-color-topup)_42%,transparent)] text-[var(--thai-color-topup)] hover:bg-[var(--thai-color-topup-bg)]"
+                              )}
+                              disabled={st.disabled}
+                              title={st.title}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!st.disabled) onRequestBodyTopUp(inv);
+                              }}
+                            >
+                              +
+                            </button>
+                          );
+                        })()}
+                      </td>
+                    ) : null}
                     {(onDeleteInvestor || onResetCredentials) && (
-                      <td className="px-2 py-2 align-middle text-center">
+                      <td className="px-2 py-2 pr-3 align-middle text-center">
                         <div className="flex flex-wrap items-center justify-center gap-1">
                           {onResetCredentials ? (
                             <button
@@ -283,22 +354,41 @@ export function InvestorsTable({
 
       <div className="mobile-cards space-y-3">
         {investors.map((inv) => {
+          const nick = investorDisplayHandle(inv);
+          const primary = nick ?? inv.name;
+          const showLegal = nick != null && inv.name.trim() !== nick.trim();
           const hot = inv.due > 0.005 || rowNeedsAttention(inv);
+          const topUpSt = showBodyTopUpCol ? bodyTopUpRowDisabled(inv, pendingTopUp) : null;
+
           return (
-            <button
+            <div
               key={inv.id}
-              type="button"
-              disabled={!rowClickable}
-              onClick={() => onOpenInvestor?.(inv.id)}
               className={cn(
-                "thai-glass thai-row-interactive w-full rounded-2xl border border-border/40 p-4 text-left ring-1 ring-black/[0.03] transition dark:ring-white/[0.06]",
-                !rowClickable && "cursor-default",
+                "thai-glass w-full overflow-hidden rounded-2xl border border-border/40 ring-1 ring-black/[0.03] dark:ring-white/[0.06]",
                 hot && "border-primary/25 ring-primary/10"
               )}
             >
+              <button
+                type="button"
+                disabled={!rowClickable}
+                onClick={() => onOpenInvestor?.(inv.id)}
+                className={cn(
+                  "thai-row-interactive w-full p-4 text-left transition",
+                  !rowClickable && "cursor-default",
+                  rowClickable && "hover:bg-primary/[0.03]"
+                )}
+                title={[
+                  `Крупно: «${primary}» (${nick ? "публичный ник" : "имя и Отчество"})`,
+                  `Владелец: ${inv.owner.username}`,
+                  `Имя и Отчество: ${inv.name}`,
+                ].join("\n")}
+              >
               <div className="flex items-start justify-between gap-2">
+                {/*
+                  Моб. карточка: та же логика, что колонка «Позиция» в таблице (см. thead title).
+                */}
                 <div className="min-w-0 flex-1 truncate text-[15px] font-medium leading-snug text-foreground">
-                  {inv.name}
+                  {primary}
                 </div>
                 <div className="shrink-0">
                   <StatusBadge status={inv.status} />
@@ -307,9 +397,7 @@ export function InvestorsTable({
 
               <div className="mt-1.5 text-xs text-muted-foreground">
                 {inv.owner.username}
-                {inv.investorUser?.username ? (
-                  <span className="text-muted-foreground/80"> · {inv.investorUser.username}</span>
-                ) : null}
+                {showLegal ? <span className="text-muted-foreground/80"> · {inv.name}</span> : null}
                 <span> · вход {shortDate(inv.entryDate)}</span>
               </div>
 
@@ -359,7 +447,28 @@ export function InvestorsTable({
                 </div>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{inv.rate}%</span>
               </div>
-            </button>
+              </button>
+              {showBodyTopUpCol && topUpSt && onRequestBodyTopUp ? (
+                <div className="flex items-center justify-end border-t border-border/35 px-3 py-2">
+                  <button
+                    type="button"
+                    disabled={topUpSt.disabled}
+                    title={topUpSt.title}
+                    onClick={() => {
+                      if (!topUpSt.disabled) onRequestBodyTopUp(inv);
+                    }}
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-wide transition",
+                      topUpSt.disabled
+                        ? "cursor-not-allowed text-muted-foreground/50"
+                        : "text-[var(--thai-color-topup)] hover:underline"
+                    )}
+                  >
+                    Пополнение тела
+                  </button>
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>
