@@ -3,20 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
+import {
+  readAuthMeServerCache,
+  writeAuthMeServerCache,
+  type AuthMeCachedPayload,
+} from '@/lib/auth-me-server-cache'
 
-type MePayload = {
-  user: {
-    id: number
-    username: string
-    avatarUrl: string | null
-    role: string
-    isSystemOwner: boolean
-    createdAt: string
-  }
-}
-type CacheEntry = { expiresAt: number; payload: MePayload }
-const CACHE_TTL_MS = 15_000
-const memoryCache = new Map<number, CacheEntry>()
+type MePayload = AuthMeCachedPayload
 
 export async function GET() {
   try {
@@ -32,9 +25,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Неверный токен' }, { status: 401 })
     }
 
-    const cached = memoryCache.get(decoded.userId)
-    if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json(cached.payload, {
+    const cached = readAuthMeServerCache(decoded.userId)
+    if (cached) {
+      return NextResponse.json(cached, {
         headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=30' },
       })
     }
@@ -66,7 +59,7 @@ export async function GET() {
         createdAt: user.createdAt.toISOString(),
       },
     }
-    memoryCache.set(decoded.userId, { expiresAt: Date.now() + CACHE_TTL_MS, payload })
+    writeAuthMeServerCache(decoded.userId, payload)
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=30' },
     })

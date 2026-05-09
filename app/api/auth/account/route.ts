@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, hashPassword } from "@/lib/auth";
+import { invalidateAuthMeServerCache } from "@/lib/auth-me-server-cache";
 
 type AccountUpdateBody = {
   username?: string;
@@ -80,6 +81,8 @@ export async function PATCH(request: NextRequest) {
         isSystemOwner: true,
       },
     });
+
+    invalidateAuthMeServerCache(user.id);
 
     return NextResponse.json({ success: true, user: updated });
   } catch (error) {

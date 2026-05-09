@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -37,6 +37,7 @@ import {
 } from "@/lib/notification-preferences";
 import { NOTIFICATION_PRESETS, matchNotificationPresetId } from "@/lib/notification-presets";
 import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
+import { INVESTORS_LIST_QUERY_ROOT } from "@/lib/investors-query";
 
 type AccountPatchResponse = {
   success: boolean;
@@ -186,6 +187,7 @@ function SettingToggleRow({
 
 export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: () => Promise<void> }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ActiveTab>("Данные");
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user.username);
@@ -260,6 +262,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
       fd.set("file", file);
       await apiClient.postForm<{ success?: boolean; avatarUrl?: string }>("/api/auth/avatar", fd);
       await refresh();
+      await queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] });
       toast.success("Фото обновлено");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Не удалось загрузить фото");
@@ -300,6 +303,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
       toast.success("Имя пользователя обновлено");
       setEditing(false);
       await refresh();
+      await queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] });
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Ошибка обновления");
@@ -319,6 +323,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
       localStorage.setItem(passwordChangedStorageKey(user.id), iso);
       setPasswordChangedDisplay(formatLastVisit(iso));
       await refresh();
+      await queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] });
     },
     onError: (e: unknown) => {
       toast.error(e instanceof Error ? e.message : "Ошибка смены пароля");

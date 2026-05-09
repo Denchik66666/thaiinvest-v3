@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 
 import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { invalidateAuthMeServerCache } from "@/lib/auth-me-server-cache";
 import { withDbRetry } from "@/lib/db-retry";
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -74,6 +75,8 @@ export async function POST(request: Request) {
       data: { avatarUrl },
     })
   );
+
+  invalidateAuthMeServerCache(userId);
 
   return NextResponse.json({ success: true, avatarUrl });
 }
