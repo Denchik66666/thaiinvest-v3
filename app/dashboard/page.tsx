@@ -35,13 +35,12 @@ import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
-
 type InvestorRow = {
   id: number;
   name: string;
   handle?: string | null;
-  investorUser?: { username: string } | null;
-  linkedUser?: { id: number; username: string } | null;
+  investorUser?: { username: string; avatarUrl?: string | null } | null;
+  linkedUser?: { id: number; username: string; avatarUrl?: string | null } | null;
   body: number;
   rate: number;
   accrued: number;
@@ -486,6 +485,11 @@ export default function DashboardPage() {
                 enabled
                 glassCard={glassCard}
                 showMultiPositionLabels={myInvestors.length > 1}
+                operationRowPredicate={(item) => item.kind === "payment"}
+                onOperationClick={(item) => {
+                  if (item.kind !== "payment") return;
+                  router.push(`/dashboard/finance?investor=${item.investorId}&payment=${item.paymentId}`);
+                }}
               />
             }
           />
@@ -512,6 +516,7 @@ export default function DashboardPage() {
                 <InvestorPositionAvatarHeading
                   name={selectedInvestorCard.name}
                   avatarInitialsSource={investorDisplayHandle(selectedInvestorCard)}
+                  avatarUrl={selectedInvestorCard.linkedUser?.avatarUrl ?? selectedInvestorCard.investorUser?.avatarUrl ?? null}
                   status={selectedInvestorCard.status}
                 />
               </div>

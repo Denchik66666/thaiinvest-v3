@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,6 +13,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { cn, formatCurrency } from "@/lib/utils";
 import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
+import { apiClient } from "@/lib/api-client";
 
 export interface InvestorForm {
   name: string;
@@ -86,11 +89,25 @@ export function CreateInvestorModal({
     return Array.from(s);
   }, [formData.entryDate, businessCurrent, businessNext]);
 
+  /** Общая сеть: процент карточки всегда = бизнес-ставка на дату входа (без ручного ввода). */
+  const commonNetworkAutoRate =
+    !formData.isPrivate && (userRole === "OWNER" || userRole === "SUPER_ADMIN");
+
+  const { data: rateAtEntryRes, isPending: rateAtEntryPending } = useQuery({
+    queryKey: ["business-rate-at-entry", formData.entryDate, userRole],
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: { rate: number; effectiveDate: string } | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(formData.entryDate)}`
+      ),
+    enabled: open && commonNetworkAutoRate && Boolean(formData.entryDate),
+    staleTime: 30_000,
+  });
+
   if (!open) return null;
 
   const showNetworkSwitcher = userRole === "SUPER_ADMIN";
-  const showBusinessHints =
-    !formData.isPrivate && (userRole === "OWNER" || userRole === "SUPER_ADMIN") && (businessCurrent || businessNext);
+  const showScheduleHints =
+    userRole === "SUPER_ADMIN" && formData.isPrivate && (businessCurrent || businessNext);
 
   const typedBody = parseAmountInput(formData.body);
   const privateOver =
@@ -105,19 +122,24 @@ export function CreateInvestorModal({
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Сеть</Label>
 
-            <div className="flex gap-2 p-1 bg-muted rounded-lg">
+            <div
+              className="flex justify-center gap-1 rounded-xl border border-border/20 py-1.5 dark:border-white/[0.06]"
+              role="group"
+              aria-label="Тип сети позиции"
+            >
               <button
                 type="button"
                 disabled={loading}
                 onClick={() => setFormData({ ...formData, isPrivate: false })}
                 className={cn(
-                  "flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                  "rounded-lg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide outline-none transition",
+                  "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   !formData.isPrivate
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    ? "bg-primary/[0.14] text-primary ring-1 ring-primary/30"
+                    : "text-muted-foreground hover:bg-muted/30 active:bg-muted/40 disabled:opacity-50"
                 )}
               >
-                Общая сеть
+                Общая
               </button>
 
               <button
@@ -125,13 +147,14 @@ export function CreateInvestorModal({
                 disabled={loading}
                 onClick={() => setFormData({ ...formData, isPrivate: true })}
                 className={cn(
-                  "flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                  "rounded-lg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide outline-none transition",
+                  "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   formData.isPrivate
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    ? "bg-primary/[0.14] text-primary ring-1 ring-primary/30"
+                    : "text-muted-foreground hover:bg-muted/30 active:bg-muted/40 disabled:opacity-50"
                 )}
               >
-                Личная сеть
+                Личная
               </button>
             </div>
 
@@ -191,7 +214,33 @@ export function CreateInvestorModal({
           </div>
         ) : null}
 
-        {showBusinessHints ? (
+        {commonNetworkAutoRate ? (
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/25 p-3">
+            <Text className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Ставка карточки = ставка сети на дату входа
+            </Text>
+            <Text className="text-xs leading-relaxed text-muted-foreground">
+              Какая действующая <strong className="text-foreground">бизнес-ставка</strong> на выбранную дату входа — такой и процент у
+              позиции в общей сети. Вручную процент не задаётся.
+            </Text>
+            {rateAtEntryPending ? (
+              <Text className="text-xs text-muted-foreground">Проверяем ставку на выбранную дату…</Text>
+            ) : rateAtEntryRes?.current ? (
+              <Text className="text-xs leading-relaxed text-foreground">
+                На эту дату:{" "}
+                <span className="font-semibold">{rateAtEntryRes.current.rate}%</span> (с{" "}
+                {formatRateDate(rateAtEntryRes.current.effectiveDate)}).
+              </Text>
+            ) : (
+              <Text className="text-xs font-medium leading-snug text-amber-700 dark:text-amber-400">
+                На выбранную дату бизнес-ставки ещё не было. Владелец задаёт её в «Управлении» с датой начала не позже входа, либо
+                смените дату входа.
+              </Text>
+            )}
+          </div>
+        ) : null}
+
+        {showScheduleHints ? (
           <div className="rounded-lg border border-border/60 bg-muted/25 p-3 space-y-1.5">
             <Text className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Бизнес-ставка (недельный контур начислений)
@@ -213,7 +262,7 @@ export function CreateInvestorModal({
               <Text className="text-xs text-muted-foreground">Запланированных смен ставки нет.</Text>
             ) : null}
             <Text className="text-xs text-muted-foreground">
-              Поле «Ставка (%)» ниже — договорная ставка именно этой карточки инвестора (как в договоре).
+              Ставка личной карточки считается автоматически (½ от ставки общей позиции на дату входа).
             </Text>
           </div>
         ) : null}
@@ -258,44 +307,6 @@ export function CreateInvestorModal({
             </FormGroup>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FormGroup>
-              <Label>Тело (бат) *</Label>
-              <Input
-                type="text"
-                required
-                disabled={loading}
-                value={formData.body}
-                onChange={(e) => setFormData({ ...formData, body: formatAmountInput(e.target.value) })}
-                placeholder="100 000 ฿"
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Ставка (%) *</Label>
-              {formData.isPrivate ? (
-                <Input
-                  disabled
-                  value={
-                    privateContext?.ok
-                      ? `Авто: ${privateContext.privateAppliedRatePercent}% (½ от ${privateContext.commonRatePercent}%)`
-                      : "Авто (после выбора личной сети)"
-                  }
-                  className="opacity-90 cursor-not-allowed bg-muted text-xs"
-                />
-              ) : (
-                <Input
-                  type="number"
-                  required
-                  disabled={loading}
-                  value={formData.rate}
-                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                  placeholder="10"
-                />
-              )}
-            </FormGroup>
-          </div>
-
           <FormGroup>
             <Label>Дата входа *</Label>
             <DatePicker
@@ -304,6 +315,63 @@ export function CreateInvestorModal({
               highlightedDates={entryDateHighlights}
             />
           </FormGroup>
+
+          {commonNetworkAutoRate ? (
+            <>
+              <FormGroup>
+                <Label>Тело (бат) *</Label>
+                <Input
+                  type="text"
+                  required
+                  disabled={loading}
+                  value={formData.body}
+                  onChange={(e) => setFormData({ ...formData, body: formatAmountInput(e.target.value) })}
+                  placeholder="100 000 ฿"
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>Ставка карточки</Label>
+                <Input
+                  disabled
+                  value={
+                    rateAtEntryPending
+                      ? "Проверка…"
+                      : rateAtEntryRes?.current
+                        ? `Авто: ${rateAtEntryRes.current.rate}% (ставка сети на дату входа)`
+                        : "Нет ставки на эту дату — см. подсказку выше"
+                  }
+                  className="cursor-not-allowed bg-muted text-xs opacity-90"
+                />
+              </FormGroup>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <FormGroup>
+                <Label>Тело (бат) *</Label>
+                <Input
+                  type="text"
+                  required
+                  disabled={loading}
+                  value={formData.body}
+                  onChange={(e) => setFormData({ ...formData, body: formatAmountInput(e.target.value) })}
+                  placeholder="100 000 ฿"
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <Label>Ставка карточки</Label>
+                <Input
+                  disabled
+                  value={
+                    privateContext?.ok
+                      ? `Авто: ${privateContext.privateAppliedRatePercent}% (½ от ${privateContext.commonRatePercent}%)`
+                      : "Авто (после выбора личной сети)"
+                  }
+                  className="cursor-not-allowed bg-muted text-xs opacity-90"
+                />
+              </FormGroup>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/20 rounded-md animate-in fade-in slide-in-from-top-1">
@@ -318,7 +386,11 @@ export function CreateInvestorModal({
             <Button
               type="submit"
               variant="outline"
-              disabled={loading || privateOver}
+              disabled={
+                loading ||
+                privateOver ||
+                (commonNetworkAutoRate && (rateAtEntryPending || !rateAtEntryRes?.current))
+              }
               className={cn("flex-1", glassAccentSurface)}
             >
               {loading ? (

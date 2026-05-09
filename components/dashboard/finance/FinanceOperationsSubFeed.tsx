@@ -13,9 +13,12 @@ import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { isSameOpenWeekAsNow } from "@/lib/open-week-forecast";
 import type { FinanceOperationItem } from "@/types/finance-operations";
+import type { OperationsHistoryResponse } from "@/types/operations-finance-api";
+import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard/finance/FinanceInvestorSelectionTruncationNotice";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 import { Text } from "@/components/ui/Text";
 import { sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
+import { paymentAttentionBadgeLabel, paymentNeedsViewerAction } from "@/lib/finance-payment-attention";
 
 export type FinanceOpFilter = FinanceOperationsHistoryOpFilter;
 
@@ -92,8 +95,13 @@ function formatNetworkWeeklyRate(p: number | undefined) {
   return `${s}% / нед`;
 }
 
-function operationRowInteractiveProps(onOperationClick: ((item: FinanceOperationItem) => void) | undefined, item: FinanceOperationItem) {
+function operationRowInteractiveProps(
+  onOperationClick: ((item: FinanceOperationItem) => void) | undefined,
+  item: FinanceOperationItem,
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean
+) {
   if (!onOperationClick) return {};
+  if (operationRowPredicate && !operationRowPredicate(item)) return {};
   return {
     role: "button" as const,
     tabIndex: 0,
@@ -107,39 +115,61 @@ function operationRowInteractiveProps(onOperationClick: ((item: FinanceOperation
   };
 }
 
+function operationRowPointerCn(
+  onOperationClick: ((item: FinanceOperationItem) => void) | undefined,
+  item: FinanceOperationItem,
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean
+) {
+  const clickable = Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+  return clickable
+    ? "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+    : "";
+}
+
 export type FinanceOperationsSubFeedProps = {
   operationsHistoryScope: "investor" | "owner";
   filterInvestorId: number | null;
+  /** SUPER_ADMIN: при ленте «вся сеть» передать common/private/all — см. GET operations-history. */
+  superAdminNetwork?: "common" | "private" | "all" | null;
   periodValue: HistoryPeriodValue;
   opFilter: FinanceOpFilter;
   financePageScroll: boolean;
   showMultiPositionLabels: boolean;
   enabled: boolean;
   onOperationClick?: (item: FinanceOperationItem) => void;
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean;
 };
 
 export function FinanceOperationsSubFeed({
   operationsHistoryScope,
   filterInvestorId,
+  superAdminNetwork = null,
   periodValue,
   opFilter,
   financePageScroll,
   showMultiPositionLabels,
   enabled,
   onOperationClick,
+  operationRowPredicate,
 }: FinanceOperationsSubFeedProps) {
   const [visibleCap, setVisibleCap] = useState(SHOW_ALL_HISTORY_CAP);
 
   const investorHistoryKey = filterInvestorId != null ? filterInvestorId : "all";
+  const networkSeg = superAdminNetwork ?? "-";
 
   const { data: opsData, isLoading: opsLoading } = useQuery({
-    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey] as const,
+    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey, networkSeg] as const,
     queryFn: () => {
-      const qs =
-        filterInvestorId != null && Number.isFinite(filterInvestorId)
-          ? `?investorId=${encodeURIComponent(String(filterInvestorId))}`
-          : "";
-      return apiClient.get<{ items: FinanceOperationItem[] }>(`/api/investors/operations-history${qs}`);
+      const params = new URLSearchParams();
+      if (filterInvestorId != null && Number.isFinite(filterInvestorId)) {
+        params.set("investorId", String(filterInvestorId));
+      } else if (superAdminNetwork) {
+        params.set("network", superAdminNetwork);
+      }
+      const qs = params.toString();
+      return apiClient.get<OperationsHistoryResponse>(
+        qs ? `/api/investors/operations-history?${qs}` : "/api/investors/operations-history"
+      );
     },
     enabled,
     staleTime: 45_000,
@@ -197,6 +227,7 @@ export function FinanceOperationsSubFeed({
           financePageScroll ? "overflow-visible" : "thai-dashboard-history-scroll max-h-[min(55vh,420px)] overflow-y-auto"
         )}
       >
+        <FinanceInvestorSelectionTruncationNotice investorSelection={opsData?.meta?.investorSelection} />
         {isBusy ? (
           <div className="divide-y divide-border/15 bg-background/15 px-2 py-3 dark:bg-background/12">
             {[1, 2, 3].map((i) => (
@@ -225,10 +256,10 @@ export function FinanceOperationsSubFeed({
                 return (
                   <div
                     key={item.id}
-                    {...operationRowInteractiveProps(onOperationClick, item)}
+                    {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
                     className={cn(
                       "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                      onOperationClick && "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
+                      operationRowPointerCn(onOperationClick, item, operationRowPredicate),
                       item.syntheticOpen ? "bg-muted/10" : undefined
                     )}
                     style={
@@ -317,11 +348,10 @@ export function FinanceOperationsSubFeed({
                 return (
                   <div
                     key={item.id}
-                    {...operationRowInteractiveProps(onOperationClick, item)}
+                    {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
                     className={cn(
                       "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                      onOperationClick &&
-                        "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                      operationRowPointerCn(onOperationClick, item, operationRowPredicate)
                     )}
                     style={{ background: "var(--thai-color-topup-bg)" }}
                   >
@@ -353,14 +383,29 @@ export function FinanceOperationsSubFeed({
               }
 
               const isOut = item.status === "completed";
+              const needsAction = paymentNeedsViewerAction(operationsHistoryScope, item.status);
+              const rowClickable =
+                Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+              const attentionTitle = needsAction
+                ? rowClickable
+                  ? operationsHistoryScope === "investor"
+                    ? "Откройте строку: подтвердите или отклоните выплату"
+                    : "Откройте строку: одобрите или отклоните заявку"
+                  : operationsHistoryScope === "investor"
+                    ? "Финансы: откройте эту операцию в списке, чтобы подтвердить или отклонить выплату"
+                    : "Финансы: откройте эту операцию в списке для решения по заявке"
+                : undefined;
               return (
                 <div
                   key={item.id}
-                  {...operationRowInteractiveProps(onOperationClick, item)}
+                  {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
+                  title={attentionTitle}
+                  data-finance-history-attention={needsAction ? "action" : undefined}
                   className={cn(
                     "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                    onOperationClick &&
-                      "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                    operationRowPointerCn(onOperationClick, item, operationRowPredicate),
+                    needsAction &&
+                      "border-l-[3px] border-l-amber-500/85 bg-amber-500/[0.07] dark:border-l-amber-400/80 dark:bg-amber-400/[0.09]"
                   )}
                 >
                   <div
@@ -368,7 +413,9 @@ export function FinanceOperationsSubFeed({
                     style={{
                       borderColor: isOut
                         ? "color-mix(in srgb, var(--thai-color-history-outflow) 45%, transparent)"
-                        : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
+                        : needsAction
+                          ? "color-mix(in srgb, rgb(245 158 11) 55%, transparent)"
+                          : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
                     }}
                     aria-hidden
                   >
@@ -376,14 +423,21 @@ export function FinanceOperationsSubFeed({
                       className="h-4 w-4 shrink-0"
                       strokeWidth={2}
                       style={{
-                        color: isOut ? "var(--thai-color-history-outflow)" : "var(--thai-color-due)",
+                        color: isOut ? "var(--thai-color-history-outflow)" : needsAction ? "rgb(245 158 11)" : "var(--thai-color-due)",
                         opacity: 0.92,
                       }}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-semibold text-foreground">
-                      {showMultiPositionLabels ? `${paymentTypeLabel(item.type)} · ${item.positionName}` : paymentTypeLabel(item.type)}
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[12px] font-semibold text-foreground">
+                        {showMultiPositionLabels ? `${paymentTypeLabel(item.type)} · ${item.positionName}` : paymentTypeLabel(item.type)}
+                      </span>
+                      {needsAction ? (
+                        <span className="inline-flex shrink-0 rounded border border-amber-500/45 bg-amber-500/14 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-950 dark:text-amber-100">
+                          {paymentAttentionBadgeLabel(operationsHistoryScope)}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="line-clamp-2 text-[10px] text-muted-foreground">{formatPaymentHistorySubline(item)}</div>
                   </div>

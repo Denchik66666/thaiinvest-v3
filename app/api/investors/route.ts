@@ -11,6 +11,12 @@ import { hashPassword } from '@/lib/auth'
 import { getPrivateInvestorCreateContext } from '@/lib/private-investor-create-context'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
 
+type CacheEntry = { expiresAt: number; payload: unknown }
+const CACHE_TTL_MS = 20_000
+/** Lean-списки для дашборда — реже бьём БД при параллельных вкладках. */
+const LEAN_CACHE_TTL_MS = 45_000
+const memoryCache = new Map<string, CacheEntry>()
+
 type InvestorRoutePaymentRow = {
   id: number
   investorId: number
@@ -41,8 +47,8 @@ type InvestorRouteRow = {
   linkedUserId: number | null
   investorUserId: number | null
   owner: { id: number; username: string; role: string }
-  investorUser: { id: number; username: string } | null
-  linkedUser: { id: number; username: string } | null
+  investorUser: { id: number; username: string; avatarUrl: string | null } | null
+  linkedUser: { id: number; username: string; avatarUrl: string | null } | null
   payments: InvestorRoutePaymentRow[]
 }
 type InvestorCreateTxClient = Pick<PrismaClient, 'user' | 'investor'>
@@ -99,6 +105,19 @@ export async function GET(request: NextRequest) {
       searchParams.get('lean') === '1' &&
       decoded.role !== 'INVESTOR'
 
+    const leanCacheKey = lean
+      ? `${decoded.userId}:${decoded.role}:${decoded.role === 'OWNER' ? 'scoped' : network}:lean`
+      : null
+
+    if (leanCacheKey) {
+      const cached = memoryCache.get(leanCacheKey)
+      if (cached && cached.expiresAt > Date.now()) {
+        return NextResponse.json(cached.payload, {
+          headers: { 'Cache-Control': 'private, max-age=45, stale-while-revalidate=90' },
+        })
+      }
+    }
+
     let whereClause: { isPrivate?: boolean; ownerId?: number; investorUserId?: number } = {}
 
     // OWNER видит только СВОИХ инвесторов в общей сети
@@ -144,66 +163,82 @@ export async function GET(request: NextRequest) {
     }
 
     if (lean) {
-      const investors = await withDbRetry(() => prisma.investor.findMany({
-        where: whereClause,
-        include: {
-          owner: {
-            select: {
-              id: true,
-              username: true,
-              role: true,
-            },
-          },
-          investorUser: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-          linkedUser: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      }))
+      const openStatuses = ['requested', 'approved_waiting_accept', 'expired', 'disputed', 'pending']
 
-      const ids = investors.map((i) => i.id)
-      if (ids.length === 0) {
+      const leanPayload = await withDbRetry(async () => {
+        const investors = await prisma.investor.findMany({
+          where: whereClause,
+          include: {
+            owner: {
+              select: {
+                id: true,
+                username: true,
+                role: true,
+              },
+            },
+            investorUser: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+              },
+            },
+            linkedUser: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+
+        const ids = investors.map((i) => i.id)
+        if (ids.length === 0) {
+          return {
+            investors: [] as typeof investors,
+            completedAll: [] as Awaited<ReturnType<typeof prisma.payment.groupBy>>,
+            completedInterest: [] as Awaited<ReturnType<typeof prisma.payment.groupBy>>,
+            openPayments: [] as Awaited<ReturnType<typeof prisma.payment.findMany>>,
+          }
+        }
+
+        const [completedAll, completedInterest, openPayments] = await Promise.all([
+          prisma.payment.groupBy({
+            by: ['investorId'],
+            where: { investorId: { in: ids }, status: 'completed' },
+            _sum: { amount: true },
+          }),
+          prisma.payment.groupBy({
+            by: ['investorId'],
+            where: { investorId: { in: ids }, status: 'completed', type: 'interest' },
+            _sum: { amount: true },
+          }),
+          prisma.payment.findMany({
+            where: {
+              investorId: { in: ids },
+              status: { in: openStatuses },
+            },
+            orderBy: { createdAt: 'desc' },
+          }),
+        ])
+
+        return { investors, completedAll, completedInterest, openPayments }
+      })
+
+      const { investors, completedAll, completedInterest, openPayments } = leanPayload
+      if (!investors.length) {
         return NextResponse.json({ investors: [] })
       }
 
-      const openStatuses = ['requested', 'approved_waiting_accept', 'expired', 'disputed', 'pending']
-
-      const [completedAll, completedInterest, openPayments] = await withDbRetry(() => Promise.all([
-        prisma.payment.groupBy({
-          by: ['investorId'],
-          where: { investorId: { in: ids }, status: 'completed' },
-          _sum: { amount: true },
-        }),
-        prisma.payment.groupBy({
-          by: ['investorId'],
-          where: { investorId: { in: ids }, status: 'completed', type: 'interest' },
-          _sum: { amount: true },
-        }),
-        prisma.payment.findMany({
-          where: {
-            investorId: { in: ids },
-            status: { in: openStatuses },
-          },
-          orderBy: { createdAt: 'desc' },
-        }),
-      ]))
-
       const paidByInv = new Map<number, number>()
       for (const row of completedAll) {
-        paidByInv.set(row.investorId, row._sum.amount ?? 0)
+        paidByInv.set(row.investorId, row._sum?.amount ?? 0)
       }
       const interestPaidByInv = new Map<number, number>()
       for (const row of completedInterest) {
-        interestPaidByInv.set(row.investorId, row._sum.amount ?? 0)
+        interestPaidByInv.set(row.investorId, row._sum?.amount ?? 0)
       }
       const paymentsByInv = new Map<number, typeof openPayments>()
       for (const p of openPayments) {
@@ -239,7 +274,7 @@ export async function GET(request: NextRequest) {
           owner: inv.owner,
           investorUser: inv.investorUser,
           linkedUser: inv.linkedUser
-            ? { id: inv.linkedUser.id, username: inv.linkedUser.username }
+            ? { id: inv.linkedUser.id, username: inv.linkedUser.username, avatarUrl: inv.linkedUser.avatarUrl ?? null }
             : null,
           payments: mapPaymentsToPayload(invPayments),
         }
@@ -253,7 +288,13 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      return NextResponse.json({ investors: result })
+      const payload = { investors: result }
+      if (leanCacheKey) {
+        memoryCache.set(leanCacheKey, { expiresAt: Date.now() + LEAN_CACHE_TTL_MS, payload })
+      }
+      return NextResponse.json(payload, {
+        headers: { 'Cache-Control': 'private, max-age=45, stale-while-revalidate=90' },
+      })
     }
 
     const investors = await withDbRetry(() => prisma.investor.findMany({
@@ -270,12 +311,14 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             username: true,
+            avatarUrl: true,
           },
         },
         linkedUser: {
           select: {
             id: true,
             username: true,
+            avatarUrl: true,
           },
         },
         payments: true,
@@ -314,7 +357,7 @@ export async function GET(request: NextRequest) {
         owner: inv.owner,
         investorUser: inv.investorUser,
         linkedUser: inv.linkedUser
-          ? { id: inv.linkedUser.id, username: inv.linkedUser.username }
+          ? { id: inv.linkedUser.id, username: inv.linkedUser.username, avatarUrl: inv.linkedUser.avatarUrl ?? null }
           : null,
         payments: mapPaymentsToPayload(inv.payments),
       }
@@ -366,15 +409,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: bodyResult.error.issues[0]?.message ?? 'Некорректные данные' }, { status: 400 })
     }
 
-    const { 
-      name, 
-      handle, 
-      phone, 
-      body: investorBody, 
-      rate, 
-      entryDate, 
-      isPrivate 
-    } = bodyResult.data
+    const { name, handle, phone, body: investorBody, entryDate, isPrivate } = bodyResult.data
 
     const isPrivateNetwork = Boolean(isPrivate)
     const entry = new Date(entryDate)
@@ -389,7 +424,7 @@ export async function POST(request: NextRequest) {
           Проверка лимита Личной Сети + ставка (SUPER_ADMIN)
     ================================= */
 
-    let finalRate: number | undefined = rate
+    let finalRate: number
 
     if (decoded.role === 'SUPER_ADMIN' && isPrivateNetwork) {
       const ctx = await getPrivateInvestorCreateContext(decoded.userId)
@@ -408,23 +443,27 @@ export async function POST(request: NextRequest) {
       }
 
       finalRate = ctx.privateAppliedRatePercent
-    } else {
-      const useAutoRate = rate === undefined || rate === null || rate === 0
-      if (useAutoRate) {
-        const snap = await getCurrentBusinessRate(startOfDay(entry))
-        if (!snap) {
-          const d = entry.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-          return NextResponse.json(
-            {
-              error: `Ставка сети не задана на ${d}. Сначала задайте ставку в Управлении.`,
-            },
-            { status: 400 }
-          )
-        }
-        finalRate = snap.rate
-      } else {
-        finalRate = rate
+    } else if (!isPrivateNetwork) {
+      /**
+       * Общая сеть: ставка карточки всегда = бизнес-ставка на дату входа (какая ставка сети на тот день — такой и процент у позиции).
+       * OWNER и SUPER_ADMIN: поле rate из запроса не используется.
+       */
+      const snap = await getCurrentBusinessRate(startOfDay(entry))
+      if (!snap) {
+        const d = entry.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        return NextResponse.json(
+          {
+            error: `На дату входа ${d} ещё не было действующей бизнес-ставки. Владелец задаёт ставку в «Управлении» с датой начала не позже входа; либо смените дату входа инвестора.`,
+          },
+          { status: 400 }
+        )
       }
+      finalRate = snap.rate
+    } else {
+      return NextResponse.json(
+        { error: 'Некорректное сочетание роли и типа сети (личная сеть — только для SUPER_ADMIN).' },
+        { status: 400 }
+      )
     }
 
     /* ================================

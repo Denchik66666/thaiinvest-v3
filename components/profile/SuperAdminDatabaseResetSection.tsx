@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -28,7 +28,6 @@ export function SuperAdminDatabaseResetSection({ embedMode = false }: { embedMod
   const [modalOpen, setModalOpen] = useState(false);
   const [execPassword, setExecPassword] = useState("");
   const [execPhrase, setExecPhrase] = useState("");
-  const [configuredLocal, setConfiguredLocal] = useState(false);
 
   const { data: status, refetch } = useQuery({
     queryKey: ["database-reset-status"],
@@ -36,17 +35,12 @@ export function SuperAdminDatabaseResetSection({ embedMode = false }: { embedMod
     retry: 1,
   });
 
-  useEffect(() => {
-    if (status?.configured) setConfiguredLocal(true);
-  }, [status?.configured]);
-
   const savePasswordMutation = useMutation({
     meta: { skipErrorToast: true },
     mutationFn: (password: string) => apiClient.post("/api/admin/database-reset/password", { password }),
     onSuccess: async () => {
       toast.success("Пароль сброса сохранён");
       setNewResetPassword("");
-      setConfiguredLocal(true);
       await refetch();
     },
     onError: (e: unknown) => {
@@ -75,7 +69,7 @@ export function SuperAdminDatabaseResetSection({ embedMode = false }: { embedMod
     },
   });
 
-  const configured = (status?.configured ?? false) || configuredLocal;
+  const configured = status?.configured ?? false;
   const locked = status?.locked ?? false;
   const lockUntil = status?.lockedUntil ? new Date(status.lockedUntil) : null;
   const statusUnavailable = !status;

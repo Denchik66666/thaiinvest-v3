@@ -6,10 +6,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
-import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween } from "@/lib/weekly";
-import { recalculateInvestorAccruedFromRateHistory } from "@/lib/business-rate-accrual-recalc";
+import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween, startOfDay } from "@/lib/weekly";
+import { getCurrentBusinessRate } from "@/lib/business-rate";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
+import { moneyRound2 } from "@/lib/money-round";
 
 type InvestorTxClient = Pick<PrismaClient, "bodyTopUpRequest" | "payment" | "accrual" | "investor" | "user">;
 
@@ -33,9 +34,29 @@ const UpdateInvestorSchema = z.object({
   phone: z.string().nullable().optional(),
   body: z.number().min(0, "Тело не может быть отрицательным").optional(),
   rate: z.number().min(0, "Ставка не может быть отрицательной").optional(),
+  /** SUPER_ADMIN: ручная правка «начислено» / «выплачено» при переносе с другой базы */
+  accrued: z.number().min(0, "Начислено не может быть отрицательным").optional(),
+  paid: z.number().min(0, "Выплачено не может быть отрицательным").optional(),
   entryDate: z.string().datetime("Неверный формат даты").optional(),
   activationDate: z.string().datetime("Неверный формат даты").optional(),
 });
+
+/** UI календаря даёт YYYY-MM-DD — приводим к ISO для zod .datetime() */
+function normalizeInvestorPutPayload(raw: Record<string, unknown>) {
+  for (const key of ["entryDate", "activationDate"] as const) {
+    const v = raw[key];
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+      raw[key] = `${v.trim()}T12:00:00.000Z`;
+    }
+  }
+  for (const key of ["body", "rate", "accrued", "paid"] as const) {
+    const v = raw[key];
+    if (typeof v === "string" && v.trim() !== "") {
+      const n = Number(v.replace(/\s/g, "").replace(",", "."));
+      if (Number.isFinite(n)) raw[key] = n;
+    }
+  }
+}
 
 // Функция расчета процентов (как в создании)
 function calculateAccrued(body: number, rate: number, weeks: number): number {
@@ -356,13 +377,29 @@ export async function PUT(
       return NextResponse.json({ error: "Некорректный ID инвестора" }, { status: 400 });
     }
 
-    // Валидация входных данных
-    const bodyResult = UpdateInvestorSchema.safeParse(await request.json());
+    const rawJson = await request.json().catch(() => null);
+    if (!rawJson || typeof rawJson !== "object") {
+      return NextResponse.json({ error: "Некорректные данные" }, { status: 400 });
+    }
+    const rawPayload = rawJson as Record<string, unknown>;
+    normalizeInvestorPutPayload(rawPayload);
+
+    const bodyResult = UpdateInvestorSchema.safeParse(rawPayload);
     if (!bodyResult.success) {
-      return NextResponse.json({ error: bodyResult.error.issues[0]?.message ?? 'Некорректные данные' }, { status: 400 });
+      return NextResponse.json({ error: bodyResult.error.issues[0]?.message ?? "Некорректные данные" }, { status: 400 });
     }
 
     const updateData = bodyResult.data;
+
+    if (
+      (updateData.accrued !== undefined || updateData.paid !== undefined) &&
+      decoded.role !== "SUPER_ADMIN"
+    ) {
+      return NextResponse.json(
+        { error: "Только SUPER_ADMIN может править поля «начислено» и «выплачено»" },
+        { status: 403 }
+      );
+    }
 
     // Получаем текущего инвестора
     const investor = await withDbRetry(() =>
@@ -381,41 +418,80 @@ export async function PUT(
     today.setHours(0, 0, 0, 0);
 
     // Подготовка данных для обновления
-    let finalUpdateData: any = {};
+    const finalUpdateData: Record<string, unknown> = {};
     let shouldRecalculateAccrued = false;
+    const manualAccruedOverride = decoded.role === "SUPER_ADMIN" && updateData.accrued !== undefined;
 
     // Обработка полей
     if (updateData.name !== undefined) finalUpdateData.name = updateData.name;
     if (updateData.handle !== undefined) finalUpdateData.handle = updateData.handle;
     if (updateData.phone !== undefined) finalUpdateData.phone = updateData.phone;
     if (updateData.body !== undefined) {
-      finalUpdateData.body = updateData.body;
+      finalUpdateData.body = moneyRound2(updateData.body);
       shouldRecalculateAccrued = true;
     }
     if (updateData.rate !== undefined) {
       finalUpdateData.rate = updateData.rate;
       shouldRecalculateAccrued = true;
     }
+    if (updateData.accrued !== undefined) {
+      finalUpdateData.accrued = moneyRound2(updateData.accrued);
+    }
+    if (updateData.paid !== undefined) {
+      finalUpdateData.paid = moneyRound2(updateData.paid);
+    }
 
-    // Обработка дат
+    // Даты: SUPER_ADMIN может править «дату входа» без автоподстановки активации (перенос с прошлыми датами).
     if (updateData.entryDate !== undefined) {
       const entryDate = new Date(updateData.entryDate);
-      const activationDate = getNextMonday(entryDate);
-      const status = activationDate <= today ? 'active' : 'awaiting_activation';
-      
       finalUpdateData.entryDate = entryDate;
-      finalUpdateData.activationDate = activationDate;
-      finalUpdateData.status = status;
       shouldRecalculateAccrued = true;
+      if (decoded.role !== "SUPER_ADMIN") {
+        const activationDate = getNextMonday(entryDate);
+        finalUpdateData.activationDate = activationDate;
+        finalUpdateData.status = activationDate <= today ? "active" : "awaiting_activation";
+      }
     }
 
     if (updateData.activationDate !== undefined) {
       const activationDate = new Date(updateData.activationDate);
-      const status = activationDate <= today ? 'active' : 'awaiting_activation';
-      
       finalUpdateData.activationDate = activationDate;
-      finalUpdateData.status = status;
+      finalUpdateData.status = activationDate <= today ? "active" : "awaiting_activation";
       shouldRecalculateAccrued = true;
+    }
+
+    if (!investor.isPrivate) {
+      const resolvedEntry =
+        finalUpdateData.entryDate !== undefined
+          ? new Date(finalUpdateData.entryDate as Date | string)
+          : new Date(investor.entryDate);
+      const snap = await getCurrentBusinessRate(startOfDay(resolvedEntry));
+      if (!snap) {
+        const d = resolvedEntry.toLocaleDateString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+        return NextResponse.json(
+          {
+            error: `На дату входа ${d} нет действующей бизнес-ставки. Задайте её в «Управлении» (владелец) или смените дату входа.`,
+          },
+          { status: 400 }
+        );
+      }
+      const nextRate = snap.rate;
+      if (
+        Math.abs(moneyRound2(investor.rate) - moneyRound2(nextRate)) > 0.005 ||
+        updateData.entryDate !== undefined ||
+        updateData.body !== undefined
+      ) {
+        shouldRecalculateAccrued = true;
+      }
+      finalUpdateData.rate = moneyRound2(nextRate);
+    }
+
+    if (Object.keys(finalUpdateData).length === 0) {
+      return NextResponse.json({ error: "Нет полей для обновления" }, { status: 400 });
     }
 
     // Сохраняем старые значения для аудита
@@ -423,6 +499,8 @@ export async function PUT(
       name: investor.name,
       body: investor.body,
       rate: investor.rate,
+      accrued: investor.accrued,
+      paid: investor.paid,
       entryDate: investor.entryDate,
       activationDate: investor.activationDate,
       status: investor.status,
@@ -435,18 +513,18 @@ export async function PUT(
         data: finalUpdateData,
       });
 
-      // Если нужно пересчитать начисленные проценты
-      if (shouldRecalculateAccrued && updated.status === 'active') {
+      // Если нужно пересчитать начисленные проценты (не затираем ручное «начислено» SUPER_ADMIN)
+      if (shouldRecalculateAccrued && updated.status === "active" && !manualAccruedOverride) {
         const currentWeekMonday = getPreviousOrCurrentMonday(today);
         const weeks = countFullWeeksBetween(updated.activationDate, currentWeekMonday);
-        
+
         if (weeks > 0) {
           const newAccrued = calculateAccrued(updated.body, updated.rate, weeks);
           await tx.investor.update({
             where: { id: investorId },
-            data: { accrued: newAccrued },
+            data: { accrued: moneyRound2(newAccrued) },
           });
-          updated.accrued = newAccrued;
+          updated.accrued = moneyRound2(newAccrued);
         }
       }
 
@@ -466,10 +544,11 @@ export async function PUT(
             name: updatedInvestor.name,
             body: updatedInvestor.body,
             rate: updatedInvestor.rate,
+            accrued: updatedInvestor.accrued,
+            paid: updatedInvestor.paid,
             entryDate: updatedInvestor.entryDate,
             activationDate: updatedInvestor.activationDate,
             status: updatedInvestor.status,
-            accrued: updatedInvestor.accrued,
           }),
         })
       );
@@ -477,8 +556,8 @@ export async function PUT(
       console.error("UPDATE INVESTOR AUDIT ERROR:", auditError);
     }
 
-    // Запускаем полный пересчет для всех инвесторов в фоне (не блокируем API).
-    if (shouldRecalculateAccrued) {
+    // Запускаем полный пересчёт в фоне при изменении расчётных полей или ручных остатках.
+    if (shouldRecalculateAccrued || updateData.accrued !== undefined || updateData.paid !== undefined) {
       scheduleBusinessRateRecalc();
     }
 

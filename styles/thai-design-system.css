@@ -1777,18 +1777,66 @@
   padding: 0 0.62rem;
 }
 
+.thai-dashboard-avatar-ring,
+.thai-investor-avatar-ring {
+  background: transparent;
+  box-shadow: none;
+  box-sizing: border-box;
+  position: relative;
+  --thai-avatar-ring: rgba(255, 255, 255, 0.22);
+  --thai-avatar-glow: rgba(255, 255, 255, 0.12);
+}
+
+/* Неон "из-под" аватара (под фото), чтобы читался как единое целое. */
+.thai-dashboard-avatar-ring::before,
+.thai-investor-avatar-ring::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  /* ВАЖНО: не уводим в -1, иначе может "утонуть" под фоном topbar */
+  z-index: 0;
+  filter:
+    drop-shadow(0 0 12px var(--thai-avatar-glow))
+    drop-shadow(0 0 22px color-mix(in srgb, var(--thai-avatar-glow) 75%, transparent))
+    drop-shadow(0 0 34px color-mix(in srgb, var(--thai-avatar-glow) 60%, transparent));
+  opacity: 1;
+}
+
+/* Тонкий контур поверх аватара (чёткий обод). */
+.thai-dashboard-avatar-ring::after,
+.thai-investor-avatar-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Чёткий круг, чтобы он всегда читался (просили -0.5) */
+  border: 1.5px solid var(--thai-avatar-ring);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--thai-avatar-ring) 45%, transparent);
+  opacity: 1;
+}
+
 .thai-dashboard-avatar-ring[data-has-positions="true"],
 .thai-investor-avatar-ring[data-has-positions="true"] {
-  box-shadow:
-    0 0 14px color-mix(in srgb, var(--thai-color-paid) 14%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-paid) 32%, transparent);
+  border: none;
+  --thai-avatar-ring: color-mix(in srgb, var(--thai-color-paid) 85%, transparent);
+  --thai-avatar-glow: color-mix(in srgb, var(--thai-color-paid) 62%, transparent);
 }
 
 .thai-dashboard-avatar-ring[data-has-positions="false"],
 .thai-investor-avatar-ring[data-has-positions="false"] {
-  box-shadow:
-    0 0 12px color-mix(in srgb, var(--thai-color-rejected) 11%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--thai-color-rejected) 26%, transparent);
+  border: none;
+  --thai-avatar-ring: color-mix(in srgb, var(--thai-color-rejected) 82%, transparent);
+  --thai-avatar-glow: color-mix(in srgb, var(--thai-color-rejected) 56%, transparent);
+}
+
+/* Если статус почему-то не проставился — всё равно показываем нейтральный круг. */
+.thai-dashboard-avatar-ring:not([data-has-positions]),
+.thai-investor-avatar-ring:not([data-has-positions]) {
+  --thai-avatar-ring: rgba(255, 255, 255, 0.28);
+  --thai-avatar-glow: rgba(255, 255, 255, 0.16);
 }
 
 /**

@@ -64,3 +64,56 @@
 подставив имя файла.
 
 Подтянуть bundle в существующий репозиторий или bare remote — см. git bundle --help.
+
+================================================================================
+Напоминалка после работы с производительностью / БД (2026-05-08)
+================================================================================
+Что сделано в коде (не забыть при восстановлении из bundle):
+  • Один pg.Pool в lib/prisma.ts (singleton), не передавать строку напрямую в PrismaPg.
+  • Индексы для дашборда: npm run db:apply-dashboard-indexes
+    (два SQL в prisma/migrations/… ; если prisma migrate deploy даёт P1017 — только этот скрипт).
+  • Кэш строк RateHistory для ленты/сводок: lib/rate-history-rows-cache.ts;
+    сброс invalidateRateHistoryRowsCache() при создании/правке/удалении записи ставки
+    (lib/business-rate.ts, app/api/system/business-rate/history/[id]/route.ts).
+  • После правок prisma.ts перезапустить npm run dev.
+  • Лимит соединений Supabase: один dev-сервер, без лишних клиентов к той же БД;
+    при EMAXCONN — пауза/рестарт проекта в Supabase; опционально DATABASE_POOL_MAX в .env.
+  • Цель «~1 с» на ленту: без предрасчёта в БД на «всю сеть + все платежи + недели в JS» не гарантируется.
+    Реально быстро: GET …/operations-history?investorId=… (владелец с одной позицией — авто в FinanceHubInner),
+    индексы, кэш RateHistory, не дергать лишние клиенты к БД. Дальше — пагинация / материализованная лента / фоновый пересчёт.
+  • Шаги по скорости (фиксировать по мере внедрения):
+    1) Финансы: отложенный GET ленты при свёрнутом «Журнале» + карточки всегда видны (DashboardOperationsHistory + FinanceHubInner embeddedCollapsible).
+    2) Индексы + npm run db:apply-dashboard-indexes при недоступном migrate deploy (в т.ч. BodyTopUpRequest investorId+createdAt).
+    3) GET operations-history: узкий select по Payment / BodyTopUpRequest (меньше полей из БД).
+    4) Далее по необходимости: cursor/limit на API ленты, таблица событий, фоновый пересчёт недель.
+
+Бэкап кода после важного этапа (как выше по файлу):
+  git bundle create backups/thaiinvest-restore-YYYY-MM-DD-…bundle HEAD
+  git tag -a snapshot/… -m "…"
+
+================================================================================
+Полный бэкап 2026-05-08 (код + запись для памяти)
+================================================================================
+Сгенерировано командой: npm run backup:full
+(или BACKUP_SLUG=ярлык npm run backup:full — см. scripts/full-backup.mjs)
+
+Файлы (локально, папка backups/; *.bundle в .gitignore — копируйте на диск / облако):
+  • thaiinvest-restore-2026-05-08-full-perf-api.bundle — git bundle --all (все ветки/теги на момент снимка)
+  • MEMORY_BACKUP_2026-05-08-full-perf-api.txt — краткая «памятка», что вошло и как восстановить
+
+Проверка целостности:
+  git bundle verify backups/thaiinvest-restore-2026-05-08-full-perf-api.bundle
+
+Клон из bundle:
+  git clone backups/thaiinvest-restore-2026-05-08-full-perf-api.bundle restored-thaiinvest
+  cd restored-thaiinvest && npm ci && npx prisma generate
+
+Дамп PostgreSQL на этой машине не создан (нет pg_dump в PATH). Чтобы добавить дамп:
+  — установить PostgreSQL client (pg_dump), снова npm run backup:full
+  — либо задать PG_DUMP_PATH=…\pg_dump.exe
+  Файл дампа будет: backups/db-<slug>.dump (формат -Fc, восстановление через pg_restore)
+
+Дополнительно к напоминалке выше (производительность):
+  • Контракт API ленты/сводки: types/operations-finance-api.ts (meta при SUPER_ADMIN + network=all).
+  • E2e контракт: tests/e2e/api-operations-history-roles.spec.ts
+

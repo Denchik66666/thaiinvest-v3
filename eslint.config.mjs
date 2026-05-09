@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local scripts, not part of app code:
+    "create-test-investors.js",
   ]),
 ]);
 

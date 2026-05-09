@@ -11,7 +11,12 @@ import { LoginSchema } from '@/lib/schemas'
 
 export async function POST(request: NextRequest) {
   try {
-    const json = await request.json()
+    let json: unknown
+    try {
+      json = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Некорректный формат запроса' }, { status: 400 })
+    }
     const result = LoginSchema.safeParse(json)
 
     if (!result.success) {

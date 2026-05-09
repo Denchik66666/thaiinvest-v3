@@ -12,11 +12,14 @@ import { apiClient } from "@/lib/api-client";
 import { cn, formatCurrency } from "@/lib/utils";
 import { isSameOpenWeekAsNow } from "@/lib/open-week-forecast";
 import type { FinanceOperationItem } from "@/types/finance-operations";
+import type { OperationsHistoryResponse } from "@/types/operations-finance-api";
+import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard/finance/FinanceInvestorSelectionTruncationNotice";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { HistoryPeriodPopover, sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
 import { FinanceOperationsSubFeed } from "@/components/dashboard/finance/FinanceOperationsSubFeed";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
+import { paymentAttentionBadgeLabel, paymentNeedsViewerAction } from "@/lib/finance-payment-attention";
 
 type OpFilter = FinanceOperationsHistoryOpFilter;
 
@@ -189,6 +192,8 @@ export type DashboardOperationsHistoryProps = {
     | ReactNode
     | ((ctx: {
         renderFeed: (investorId: number | null) => ReactNode;
+        periodValue: HistoryPeriodValue;
+        operationsHistoryScope: "investor" | "owner";
         opFilter: OpFilter;
         applyOperationFilter: (filter: OpFilter) => void;
       }) => ReactNode);
@@ -196,10 +201,19 @@ export type DashboardOperationsHistoryProps = {
   filterInvestorId?: number | null;
   /** Страница «Финансы» с аккордеоном: общая лента снизу скрыта, операции только в renderFeed под карточкой. */
   financeSuppressBottomFeed?: boolean;
+  /** SUPER_ADMIN на «Финансы»: фильтр сети для лент без выбранной позиции. */
+  financeSuperAdminNetwork?: "common" | "private" | "all" | null;
+  /** Если задан вместе с `onOperationClick`, интерактивны только подходящие строки (напр. только выплаты на главной). */
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean;
 };
 
-function operationRowInteractiveProps(onOperationClick: ((item: FinanceOperationItem) => void) | undefined, item: FinanceOperationItem) {
+function operationRowInteractiveProps(
+  onOperationClick: ((item: FinanceOperationItem) => void) | undefined,
+  item: FinanceOperationItem,
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean
+) {
   if (!onOperationClick) return {};
+  if (operationRowPredicate && !operationRowPredicate(item)) return {};
   return {
     role: "button" as const,
     tabIndex: 0,
@@ -211,6 +225,17 @@ function operationRowInteractiveProps(onOperationClick: ((item: FinanceOperation
       }
     },
   };
+}
+
+function operationRowPointerCn(
+  onOperationClick: ((item: FinanceOperationItem) => void) | undefined,
+  item: FinanceOperationItem,
+  operationRowPredicate?: (item: FinanceOperationItem) => boolean
+) {
+  const clickable = Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+  return clickable
+    ? "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+    : "";
 }
 
 export function DashboardOperationsHistory({
@@ -228,6 +253,8 @@ export function DashboardOperationsHistory({
   financeInvestorCardsSlot,
   filterInvestorId,
   financeSuppressBottomFeed = false,
+  financeSuperAdminNetwork = null,
+  operationRowPredicate,
 }: DashboardOperationsHistoryProps) {
   const queryClient = useQueryClient();
   const financeCardsLayout = Boolean(financeProminentFilters && financeInvestorCardsSlot);
@@ -239,21 +266,42 @@ export function DashboardOperationsHistory({
   const [periodValue, setPeriodValue] = useState<HistoryPeriodValue>({ kind: "preset", preset: "all" });
   const [visibleCap, setVisibleCap] = useState(SHOW_ALL_HISTORY_CAP);
 
-  /** Не опрашиваем тяжёлый endpoint в фоне, пока журнал свёрнут (OWNER). */
-  const opsPollingActive = enabled && (!embeddedCollapsible || embeddedExpanded);
+  /**
+   * «Финансы» с аккордеоном: фильтры и карточки показываем даже при свёрнутой ленте,
+   * а тяжёлый GET не дергаем, пока не развернули журнал или не выбрана одна позиция (investorId).
+   */
+  const deferHeavyHistoryFetch =
+    embedded &&
+    embeddedCollapsible &&
+    financeProminentFilters &&
+    typeof financeInvestorCardsSlot === "function";
+
+  const showFiltersAndCards = deferHeavyHistoryFetch || showPanel;
+
+  const opsHistoryEnabled =
+    enabled && (!deferHeavyHistoryFetch || embeddedExpanded || filterInvestorId != null);
+
+  /** Периодический refetch только когда лента открыта или запрос уже активен без отложенной загрузки. */
+  const opsPollingActive = opsHistoryEnabled && (!embeddedCollapsible || embeddedExpanded);
 
   const investorHistoryKey = filterInvestorId != null ? filterInvestorId : "all";
+  const bottomHistoryNetSeg = financeSuperAdminNetwork ?? "-";
 
   const { data: opsData, isLoading: opsLoading } = useQuery({
-    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey] as const,
+    queryKey: ["investors", "operations-history", operationsHistoryScope, investorHistoryKey, bottomHistoryNetSeg] as const,
     queryFn: () => {
-      const qs =
-        filterInvestorId != null && Number.isFinite(filterInvestorId)
-          ? `?investorId=${encodeURIComponent(String(filterInvestorId))}`
-          : "";
-      return apiClient.get<{ items: FinanceOperationItem[] }>(`/api/investors/operations-history${qs}`);
+      const params = new URLSearchParams();
+      if (filterInvestorId != null && Number.isFinite(filterInvestorId)) {
+        params.set("investorId", String(filterInvestorId));
+      } else if (financeSuperAdminNetwork) {
+        params.set("network", financeSuperAdminNetwork);
+      }
+      const qs = params.toString();
+      return apiClient.get<OperationsHistoryResponse>(
+        qs ? `/api/investors/operations-history?${qs}` : "/api/investors/operations-history"
+      );
     },
-    enabled,
+    enabled: opsHistoryEnabled,
     staleTime: 45_000,
     refetchInterval: opsPollingActive ? 60_000 : false,
   });
@@ -417,7 +465,7 @@ export function DashboardOperationsHistory({
     </button>
   );
 
-  const historyBody = showPanel ? (
+  const historyBody = showFiltersAndCards ? (
         <div
           className={cn(
             "flex flex-col gap-2",
@@ -600,14 +648,18 @@ export function DashboardOperationsHistory({
                         <FinanceOperationsSubFeed
                           operationsHistoryScope={operationsHistoryScope}
                           filterInvestorId={investorId}
+                          superAdminNetwork={investorId != null ? null : financeSuperAdminNetwork}
                           periodValue={periodValue}
                           opFilter={opFilter}
                           financePageScroll={financePageScroll}
                           showMultiPositionLabels={investorId != null ? false : showMultiPositionLabels}
-                          enabled={enabled && opsPollingActive}
+                          enabled={opsHistoryEnabled && (!embeddedCollapsible || embeddedExpanded)}
                           onOperationClick={onOperationClick}
+                          operationRowPredicate={operationRowPredicate}
                         />
                       ),
+                      periodValue,
+                      operationsHistoryScope,
                       opFilter,
                       applyOperationFilter: (filter) => {
                         setOpFilter(filter);
@@ -622,7 +674,7 @@ export function DashboardOperationsHistory({
             ) : null}
           </div>
 
-          {!financeSuppressBottomFeed ? (
+          {showPanel && !financeSuppressBottomFeed ? (
             <>
           <div
             className={cn(
@@ -641,6 +693,7 @@ export function DashboardOperationsHistory({
                   )
             )}
           >
+            <FinanceInvestorSelectionTruncationNotice investorSelection={opsData?.meta?.investorSelection} />
             {isBusy ? (
               <div className="divide-y divide-border/15 overflow-hidden rounded-xl border-0 bg-background/15 dark:bg-background/12">
                 {[1, 2, 3].map((i) => (
@@ -671,10 +724,10 @@ export function DashboardOperationsHistory({
                     return (
                       <div
                         key={item.id}
-                        {...operationRowInteractiveProps(onOperationClick, item)}
+                        {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
                         className={cn(
                           "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                          onOperationClick && "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35",
+                          operationRowPointerCn(onOperationClick, item, operationRowPredicate),
                           item.syntheticOpen ? "bg-muted/10" : undefined
                         )}
                         style={
@@ -760,11 +813,10 @@ export function DashboardOperationsHistory({
                     return (
                       <div
                         key={item.id}
-                        {...operationRowInteractiveProps(onOperationClick, item)}
+                        {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
                         className={cn(
                           "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                          onOperationClick &&
-                            "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                          operationRowPointerCn(onOperationClick, item, operationRowPredicate)
                         )}
                         style={{ background: "var(--thai-color-topup-bg)" }}
                       >
@@ -796,14 +848,29 @@ export function DashboardOperationsHistory({
                   }
 
                   const isOut = item.status === "completed";
+                  const needsAction = paymentNeedsViewerAction(operationsHistoryScope, item.status);
+                  const rowClickable =
+                    Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+                  const attentionTitle = needsAction
+                    ? rowClickable
+                      ? operationsHistoryScope === "investor"
+                        ? "Откройте строку: подтвердите или отклоните выплату"
+                        : "Откройте строку: одобрите или отклоните заявку"
+                      : operationsHistoryScope === "investor"
+                        ? "Финансы: откройте эту операцию в списке, чтобы подтвердить или отклонить выплату"
+                        : "Финансы: откройте эту операцию в списке для решения по заявке"
+                    : undefined;
                   return (
                     <div
                       key={item.id}
-                      {...operationRowInteractiveProps(onOperationClick, item)}
+                      {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
+                      title={attentionTitle}
+                      data-finance-history-attention={needsAction ? "action" : undefined}
                       className={cn(
                         "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                        onOperationClick &&
-                          "cursor-pointer hover:bg-muted/15 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                        operationRowPointerCn(onOperationClick, item, operationRowPredicate),
+                        needsAction &&
+                          "border-l-[3px] border-l-amber-500/85 bg-amber-500/[0.07] dark:border-l-amber-400/80 dark:bg-amber-400/[0.09]"
                       )}
                     >
                       <div
@@ -811,7 +878,9 @@ export function DashboardOperationsHistory({
                         style={{
                           borderColor: isOut
                             ? "color-mix(in srgb, var(--thai-color-history-outflow) 45%, transparent)"
-                            : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
+                            : needsAction
+                              ? "color-mix(in srgb, rgb(245 158 11) 55%, transparent)"
+                              : "color-mix(in srgb, var(--thai-color-due) 42%, transparent)",
                         }}
                         aria-hidden
                       >
@@ -819,14 +888,21 @@ export function DashboardOperationsHistory({
                           className="h-4 w-4 shrink-0"
                           strokeWidth={2}
                           style={{
-                            color: isOut ? "var(--thai-color-history-outflow)" : "var(--thai-color-due)",
+                            color: isOut ? "var(--thai-color-history-outflow)" : needsAction ? "rgb(245 158 11)" : "var(--thai-color-due)",
                             opacity: 0.92,
                           }}
                         />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] font-semibold text-foreground">
-                          {showMultiPositionLabels ? `${paymentTypeLabel(item.type)} · ${item.positionName}` : paymentTypeLabel(item.type)}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[12px] font-semibold text-foreground">
+                            {showMultiPositionLabels ? `${paymentTypeLabel(item.type)} · ${item.positionName}` : paymentTypeLabel(item.type)}
+                          </span>
+                          {needsAction ? (
+                            <span className="inline-flex shrink-0 rounded border border-amber-500/45 bg-amber-500/14 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-950 dark:text-amber-100">
+                              {paymentAttentionBadgeLabel(operationsHistoryScope)}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="line-clamp-2 text-[10px] text-muted-foreground">{formatPaymentHistorySubline(item)}</div>
                       </div>

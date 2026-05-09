@@ -7,6 +7,7 @@ import { logAction } from "@/lib/audit";
 import { getNextMonday } from "@/lib/weekly";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
+import { moneyRound2 } from "@/lib/money-round";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -37,6 +38,7 @@ type PaymentRequestBody =
         | "force_approve"
         | "force_reject";
       paymentId: number;
+    amount?: number;
       comment?: string;
     };
 
@@ -90,11 +92,26 @@ function parsePaymentBody(raw: unknown): PaymentRequestBody | null {
   }
 
   if (typeof raw.paymentId !== "number") return null;
+
+  let amountNum: number | undefined;
+  if (raw.amount !== undefined) {
+    if (typeof raw.amount === "number" && Number.isFinite(raw.amount)) {
+      amountNum = raw.amount;
+    } else if (typeof raw.amount === "string" && raw.amount.trim() !== "") {
+      const n = Number(raw.amount.trim().replace(/\s/g, "").replace(",", "."));
+      if (!Number.isFinite(n)) return null;
+      amountNum = n;
+    } else {
+      return null;
+    }
+  }
+
   if (raw.comment !== undefined && typeof raw.comment !== "string") return null;
 
   return {
     action: raw.action,
     paymentId: raw.paymentId,
+    amount: amountNum,
     comment: raw.comment,
   };
 }
@@ -237,10 +254,50 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка уже обработана" }, { status: 400 });
       }
 
+      if (parsed.action === "owner_reject") {
+        const rejectNote =
+          typeof parsed.comment === "string" ? parsed.comment.trim() : "";
+        if (!rejectNote) {
+          return NextResponse.json(
+            { error: "Для отклонения заявки укажите комментарий" },
+            { status: 400 }
+          );
+        }
+      }
+
       const nextStatus = parsed.action === "owner_approve" ? "approved_waiting_accept" : "rejected";
+
+      let nextAmount = payment.amount;
+      if (parsed.action === "owner_approve" && parsed.amount != null) {
+        const proposed = moneyRound2(parsed.amount);
+        const requestedRound = moneyRound2(payment.amount);
+        if (!Number.isFinite(proposed) || proposed <= 0) {
+          return NextResponse.json({ error: "Некорректная сумма" }, { status: 400 });
+        }
+        // Профессионально и честно: владелец может дать меньше (не больше запрошенного).
+        // Сравнение через moneyRound2 — в БД amount Float, иначе ложные ошибки из‑за двоичного Float.
+        if (proposed > requestedRound) {
+          return NextResponse.json({ error: "Нельзя одобрить сумму больше запрошенной" }, { status: 400 });
+        }
+        // И не больше доступного остатка на момент решения.
+        if (payment.type === "interest" && proposed > moneyRound2(payment.investor.accrued)) {
+          return NextResponse.json({ error: "Недостаточно начисленных процентов" }, { status: 400 });
+        }
+        if (payment.type === "body" && proposed > moneyRound2(payment.investor.body)) {
+          return NextResponse.json({ error: "Недостаточно тела" }, { status: 400 });
+        }
+        if (payment.type === "close") {
+          const cap = moneyRound2(payment.investor.accrued + payment.investor.body);
+          if (proposed > cap) {
+            return NextResponse.json({ error: "Сумма превышает доступное по позиции" }, { status: 400 });
+          }
+        }
+        nextAmount = proposed;
+      }
       const updated = await withDbRetry(() => prisma.payment.update({
         where: { id: payment.id },
         data: {
+          amount: nextAmount,
           status: nextStatus,
           approvedAt: parsed.action === "owner_approve" ? new Date() : null,
           comment: mergeComment(payment.comment, parsed.comment),

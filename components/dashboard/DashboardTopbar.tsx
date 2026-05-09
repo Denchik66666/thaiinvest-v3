@@ -26,34 +26,28 @@ export function DashboardTopbar({
   return (
     <div className={cn(DASHBOARD_STICKY_BAR_CLASS, barScrolled && "thai-bar-scrolled")}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <div className="flex shrink-0 items-center gap-2 rounded-2xl px-2 py-1.5">
+        <div className="flex shrink-0 items-center gap-2 px-1 py-1">
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
-            className="relative shrink-0 rounded-full outline-none transition hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+            className="relative shrink-0 rounded-full outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Профиль — аватар"
           >
-            <span
-              className={cn(
-                "thai-dashboard-avatar-ring relative block rounded-full p-[2px]",
-                "transition-[box-shadow] duration-300 ease-out"
-              )}
-              data-has-positions={dashboardPositionsActive ? "true" : "false"}
-            >
-              <UserAvatar
-                name={username}
-                src={avatarUrl}
-                size={42}
-                className="!ring-0 bg-transparent [&_img]:object-cover"
-              />
-            </span>
+            <UserAvatar
+              name={username}
+              src={avatarUrl}
+              variant="plain"
+              hasPositions={dashboardPositionsActive}
+              size={42}
+              className="thai-dashboard-avatar-ring transition-[box-shadow] duration-300 ease-out !ring-0 bg-transparent shadow-none [&_img]:object-cover"
+            />
           </button>
           <button
             type="button"
             onClick={() => router.push("/dashboard/profile")}
             className={cn(
-              "group flex min-w-0 max-w-[min(72vw,12.5rem)] items-center gap-1 rounded-lg py-0.5 pl-0.5 pr-1 outline-none transition sm:max-w-[14rem]",
-              "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+              "group inline-flex min-w-0 max-w-[min(72vw,12.5rem)] items-center gap-1 bg-transparent px-0 py-0 outline-none transition sm:max-w-[14rem]",
+              "hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             )}
             aria-label={`Профиль — ${username}`}
           >

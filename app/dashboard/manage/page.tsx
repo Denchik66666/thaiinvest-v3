@@ -1,53 +1,90 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import type { CSSProperties } from "react";
+import { useState, useMemo, useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, UserPlus, Users, Wallet, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { Container } from "@/components/ui/Container";
 import { BusinessRateControlCenter } from "@/components/manage/BusinessRateControlCenter";
 import { apiClient } from "@/lib/api-client";
-import { formatCurrency, cn } from "@/lib/utils";
-import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
-import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
+import { cn } from "@/lib/utils";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
-import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
 import { SuperAdminNetworkOverviewCard } from "@/components/dashboard/SuperAdminNetworkOverviewCard";
 import { CreateInvestorModal } from "@/components/investors/CreateInvestorModal";
+import {
+  InvestorCredentialsReveal,
+  type InvestorCredentials,
+} from "@/components/investors/InvestorCredentialsReveal";
+import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
 import type { BusinessRateHistoryRow } from "@/lib/business-rate-history-display";
-import { useAppDialogs } from "@/components/feedback/AppDialogsProvider";
 import { toast } from "@/lib/notify";
+import type { Investor } from "@/types/investor";
 
-function getCurrentWeek() {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const nextMonday = new Date(monday);
-  nextMonday.setDate(monday.getDate() + 7);
+const DASHBOARD_DARK_ROOT_STYLE: CSSProperties = {
+  background: "#0d0d14",
+  backgroundImage:
+    "radial-gradient(ellipse at 15% 0%, rgba(109,40,217,0.22) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(30,27,75,0.35) 0%, transparent 50%)",
+  minHeight: "100vh",
+};
 
-  const format = (date: Date) => {
-    const days = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
-    const d = date.getDate().toString().padStart(2, "0");
-    const m = (date.getMonth() + 1).toString().padStart(2, "0");
-    return `${days[date.getDay()]} ${d}.${m}`;
-  };
+const GLASS_CARD_DARK: CSSProperties = {
+  background: "color-mix(in srgb, var(--thai-color-card-bg) 52%, transparent)",
+  backdropFilter: "blur(22px) saturate(165%)",
+  WebkitBackdropFilter: "blur(22px) saturate(165%)",
+  border: "none",
+  boxShadow: "0 18px 40px -24px rgba(0,0,0,0.45)",
+  borderRadius: "16px",
+};
 
-  return { start: format(monday), end: format(sunday), nextPayout: format(nextMonday) };
+const GLASS_CARD_LIGHT: CSSProperties = {
+  background: "rgba(255,255,255,0.38)",
+  backdropFilter: "blur(22px) saturate(175%)",
+  WebkitBackdropFilter: "blur(22px) saturate(175%)",
+  border: "none",
+  boxShadow: "0 14px 36px -20px rgba(88, 52, 180, 0.14)",
+  borderRadius: "16px",
+};
+
+const STICKY_HEADER_SHELL =
+  "sticky top-0 z-30 -mx-1 mb-2 rounded-2xl px-2 py-2.5 border border-white/[0.18] bg-white/[0.42] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/[0.32] shadow-[0_8px_32px_-12px_rgba(0,0,0,0.14),inset_0_1px_0_0_rgba(255,255,255,0.55)] dark:border-white/[0.09] dark:bg-[#0d0d14]/32 dark:supports-[backdrop-filter]:bg-[#0d0d14]/22 dark:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.08)]";
+
+function subscribeHtmlDark(onStoreChange: () => void) {
+  if (typeof document === "undefined") return () => {};
+  const el = document.documentElement;
+  const obs = new MutationObserver(onStoreChange);
+  obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+  return () => obs.disconnect();
+}
+
+function snapshotHtmlDark() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
+function serverHtmlDark() {
+  return false;
 }
 
 type SystemReadinessResponse = {
   ready: boolean;
   missing: string[];
+  missingBlocking?: string[];
+  missingOptional?: string[];
+};
+
+/** Lean-снимок для счётчиков OWNER (совпадает с главным дашбордом). */
+type ManageLeanInvestor = {
+  id: number;
+  owner: { username: string };
+  payments?: { status: string }[];
 };
 
 type BusinessRateResponse = {
@@ -65,22 +102,50 @@ type BusinessRateHistoryResponse = {
 
 type InvestorCreateResponse = {
   success: boolean;
-  investor: any;
+  investor: Investor;
   credentials?: {
     username: string;
     password: string;
   };
 };
 
+const quickLinkBase =
+  "group flex min-h-[2.75rem] items-center gap-2 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-1.5 text-left transition " +
+  "hover:border-foreground/[0.1] hover:bg-foreground/[0.04] active:scale-[0.99] dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:border-white/[0.1] dark:hover:bg-white/[0.05] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+function SectionTitle({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "primary" | "amber";
+}) {
+  const dot =
+    tone === "primary"
+      ? "bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.35)]"
+      : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.35)] dark:bg-amber-400";
+  const text = tone === "amber" ? "text-amber-900 dark:text-amber-100" : "text-foreground";
+
+  return (
+    <div className="mb-1.5 flex items-center gap-2">
+      <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", dot)} aria-hidden />
+      <Text className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", text)}>{label}</Text>
+    </div>
+  );
+}
+
 export default function DashboardManagePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { confirm } = useAppDialogs();
+
+  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
+  const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
 
   const [showModal, setShowModal] = useState(false);
   const [showReadinessDetails, setShowReadinessDetails] = useState(false);
-  const [latestCredentials, setLatestCredentials] = useState<{ username: string; password: string } | null>(null);
+  const [credentialsDialog, setCredentialsDialog] = useState<InvestorCredentials | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -93,11 +158,6 @@ export default function DashboardManagePage() {
   });
 
   const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
-  const formatAmountInput = (value: string) => {
-    const amount = parseAmountInput(value);
-    if (!amount) return "";
-    return `${amount.toLocaleString("ru-RU")} ฿`;
-  };
   const { data: privateCreateCtxData, isLoading: loadingPrivateCreateCtx } = useQuery({
     queryKey: ["investors-private-create-context"],
     queryFn: () =>
@@ -124,6 +184,26 @@ export default function DashboardManagePage() {
     enabled: !!user && (user.role === "OWNER" || user.role === "SUPER_ADMIN"),
   });
 
+  const { data: ownerInvestorsData } = useQuery({
+    queryKey: investorsDashboardListQueryKey(user?.role),
+    queryFn: () =>
+      apiClient.get<{ investors: ManageLeanInvestor[] }>(
+        `/api/investors?network=${investorsDashboardNetworkParam(user!.role)}&lean=1`
+      ),
+    enabled: !!user && user.role === "OWNER",
+    placeholderData: keepPreviousData,
+    refetchInterval: 45_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: ownerBodyTopUpData } = useQuery({
+    queryKey: ["body-topup-requests"],
+    queryFn: () =>
+      apiClient.get<{ requests: { status: string }[] }>("/api/body-topup-requests"),
+    enabled: !!user && user.role === "OWNER",
+    staleTime: 120_000,
+  });
+
   const businessNext = useMemo(() => {
     const rates = businessRateHistoryData?.rates;
     if (!rates?.length) return null;
@@ -142,12 +222,18 @@ export default function DashboardManagePage() {
   }, [businessRateHistoryData]);
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) =>
-      apiClient.post<InvestorCreateResponse>("/api/investors", {
-        ...data,
+    mutationFn: (data: typeof formData) => {
+      const base = {
+        name: data.name,
+        handle: data.handle,
+        phone: data.phone,
         body: parseAmountInput(data.body),
-        rate: Number(data.rate || 0),
-      }),
+        entryDate: data.entryDate,
+        isPrivate: data.isPrivate,
+      };
+      /** Ставка карточки в общей сети всегда с сервера по дате входа; в личной — из контекста SUPER_ADMIN. */
+      return apiClient.post<InvestorCreateResponse>("/api/investors", base);
+    },
     onSuccess: (result) => {
       toast.success("Инвестор создан");
       setShowModal(false);
@@ -160,7 +246,7 @@ export default function DashboardManagePage() {
         entryDate: new Date().toISOString().split("T")[0],
         isPrivate: false,
       });
-      setLatestCredentials(result.credentials ?? null);
+      if (result.credentials) setCredentialsDialog(result.credentials);
       queryClient.invalidateQueries({ queryKey: ["investors"] });
       queryClient.invalidateQueries({ queryKey: ["investors-private-create-context"] });
     },
@@ -225,27 +311,58 @@ export default function DashboardManagePage() {
         ? deleteBusinessRateHistoryMutation.error.message
         : null;
 
-  const currentWeek = getCurrentWeek();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isOwner = user?.role === "OWNER";
   const systemReady = !isSuperAdmin || readinessData?.ready !== false;
-  const missingChecks = readinessData?.missing ?? [];
+  const missingBlockingChecks = readinessData?.missingBlocking ?? readinessData?.missing ?? [];
+  const missingOptionalChecks = readinessData?.missingOptional ?? [];
+
+  const ownerMyInvestors = useMemo(() => {
+    if (!isOwner || !user?.username) return [];
+    const list = ownerInvestorsData?.investors ?? [];
+    return list.filter((inv) => inv.owner.username === user.username);
+  }, [isOwner, user?.username, ownerInvestorsData?.investors]);
+
+  const ownerWithdrawRequestedCount = useMemo(() => {
+    let n = 0;
+    for (const inv of ownerMyInvestors) {
+      for (const p of inv.payments ?? []) {
+        if (p.status === "requested") n += 1;
+      }
+    }
+    return n;
+  }, [ownerMyInvestors]);
+
+  const ownerBodyTopUpPendingCount = useMemo(() => {
+    const all = ownerBodyTopUpData?.requests ?? [];
+    return all.filter((r) => r.status === "pending_investor").length;
+  }, [ownerBodyTopUpData?.requests]);
   const checklistItems = [
     {
       key: "owner",
       label: "OWNER пользователь создан",
-      ok: !isSuperAdmin || !missingChecks.includes("OWNER user"),
+      ok: !isSuperAdmin || !missingBlockingChecks.includes("OWNER user"),
     },
     {
       key: "super-admin",
       label: "SUPER_ADMIN пользователь активен",
-      ok: !isSuperAdmin || !missingChecks.includes("SUPER_ADMIN user"),
+      ok: !isSuperAdmin || !missingBlockingChecks.includes("SUPER_ADMIN user"),
     },
     {
       key: "base-investor",
       label: "Базовый инвестор SUPER_ADMIN создан",
-      ok: !isSuperAdmin || !missingChecks.includes("SUPER_ADMIN base investor in common network"),
+      ok: !isSuperAdmin || !missingOptionalChecks.includes("SUPER_ADMIN base investor in common network"),
+      optional: true,
     },
   ];
+
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/dashboard");
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -268,10 +385,13 @@ export default function DashboardManagePage() {
   if (authLoading) {
     return (
       <Container>
-        <div className="thai-dashboard-root flex min-h-screen items-center justify-center py-16">
-          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6">
+        <div
+          className="thai-dashboard-root flex min-h-screen items-center justify-center py-16"
+          style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+        >
+          <div className="flex flex-col items-center gap-3 rounded-2xl px-8 py-6" style={glassCard}>
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <Text className="text-foreground">Загрузка…</Text>
+            <Text className="text-sm text-muted-foreground">Загрузка…</Text>
           </div>
         </div>
       </Container>
@@ -280,203 +400,240 @@ export default function DashboardManagePage() {
   if (!user) return null;
 
   const createDisabled = createMutation.isPending || !systemReady;
+
   return (
     <Container>
-      <div className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28">
-        <div className={DASHBOARD_STICKY_BAR_CLASS}>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/profile")}
-            className="thai-glass flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 transition hover:brightness-[1.03] dark:hover:brightness-110"
-          >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-            <span className="truncate text-base font-semibold tracking-tight">{user.username}</span>
-            <span className="text-muted-foreground" aria-hidden>
-              ›
-            </span>
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <NotificationBell />
+      <div
+        className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-4 md:py-6 md:pb-28"
+        style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+      >
+        <div className={STICKY_HEADER_SHELL}>
+          <div className="grid grid-cols-[minmax(2.75rem,auto)_1fr_minmax(2.75rem,auto)] items-center gap-1">
+            <div className="flex justify-start">
+              <button
+                type="button"
+                onClick={goBack}
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground outline-none",
+                  "transition hover:bg-muted/30 active:bg-muted/45",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                )}
+                aria-label="Назад"
+              >
+                <ArrowLeft className="h-[1.35rem] w-[1.35rem]" strokeWidth={2.25} aria-hidden />
+              </button>
+            </div>
+            <div className="flex min-w-0 flex-col items-center px-1 text-center">
+              <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground md:text-lg">
+                Управление
+              </h1>
+              <span
+                className="mt-1 h-0.5 w-10 rounded-full bg-gradient-to-r from-transparent via-primary/65 to-transparent"
+                aria-hidden
+              />
+            </div>
+            <div className="flex justify-end pr-0.5">
+              <NotificationBell />
+            </div>
           </div>
         </div>
 
-        <div className="thai-glass space-y-2.5 rounded-2xl p-2.5 md:p-4">
-          <div className="flex flex-col gap-1.5">
-            <div className="thai-hero-accent" aria-hidden />
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Управление</Text>
-            <Text className="text-base font-semibold tracking-tight text-foreground">
-              Центр операционных действий
-            </Text>
-          </div>
-          {isSuperAdmin && (
-            <div className="mb-3">
-              <CollapsibleSection
-                title="Система"
-                subtitle={systemReady ? "Готова к учёту" : "Требуется настройка"}
-                defaultOpen={!systemReady}
-              >
-                <div className="rounded-xl border border-border/50 bg-muted/15 p-2.5 backdrop-blur-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "inline-block h-2.5 w-2.5 rounded-full",
-                          systemReady ? "bg-emerald-500" : "bg-red-500"
-                        )}
-                      />
-                      <Text className={cn("text-xs font-semibold", systemReady ? "text-emerald-600" : "text-red-600")}>
-                        {systemReady ? "Система готова к учёту" : "Система не готова к учёту"}
-                      </Text>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowReadinessDetails((v) => !v)}
-                    >
-                      {showReadinessDetails ? "Скрыть" : "Подробнее"}
-                    </Button>
-                  </div>
-
-                  {showReadinessDetails && (
-                    <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-2">
-                      {checklistItems.map((item) => (
-                        <div
-                          key={item.key}
-                          className={cn(
-                            "rounded-lg border p-2 text-xs font-medium",
-                            item.ok
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                              : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
-                          )}
-                        >
-                          <span className="mr-1">{item.ok ? "✓" : "!"}</span>
-                          {item.label}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </CollapsibleSection>
-            </div>
-          )}
-
-          {isSuperAdmin ? <SuperAdminNetworkOverviewCard /> : null}
-
-          <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Действия</Text>
-          {!loadingReadiness && !systemReady && (
-            <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-              <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                Перед стартом учёта нужно завершить базовую настройку системы.
+        <section
+          className="flex flex-col gap-3 overflow-visible rounded-2xl border border-foreground/[0.06] p-2.5 sm:p-3 md:gap-3.5 md:p-4 dark:border-white/[0.07]"
+          style={glassCard}
+        >
+          {isSuperAdmin && !loadingReadiness && !systemReady ? (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-2 py-1.5">
+              <Text className="text-[11px] font-medium leading-snug text-amber-950/95 dark:text-amber-50/95">
+                Завершите базовую настройку системы перед стартом учёта.
               </Text>
-              {readinessData?.missing?.length ? (
-                <ul className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/90">
-                  {readinessData.missing.map((item) => (
-                    <li key={item}>- {item}</li>
+              {missingBlockingChecks?.length ? (
+                <ul className="mt-1 space-y-0.5 text-[10px] leading-snug text-amber-900/90 dark:text-amber-100/85">
+                  {missingBlockingChecks.map((item: string) => (
+                    <li key={item}>· {item}</li>
                   ))}
                 </ul>
               ) : null}
             </div>
-          )}
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
-            <Button
-              onClick={() => setShowModal(true)}
-              size="sm"
-              variant="outline"
-              className={cn("w-full", glassAccentSurface)}
-              disabled={createDisabled}
-            >
-              Создать инвестора
-            </Button>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="w-full" 
-              onClick={() => router.push("/dashboard/investors")}
-            >
-              Список инвесторов
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/investors")}
-              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
-            >
-              <Text className="text-sm font-semibold text-foreground">Реестр инвесторов</Text>
-              <Text className="mt-1 text-xs text-muted-foreground">Поиск, фильтры и контроль статусов</Text>
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/finance")}
-              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
-            >
-              <Text className="text-sm font-semibold text-foreground">Финансы и очереди</Text>
-              <Text className="mt-1 text-xs text-muted-foreground">Выводы, пополнения тела, аудит действий</Text>
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/profile")}
-              className="thai-row-interactive thai-glass rounded-xl border border-border/40 p-2.5 text-left md:p-3"
-            >
-              <Text className="text-sm font-semibold text-foreground">Профиль и безопасность</Text>
-              <Text className="mt-1 text-xs text-muted-foreground">Учётная запись и админ-безопасность</Text>
-            </button>
-          </div>
-          <div className="mt-2">
-            <Text className="text-xs text-muted-foreground">
-              Цикл: {currentWeek.start} - {currentWeek.end} | Выплата: {currentWeek.nextPayout}
-            </Text>
-          </div>
-        </div>
+          ) : null}
 
-        {(user.role === "OWNER" || user.role === "SUPER_ADMIN") && (
-          <div className="thai-glass space-y-2.5 rounded-2xl p-2.5 md:p-4">
-            <Text className="text-xs font-semibold text-muted-foreground">Центр управления ставкой</Text>
-            <BusinessRateControlCenter
-              current={businessRateData?.current ?? null}
-              rates={businessRateHistoryData?.rates ?? []}
-              isHistoryLoading={businessRateHistoryPending}
-              onSubmit={(payload) => setBusinessRateMutation.mutateAsync(payload)}
-              isSubmitting={setBusinessRateMutation.isPending}
-              submitError={
-                setBusinessRateMutation.isError && setBusinessRateMutation.error instanceof Error
-                  ? setBusinessRateMutation.error.message
-                  : null
-              }
-              onPatchPlanRow={(payload) => patchBusinessRateHistoryMutation.mutateAsync(payload)}
-              onDeletePlanRow={(id) => deleteBusinessRateHistoryMutation.mutateAsync(id)}
-              planSectionBusy={planSectionBusy}
-              planBusyRowId={planBusyRowId}
-              planActionError={planActionError}
-            />
-          </div>
-        )}
-
-        <div className="thai-glass rounded-2xl p-2.5 md:p-4">
-          <Text className="text-sm text-muted-foreground">
-            Детальная информация по инвесторам доступна в разделе{" "}
-            <button
-              type="button"
-              className="font-medium text-primary underline transition hover:opacity-90"
-              onClick={() => router.push("/dashboard/investors")}
+          {(user.role === "OWNER" || user.role === "SUPER_ADMIN") && (
+            <div
+              className={cn(
+                isSuperAdmin && !loadingReadiness && !systemReady ? "border-t border-amber-500/20 pt-3 dark:border-amber-500/25" : ""
+              )}
             >
-              Инвесторы
-            </button>
-            .
-          </Text>
-        </div>
-
-        {latestCredentials ? (
-          <div className="thai-glass rounded-2xl p-2.5 md:p-4">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">
-              Доступ инвестора
-            </Text>
-            <div className="rounded-xl border border-border/50 bg-muted/10 p-2.5 text-sm backdrop-blur-sm md:p-3">
-              <div>Логин: <span className="font-semibold">{latestCredentials.username}</span></div>
-              <div className="mt-1">Пароль: <span className="font-semibold">{latestCredentials.password}</span></div>
+              <BusinessRateControlCenter
+                viewerRole={user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "OWNER"}
+                current={businessRateData?.current ?? null}
+                rates={businessRateHistoryData?.rates ?? []}
+                isHistoryLoading={businessRateHistoryPending}
+                onSubmit={(payload) => setBusinessRateMutation.mutateAsync(payload)}
+                isSubmitting={setBusinessRateMutation.isPending}
+                submitError={
+                  setBusinessRateMutation.isError && setBusinessRateMutation.error instanceof Error
+                    ? setBusinessRateMutation.error.message
+                    : null
+                }
+                onPatchPlanRow={(payload) => patchBusinessRateHistoryMutation.mutateAsync(payload)}
+                onDeletePlanRow={(id) => deleteBusinessRateHistoryMutation.mutateAsync(id)}
+                planSectionBusy={planSectionBusy}
+                planBusyRowId={planBusyRowId}
+                planActionError={planActionError}
+              />
             </div>
+          )}
+
+          <div
+            className={cn(
+              user.role === "OWNER" || user.role === "SUPER_ADMIN"
+                ? "border-t border-foreground/[0.06] pt-3 dark:border-white/[0.07]"
+                : "pt-1"
+            )}
+          >
+            <SectionTitle label="Быстрый доступ" tone="primary" />
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <button
+                type="button"
+                disabled={createDisabled}
+                onClick={() => setShowModal(true)}
+                className={cn(
+                  quickLinkBase,
+                  "border-primary/25 bg-primary/[0.07] hover:border-primary/40 hover:bg-primary/[0.11]",
+                  createDisabled && "pointer-events-none opacity-45"
+                )}
+              >
+                <UserPlus className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={2.25} aria-hidden />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold leading-tight text-foreground">Создать</div>
+                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/80">Инвестор</div>
+                </div>
+              </button>
+              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/investors")}>
+                <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold leading-tight text-foreground">Реестр</div>
+                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Позиции</div>
+                </div>
+              </button>
+              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/finance")}>
+                <Wallet className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold leading-tight text-foreground">Финансы</div>
+                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Очереди</div>
+                </div>
+              </button>
+              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/profile")}>
+                <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold leading-tight text-foreground">Профиль</div>
+                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Безопасность</div>
+                </div>
+              </button>
+            </div>
+
+            {isOwner ? (
+              <div className="mt-2 rounded-xl border-l-2 border-l-primary/40 bg-foreground/[0.02] py-2 pl-3 pr-2 dark:bg-white/[0.02]">
+                {ownerWithdrawRequestedCount > 0 || ownerBodyTopUpPendingCount > 0 ? (
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    <span className="font-medium text-foreground">Запросы:</span> вывод{" "}
+                    <span className="tabular-nums font-semibold text-foreground">{ownerWithdrawRequestedCount}</span>, пополнения ждут инвестора{" "}
+                    <span className="tabular-nums font-semibold text-foreground">{ownerBodyTopUpPendingCount}</span>
+                    <span className="mx-1 opacity-40">·</span>
+                    <button
+                      type="button"
+                      className="font-semibold text-primary underline-offset-2 transition hover:underline"
+                      onClick={() => router.push("/dashboard")}
+                    >
+                      Разбор на главной
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    Нет активных запросов на вывод и пополнение тела.
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
-        ) : null}
+
+          {isSuperAdmin ? (
+            <CollapsibleSection
+              key={
+                loadingReadiness
+                  ? "readiness-loading"
+                  : systemReady
+                    ? "readiness-ok"
+                    : "readiness-blocked"
+              }
+              title="Система"
+              subtitle={systemReady ? "Готова к учёту" : "Требуется настройка"}
+              defaultOpen={!systemReady}
+              className="rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] shadow-none dark:border-white/[0.07] dark:bg-white/[0.03]"
+              contentClassName="px-2.5 py-2"
+            >
+              <div className="rounded-xl border border-foreground/[0.05] bg-background/30 p-2.5 dark:border-white/[0.06] dark:bg-black/20">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-block h-2 w-2 shrink-0 rounded-full",
+                        systemReady ? "bg-emerald-500" : "bg-red-500"
+                      )}
+                    />
+                    <Text
+                      className={cn("truncate text-[11px] font-semibold", systemReady ? "text-emerald-600" : "text-red-600")}
+                    >
+                      {systemReady ? "Учёт доступен" : "Учёт заблокирован"}
+                    </Text>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 px-2 text-[11px]"
+                    onClick={() => setShowReadinessDetails((v) => !v)}
+                  >
+                    {showReadinessDetails ? "Скрыть" : "Чеклист"}
+                  </Button>
+                </div>
+
+                {showReadinessDetails ? (
+                  <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-3">
+                    {checklistItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className={cn(
+                          "rounded-md border px-2 py-1.5 text-[10px] font-medium leading-tight",
+                          item.ok
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+                            : item.optional
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+                              : "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200"
+                        )}
+                      >
+                        <span className="mr-0.5">{item.ok ? "✓" : item.optional ? "·" : "!"}</span>
+                        {item.label}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </CollapsibleSection>
+          ) : null}
+
+          {isSuperAdmin ? (
+            <SuperAdminNetworkOverviewCard
+              compact
+              className="rounded-2xl border border-foreground/[0.06] border-l-primary/30 bg-gradient-to-b from-card/40 to-transparent shadow-none dark:border-white/[0.07] md:p-2"
+            />
+          ) : null}
+        </section>
+
+        <InvestorCredentialsReveal
+          open={credentialsDialog !== null}
+          credentials={credentialsDialog}
+          onDismiss={() => setCredentialsDialog(null)}
+        />
 
         <CreateInvestorModal
           open={showModal}

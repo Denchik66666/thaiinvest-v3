@@ -115,12 +115,12 @@
 
 | HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
 |------|---------|------------|---------------|------------------------|
-| **GET** | `/api/system/readiness` | Проверка готовности системы (OWNER, SUPER_ADMIN, базовый инвестор) | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/system/readiness/route.ts`. |
+| **GET** | `/api/system/readiness` | Готовность к учёту: блокирующие пункты (OWNER, SUPER_ADMIN в БД), опционально базовый инвестор SUPER_ADMIN в общей сети. Ответ: `ready`, `missing` / `missingBlocking`, `missingOptional`, `snapshot`, `recommendations` | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/system/readiness/route.ts`. |
 | **GET** | `/api/system/business-rate` | Текущая бизнес-ставка | Любая роль при валидном JWT | `verifyToken` без ролевого 403 — `app/api/system/business-rate/route.ts`. |
 | **POST** | `/api/system/business-rate` | Создание записи в истории ставки (upsert логики домена) | **OWNER** или **SUPER_ADMIN** | `verifyToken`; `decoded.role` — `app/api/system/business-rate/route.ts`. |
 | **GET** | `/api/system/business-rate/history` | Список записей `RateHistory` | **OWNER** или **SUPER_ADMIN** | `verifyToken`; `decoded.role` — `app/api/system/business-rate/history/route.ts`. |
-| **PATCH** | `/api/system/business-rate/history/[id]` | Правка **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | `requireOwnerOrSuperAdmin()` в том же файле — `app/api/system/business-rate/history/[id]/route.ts`. |
-| **DELETE** | `/api/system/business-rate/history/[id]` | Удаление **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | `requireOwnerOrSuperAdmin()` — `app/api/system/business-rate/history/[id]/route.ts`. |
+| **PATCH** | `/api/system/business-rate/history/[id]` | Правка **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | `requireOwnerOrSuperAdmin()` — `app/api/system/business-rate/history/[id]/route.ts`. |
+| **DELETE** | `/api/system/business-rate/history/[id]` | Удаление **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | То же — `app/api/system/business-rate/history/[id]/route.ts`. |
 
 ---
 

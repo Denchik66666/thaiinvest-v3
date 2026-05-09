@@ -9,6 +9,8 @@ export type InvestorPositionAvatarHeadingProps = {
   name: string;
   /** Две буквы на аватаре без фото — из ника/handle; если пусто — из `name`. */
   avatarInitialsSource?: string | null;
+  /** Фото аватара (если есть). */
+  avatarUrl?: string | null;
   /** Значение `status` из API позиции — «активное» кольцо только для `active`. */
   status: string;
   avatarSize?: number;
@@ -25,6 +27,7 @@ export type InvestorPositionAvatarHeadingProps = {
 export function InvestorPositionAvatarHeading({
   name,
   avatarInitialsSource,
+  avatarUrl,
   status,
   avatarSize = 42,
   className,
@@ -36,20 +39,15 @@ export function InvestorPositionAvatarHeading({
   const alignTop = Boolean(metaBelowNick);
   return (
     <div className={cn("flex min-w-0 gap-2", alignTop ? "items-start" : "items-center", className)}>
-      <span
-        className={cn(
-          "thai-dashboard-avatar-ring relative shrink-0 rounded-full p-[2px]",
-          "transition-[box-shadow] duration-300 ease-out"
-        )}
-        data-has-positions={positionsActive ? "true" : "false"}
-      >
-        <UserAvatar
-          name={name}
-          initialsFrom={avatarInitialsSource}
-          size={avatarSize}
-          className="!ring-0 bg-transparent [&_img]:object-cover"
-        />
-      </span>
+      <UserAvatar
+        name={name}
+        initialsFrom={avatarInitialsSource}
+        src={avatarUrl}
+        variant="plain"
+        hasPositions={positionsActive}
+        size={avatarSize}
+        className="thai-dashboard-avatar-ring shrink-0 transition-[box-shadow] duration-300 ease-out !ring-0 bg-transparent shadow-none [&_img]:object-cover"
+      />
       <div className={cn("min-w-0 flex-1", metaBelowNick ? "flex flex-col gap-0.5" : undefined)}>
         <div className="flex min-w-0 items-center gap-1">
           <span

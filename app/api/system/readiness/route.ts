@@ -24,14 +24,22 @@ export async function GET() {
       },
       orderBy: { createdAt: "asc" },
     });
-    const missing: string[] = [];
-    if (!owner) missing.push("OWNER user");
-    if (!superAdmin) missing.push("SUPER_ADMIN user");
-    if (!superAdminBaseInvestor) missing.push("SUPER_ADMIN base investor in common network");
+    /**
+     * Важно: базовая позиция инвестора для SUPER_ADMIN полезна (лимиты/настройки),
+     * но не должна блокировать старт системы после сброса БД.
+     */
+    const missingBlocking: string[] = [];
+    const missingOptional: string[] = [];
+    if (!owner) missingBlocking.push("OWNER user");
+    if (!superAdmin) missingBlocking.push("SUPER_ADMIN user");
+    if (!superAdminBaseInvestor) missingOptional.push("SUPER_ADMIN base investor in common network");
 
     return NextResponse.json({
-      ready: missing.length === 0,
-      missing,
+      ready: missingBlocking.length === 0,
+      /** Backward-compatible: "missing" теперь только блокирующие пункты. */
+      missing: missingBlocking,
+      missingBlocking,
+      missingOptional,
       snapshot: {
         ownerUser: owner ? { id: owner.id, username: owner.username } : null,
         superAdminUser: superAdmin ? { id: superAdmin.id, username: superAdmin.username } : null,
@@ -44,8 +52,8 @@ export async function GET() {
           : null,
       },
       recommendations: [
-        "Создайте базового инвестора SUPER_ADMIN в общей сети (это лимит для личной сети).",
-        "Бизнес-ставка OWNER нужна только для автоматической ставки личной сети (50%).",
+        "Опционально: создайте базового инвестора SUPER_ADMIN в общей сети (используется как лимит/настройка личной сети).",
+        "Бизнес-ставку задаёт только владелец (OWNER) в «Управлении»; от неё зависят начисления в общей сети и база для личной сети (50%).",
       ],
     });
   } catch (error) {

@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * Выбор периода для ленты операций: пресеты или диапазон на календаре (тот же визуальный язык, что DatePicker).
+ * Выбор периода для ленты операций: пресеты или диапазон на календаре (общая шкурка с `DatePicker` / финансы).
  */
-import type { CSSProperties } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-const POPOVER_ESTIMATE_H = 520;
+import { computeFinanceCalendarPopoverPosition } from "@/components/ui/finance-calendar-popover-skin";
+import { FinanceMonthCalendar } from "@/components/ui/FinanceMonthCalendar";
+import { FinanceCalendarPopoverPanel } from "@/components/ui/FinanceCalendarPopoverPanel";
 
 export type PeriodPreset = "7d" | "30d" | "90d" | "365d" | "all";
 
@@ -44,10 +44,6 @@ export function toYmd(date: Date): string {
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function addMonths(date: Date, delta: number) {
-  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -86,6 +82,14 @@ const PRESETS: { id: PeriodPreset; label: string }[] = [
   { id: "all", label: "Всё время" },
 ];
 
+function presetChipText(p: PeriodPreset): string {
+  if (p === "7d") return "7";
+  if (p === "30d") return "30";
+  if (p === "90d") return "90";
+  if (p === "365d") return "365";
+  return "∞";
+}
+
 /** Подпись выбранного периода для UI (сводки, aria). */
 export function formatHistoryPeriodCaption(period: HistoryPeriodValue): string {
   if (period.kind === "preset") {
@@ -96,6 +100,17 @@ export function formatHistoryPeriodCaption(period: HistoryPeriodValue): string {
   if (!a || !b) return "Свой период";
   const fmt = (d: Date) =>
     d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return `${fmt(a)} — ${fmt(b)}`;
+}
+
+function formatDraftRangeCaption(draftStart: Date | null, draftEnd: Date | null): string | null {
+  if (!draftStart && !draftEnd) return null;
+  const fmt = (d: Date) => d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  if (draftStart && !draftEnd) return `c ${fmt(draftStart)}`;
+  if (!draftStart && draftEnd) return `до ${fmt(draftEnd)}`;
+  if (!draftStart || !draftEnd) return null;
+  const a = draftStart <= draftEnd ? draftStart : draftEnd;
+  const b = draftStart <= draftEnd ? draftEnd : draftStart;
   return `${fmt(a)} — ${fmt(b)}`;
 }
 
@@ -168,16 +183,7 @@ export function HistoryPeriodPopover({
   const computePopover = () => {
     const anchor = anchorRef.current;
     if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const desiredWidth = Math.min(380, Math.max(300, rect.width + 120));
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const left = Math.max(10, Math.min(rect.left, vw - desiredWidth - 10));
-    let top = rect.bottom + 10;
-    if (top + POPOVER_ESTIMATE_H > vh - 10) {
-      top = Math.max(10, rect.top - POPOVER_ESTIMATE_H - 10);
-    }
-    setPopover({ top, left, width: desiredWidth });
+    setPopover(computeFinanceCalendarPopoverPosition(anchor.getBoundingClientRect()));
   };
 
   useLayoutEffect(() => {
@@ -191,29 +197,6 @@ export function HistoryPeriodPopover({
       window.removeEventListener("scroll", onResize, true);
     };
   }, [open]);
-
-  const viewStart = useMemo(() => startOfMonth(viewDate), [viewDate]);
-  const daysHeader = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-  const monthLabel = useMemo(() => {
-    const months = [
-      "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-      "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-    ];
-    return `${months[viewStart.getMonth()]} ${viewStart.getFullYear()}`;
-  }, [viewStart]);
-
-  const calendarCells = useMemo(() => {
-    const firstDay = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
-    const startWeekday = (firstDay.getDay() + 6) % 7;
-    const cells: Array<{ date: Date; inMonth: boolean }> = [];
-    for (let i = 0; i < 42; i++) {
-      const dt = new Date(viewStart);
-      dt.setDate(1 - startWeekday + i);
-      const inMonth = dt.getMonth() === viewStart.getMonth();
-      cells.push({ date: dt, inMonth });
-    }
-    return cells;
-  }, [viewStart]);
 
   const sessionToday = useMemo(() => (open ? new Date() : new Date()), [open]);
 
@@ -260,177 +243,67 @@ export function HistoryPeriodPopover({
     setOpen(false);
   }
 
-  const panelStyle: CSSProperties = {
-    position: "fixed",
-    top: popover?.top ?? 0,
-    left: popover?.left ?? 0,
-    width: popover?.width ?? 320,
-    borderColor: "var(--thai-color-card-border)",
-    background:
-      "linear-gradient(165deg, color-mix(in srgb, hsl(var(--card)) 78%, transparent) 0%, color-mix(in srgb, var(--thai-color-card-bg) 92%, hsl(var(--card))) 48%, color-mix(in srgb, hsl(var(--background)) 55%, transparent) 100%)",
-    backdropFilter: "saturate(1.75) blur(28px)",
-    WebkitBackdropFilter: "saturate(1.75) blur(28px)",
-    boxShadow:
-      "0 28px 56px -16px rgba(0,0,0,0.5), 0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 22%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 9%, transparent), inset 0 -1px 0 color-mix(in srgb, #000 12%, transparent)",
-    animation: "thai-calendar-pop 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards",
-    willChange: "transform, opacity",
-  };
-
   const rangeReady = Boolean(draftStart && draftEnd);
+  const draftCaption = formatDraftRangeCaption(draftStart, draftEnd);
+  const triggerCaption = draftCaption ?? formatHistoryPeriodCaption(value);
 
   const popoverNode =
     open && popover ? (
-      <div
-        ref={popoverRef}
-        role="dialog"
-        aria-label="Период для истории операций"
-        style={panelStyle}
-        className="z-[20000] isolate max-h-[min(92vh,640px)] overflow-y-auto overflow-x-hidden rounded-2xl border p-1 shadow-none"
-      >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/[0.07] via-transparent to-primary/[0.06] dark:from-white/[0.04] dark:to-primary/[0.04]"
-        />
-        <div className="relative rounded-[14px] bg-gradient-to-b from-background/35 to-background/[0.02] px-2.5 pb-2 pt-2">
+      <FinanceCalendarPopoverPanel
+        popoverRef={popoverRef}
+        box={popover}
+        ariaLabel="Период для истории операций"
+        topSlot={
           <div className="mb-2 px-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Быстрый выбор</div>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {PRESETS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => pickPreset(id)}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
-                    isPresetActive(value, id)
-                      ? "border-primary/50 bg-primary/15 text-primary shadow-[0_0_12px_-2px_hsl(var(--primary)/0.35)]"
-                      : "border-border/45 bg-background/40 text-foreground hover:border-primary/35 hover:bg-muted/25"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-2 border-t border-border/30 pt-2">
-            <div className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Свой период в календаре
-            </div>
-            <p className="mt-1 px-0.5 text-[10px] leading-snug text-muted-foreground">
-              Первый день — начало, второй — конец. Затем «Применить».
-            </p>
-          </div>
-
-          <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
-            <button
-              type="button"
-              aria-label="Предыдущий месяц"
-              onClick={() => setViewDate((d) => addMonths(d, -1))}
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition duration-200",
-                "border-border/50 bg-background/45 text-foreground backdrop-blur-sm",
-                "hover:border-primary/40 hover:bg-muted/35 hover:shadow-[0_0_12px_-2px_hsl(var(--primary)/0.35)]",
-                "active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              )}
-            >
-              <ChevronLeft className="h-4 w-4 opacity-90" strokeWidth={2.2} />
-            </button>
-            <div className="min-w-0 flex-1 text-center">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Месяц</div>
-              <div className="truncate text-sm font-bold tracking-tight text-foreground sm:text-[15px]">{monthLabel}</div>
-            </div>
-            <button
-              type="button"
-              aria-label="Следующий месяц"
-              onClick={() => setViewDate((d) => addMonths(d, 1))}
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition duration-200",
-                "border-border/50 bg-background/45 text-foreground backdrop-blur-sm",
-                "hover:border-primary/40 hover:bg-muted/35 hover:shadow-[0_0_12px_-2px_hsl(var(--primary)/0.35)]",
-                "active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              )}
-            >
-              <ChevronRight className="h-4 w-4 opacity-90" strokeWidth={2.2} />
-            </button>
-          </div>
-
-          <div className="mb-1.5 grid grid-cols-7 gap-0.5 px-0.5 text-muted-foreground">
-            {daysHeader.map((d) => (
-              <div key={d} className="py-1 text-center text-[10px] font-semibold uppercase tracking-wide">
-                {d}
+            <div className="mt-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex min-w-full">
+                <div className="mx-auto flex w-max flex-nowrap gap-1 px-0.5">
+                  {PRESETS.map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => pickPreset(id)}
+                      aria-label={`Период: ${label}`}
+                      title={label}
+                      className={cn(
+                        "min-w-[2.25rem] rounded-lg px-2 py-1 text-[11px] font-semibold tabular-nums transition",
+                        isPresetActive(value, id)
+                          ? "bg-[color:var(--thai-color-accrued-bg)] text-[color:var(--thai-color-accrued)] shadow-[0_0_12px_-6px_color-mix(in_srgb,var(--thai-color-accrued)_55%,transparent)]"
+                          : "text-[color:var(--thai-color-accrued)] hover:bg-white/[0.06]"
+                      )}
+                    >
+                      {presetChipText(id)}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-
-          <div
-            key={`${viewStart.getFullYear()}-${viewStart.getMonth()}`}
-            className="grid grid-cols-7 gap-1 rounded-xl border border-border/25 bg-muted/5 p-1.5 animate-in fade-in zoom-in-95 duration-200"
-          >
-            {calendarCells.map(({ date, inMonth }, idx) => {
-              const isToday = isSameDay(date, sessionToday);
-              const inRange = dayInRange(date);
-              const endpoint = dayIsEndpoint(date);
-              const ymd = toYmd(date);
-
-              return (
-                <button
-                  key={`${idx}-${ymd}`}
-                  type="button"
-                  onClick={() => onPickDay(date)}
-                  className={cn(
-                    "relative flex h-10 flex-col items-center justify-center rounded-xl text-[13px] font-semibold tabular-nums transition duration-200 ease-out",
-                    inMonth ? "text-foreground" : "text-muted-foreground/45",
-                    inRange && !endpoint && "bg-primary/12 ring-1 ring-primary/15",
-                    endpoint &&
-                      "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.55)] ring-1 ring-white/25",
-                    !inRange && !endpoint && "hover:bg-background/70 hover:ring-1 hover:ring-border/50",
-                    !inRange && !endpoint && isToday && "ring-1 ring-[color-mix(in_srgb,var(--thai-color-due)_55%,transparent)] bg-[color-mix(in_srgb,var(--thai-color-due)_12%,transparent)]"
-                  )}
-                >
-                  <span className="leading-none">{date.getDate()}</span>
-                  <span className="h-1.5 shrink-0" aria-hidden />
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/30 pt-2">
-            <button
-              type="button"
-              className="rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
-              onClick={() => {
-                setDraftStart(null);
-                setDraftEnd(null);
-              }}
-            >
-              Сбросить выбор
-            </button>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-foreground transition hover:bg-muted/50"
-                onClick={() => setOpen(false)}
-              >
-                Закрыть
-              </button>
-              <button
-                type="button"
-                disabled={!rangeReady}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-[11px] font-semibold transition",
-                  rangeReady
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "cursor-not-allowed opacity-40"
-                )}
-                onClick={applyRange}
-              >
-                Применить период
-              </button>
             </div>
           </div>
-        </div>
-      </div>
+        }
+        calendar={
+          <FinanceMonthCalendar
+            viewMonth={viewDate}
+            onViewMonthChange={setViewDate}
+            sessionToday={sessionToday}
+            mode="range"
+            isDayInRange={dayInRange}
+            isDayEndpoint={dayIsEndpoint}
+            onPickDay={onPickDay}
+          />
+        }
+        footerCenterTitle={triggerCaption}
+        footerCenterTitleAttr={triggerCaption}
+        checkDisabled={!rangeReady}
+        checkAriaLabel="Применить период"
+        checkTitle={rangeReady ? "Применить" : "Выберите начало и конец"}
+        resetAriaLabel="Сбросить выбор периода"
+        resetTitle="Сбросить"
+        onReset={() => {
+          setDraftStart(null);
+          setDraftEnd(null);
+        }}
+        onCheck={applyRange}
+      />
     ) : null;
 
   return (
@@ -486,13 +359,24 @@ export function HistoryPeriodPopover({
         )}
         {triggerVariant !== "toolbar" ? (
           <span className="min-w-0 flex-1">
-            <span
-              className={cn(
-                "block font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75",
-                compact ? "text-[8px]" : "text-[9px]"
-              )}
-            >
-              Период
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span
+                className={cn(
+                  "shrink-0 font-semibold uppercase tracking-[0.14em] text-muted-foreground group-hover:text-foreground/75",
+                  compact ? "text-[8px]" : "text-[9px]"
+                )}
+              >
+                Период
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 truncate font-medium tabular-nums text-muted-foreground/80",
+                  compact ? "text-[10px]" : "text-[11px]"
+                )}
+                title={triggerCaption}
+              >
+                · {triggerCaption}
+              </span>
             </span>
           </span>
         ) : null}

@@ -30,6 +30,13 @@ interface SelectItemProps {
   children: React.ReactNode;
 }
 
+type SelectInjectedProps = {
+  selectedValue?: string;
+  onValueChange?: (value: string) => void;
+  isOpen?: boolean;
+  setIsOpen?: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
 export function Select({ value, onValueChange, children, className }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   
@@ -37,8 +44,8 @@ export function Select({ value, onValueChange, children, className }: SelectProp
     <div className={cn("relative", className)}>
       {React.Children.map(children, (child) => {
         if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<any>, {
-            value,
+          return React.cloneElement(child as React.ReactElement<SelectInjectedProps>, {
+            selectedValue: value,
             onValueChange,
             isOpen,
             setIsOpen,
@@ -50,7 +57,13 @@ export function Select({ value, onValueChange, children, className }: SelectProp
   );
 }
 
-export function SelectTrigger({ className, children, ...props }: SelectTriggerProps & any) {
+export function SelectTrigger({
+  className,
+  children,
+  isOpen,
+  setIsOpen,
+}: SelectTriggerProps & SelectInjectedProps) {
+  const open = Boolean(isOpen);
   return (
     <button
       type="button"
@@ -58,23 +71,31 @@ export function SelectTrigger({ className, children, ...props }: SelectTriggerPr
         "w-full px-3 py-2 text-left bg-slate-800/50 border border-slate-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500",
         className
       )}
-      onClick={() => props.setIsOpen(!props.isOpen)}
+      onClick={() => setIsOpen?.(!open)}
     >
       {children}
     </button>
   );
 }
 
-export function SelectValue({ placeholder, ...props }: SelectValueProps & any) {
+export function SelectValue({
+  placeholder,
+  selectedValue,
+}: SelectValueProps & Pick<SelectInjectedProps, "selectedValue">) {
   return (
     <span>
-      {props.value || <span className="text-slate-500">{placeholder}</span>}
+      {selectedValue || <span className="text-slate-500">{placeholder}</span>}
     </span>
   );
 }
 
-export function SelectContent({ className, children, ...props }: SelectContentProps & any) {
-  if (!props.isOpen) return null;
+
+export function SelectContent({
+  className,
+  children,
+  isOpen,
+}: SelectContentProps & SelectInjectedProps) {
+  if (!isOpen) return null;
   
   return (
     <div className={cn(
@@ -86,18 +107,25 @@ export function SelectContent({ className, children, ...props }: SelectContentPr
   );
 }
 
-export function SelectItem({ value, className, children, ...props }: SelectItemProps & any) {
+export function SelectItem({
+  value,
+  className,
+  children,
+  onValueChange,
+  setIsOpen,
+  selectedValue,
+}: SelectItemProps & SelectInjectedProps) {
   return (
     <button
       type="button"
       className={cn(
         "w-full px-3 py-2 text-left hover:bg-slate-700 focus:bg-slate-700 focus:outline-none",
-        props.value === value && "bg-blue-600/20 text-blue-400",
+        selectedValue === value && "bg-blue-600/20 text-blue-400",
         className
       )}
       onClick={() => {
-        props.onValueChange?.(value);
-        props.setIsOpen(false);
+        onValueChange?.(value);
+        setIsOpen?.(false);
       }}
     >
       {children}

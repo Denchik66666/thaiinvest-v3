@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { Input } from "@/components/ui/Input";
@@ -9,6 +10,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import { StatusBadge } from "@/components/investors/InvestorsTable";
 import { cn, formatCurrency } from "@/lib/utils";
+import { moneyRound2 } from "@/lib/money-round";
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
@@ -24,11 +26,14 @@ type Investor = {
   body: number;
   rate: number;
   accrued: number;
+  paid?: number;
   entryDate?: string | null;
   activationDate?: string | null;
   status: string;
   investorUser?: { id: number; username: string } | null;
   investorUserId?: number | null;
+  /** Общая сеть: ставка карточки = бизнес-ставка на дату входа (редактирование процента с формы не отправляется). */
+  isPrivate?: boolean;
 };
 
 type InvestorCardProps = {
@@ -42,15 +47,41 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
   const queryClient = useQueryClient();
 
   const [isEditing, setIsEditing] = useState(false);
+  /** SUPER_ADMIN: отправляем accrued/paid на сервер только если правили эти поля (иначе авто‑пересчёт по датам/телу сохраняется). */
+  const [balancesTouched, setBalancesTouched] = useState(false);
   const [editForm, setEditForm] = useState({
     name: investor?.name || "",
     body: investor?.body?.toString() || "0",
     rate: investor?.rate?.toString() || "0",
-    entryDate: investor?.entryDate || "",
-    activationDate: investor?.activationDate || "",
+    accrued: investor?.accrued?.toString() ?? "0",
+    paid: investor?.paid != null ? String(investor.paid) : "0",
+    entryDate: investor?.entryDate ? investor.entryDate.split("T")[0] : "",
+    activationDate: investor?.activationDate ? investor.activationDate.split("T")[0] : "",
   });
 
+  useEffect(() => {
+    setEditForm({
+      name: investor.name,
+      body: String(investor.body),
+      rate: String(investor.rate),
+      accrued: String(investor.accrued),
+      paid: investor.paid != null ? String(investor.paid) : "0",
+      entryDate: investor.entryDate ? investor.entryDate.split("T")[0] : "",
+      activationDate: investor.activationDate ? investor.activationDate.split("T")[0] : "",
+    });
+  }, [
+    investor.id,
+    investor.name,
+    investor.body,
+    investor.rate,
+    investor.accrued,
+    investor.paid,
+    investor.entryDate,
+    investor.activationDate,
+  ]);
+
   const isOwner = user?.role === "OWNER" || user?.role === "SUPER_ADMIN";
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const canEdit = isOwner || investor?.investorUserId === user?.id;
 
   const dateHighlights = useMemo(() => {
@@ -62,11 +93,44 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
     return Array.from(s);
   }, [investor]);
 
+  const isCommonNetwork = investor.isPrivate !== true;
+  const entryYmdForRatePreview =
+    editForm.entryDate.trim() || (investor.entryDate ? investor.entryDate.split("T")[0] : "");
+
+  const { data: rateAtEntryRes, isPending: rateAtEntryPending } = useQuery({
+    queryKey: ["business-rate-at-entry-edit", investor.id, entryYmdForRatePreview],
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: { rate: number; effectiveDate: string } | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(entryYmdForRatePreview)}`
+      ),
+    enabled: isEditing && isCommonNetwork && Boolean(entryYmdForRatePreview),
+    staleTime: 20_000,
+  });
+
   const updateMutation = useMutation({
-    mutationFn: (data: typeof editForm) => apiClient.put(`/api/investors/${investor?.id}`, data),
+    mutationFn: (data: typeof editForm) => {
+      const bodyNum = moneyRound2(Number(String(data.body).replace(/\s/g, "").replace(",", ".")));
+      const payload: Record<string, unknown> = {
+        name: data.name.trim(),
+        body: bodyNum,
+      };
+      if (!isCommonNetwork) {
+        const rateNum = Number(String(data.rate).replace(",", "."));
+        if (!Number.isFinite(rateNum) || rateNum < 0) throw new Error("Некорректная ставка");
+        payload.rate = rateNum;
+      }
+      if (user?.role === "SUPER_ADMIN" && balancesTouched) {
+        payload.accrued = moneyRound2(Number(String(data.accrued).replace(/\s/g, "").replace(",", ".")));
+        payload.paid = moneyRound2(Number(String(data.paid).replace(/\s/g, "").replace(",", ".")));
+      }
+      if (data.entryDate.trim()) payload.entryDate = data.entryDate.trim();
+      if (data.activationDate.trim()) payload.activationDate = data.activationDate.trim();
+      return apiClient.put(`/api/investors/${investor.id}`, payload);
+    },
     onSuccess: () => {
       toast.success("Данные инвестора обновлены");
       setIsEditing(false);
+      setBalancesTouched(false);
       queryClient.invalidateQueries({ queryKey: ["investors"] });
       queryClient.invalidateQueries({ queryKey: ["investor", String(investor?.id)] });
       queryClient.invalidateQueries({ queryKey: ["investor-detail", investor?.id] });
@@ -103,7 +167,14 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
           </div>
           {canEdit && variant === "manage" ? (
             <div className="flex shrink-0 items-start">
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsEditing(!isEditing);
+                  if (isEditing) setBalancesTouched(false);
+                }}
+              >
                 {isEditing ? "Отмена" : "Редактировать"}
               </Button>
             </div>
@@ -118,16 +189,85 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
                 <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
               </div>
               <div>
-                <Label>Ставка (%)</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={editForm.rate}
-                  onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })}
-                  placeholder="10"
-                />
+                <Label>{isCommonNetwork ? "Ставка (сеть на дату входа)" : "Ставка (%)"}</Label>
+                {isCommonNetwork ? (
+                  <>
+                    <Input
+                      disabled
+                      value={
+                        rateAtEntryPending
+                          ? "Проверка…"
+                          : rateAtEntryRes?.current
+                            ? `${rateAtEntryRes.current.rate}%`
+                            : "—"
+                      }
+                      className="cursor-not-allowed opacity-90"
+                    />
+                    <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                      В общей сети процент карточки совпадает с бизнес-ставкой на дату входа; при сохранении подставится автоматически.
+                    </p>
+                  </>
+                ) : (
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={editForm.rate}
+                    onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })}
+                    placeholder="10"
+                  />
+                )}
               </div>
             </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label>Тело позиции</Label>
+                <Input
+                  inputMode="decimal"
+                  value={editForm.body}
+                  onChange={(e) => setEditForm({ ...editForm, body: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              {isSuperAdmin ? (
+                <>
+                  <div>
+                    <Label>Начислено (ручная правка)</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={editForm.accrued}
+                      onChange={(e) => {
+                        setBalancesTouched(true);
+                        setEditForm({ ...editForm, accrued: e.target.value });
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label>Выплачено (ручная правка)</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={editForm.paid}
+                      onChange={(e) => {
+                        setBalancesTouched(true);
+                        setEditForm({ ...editForm, paid: e.target.value });
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {isSuperAdmin ? (
+              <p className="text-[10px] leading-snug text-muted-foreground">
+                Даты и тело можно править отдельно: начисленное пересчитается по правилам недель, если вы не меняли поля «начислено» / «выплачено» в этой форме. Чтобы зафиксировать суммы вручную — измените их и сохраните.
+              </p>
+            ) : (
+              <p className="text-[10px] leading-snug text-muted-foreground">
+                При смене даты входа дата активации пересчитывается автоматически (правило понедельника).
+              </p>
+            )}
 
             <div className="space-y-3">
               <Label>Дата входа</Label>
@@ -178,7 +318,13 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
             <Button onClick={() => updateMutation.mutate(editForm)} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Сохранение..." : "Сохранить"}
             </Button>
-            <Button variant="outline" onClick={() => setIsEditing(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditing(false);
+                setBalancesTouched(false);
+              }}
+            >
               Отмена
             </Button>
           </div>

@@ -1,0 +1,26 @@
+THAIINVEST — полный бэкап (запись для памяти)
+Создано (UTC): 2026-05-08T21:26:48.903Z
+Обновлено имя bundle: 2026-05-09 (убран дублирующий суффикс в имени файла)
+
+1) Код и вся история git (все refs):
+   Файл: backups/thaiinvest-restore-2026-05-08-full-perf-api.bundle
+   Проверка: git bundle verify backups/thaiinvest-restore-2026-05-08-full-perf-api.bundle
+   Клон: git clone backups/thaiinvest-restore-2026-05-08-full-perf-api.bundle restored-repo
+
+2) Дамп БД: не создан на этой машине (нет pg_dump в PATH).
+   Повторить с дампом: установить PostgreSQL client tools, затем npm run backup:full
+   (скрипт scripts/full-backup.mjs использует DIRECT_URL из .env).
+
+Контекст работ (2026-05-08 и рядом):
+• Производительность БД: индексы npm run db:apply-dashboard-indexes
+  (в т.ч. prisma/migrations/20260508223000_rate_history_investor_perf_indexes).
+• SUPER_ADMIN network=all: лимит позиций + meta (types/operations-finance-api.ts),
+  заголовок X-Thaiinvest-Investor-Selection-Partial, UI FinanceInvestorSelectionTruncationNotice.
+• API-тесты: tests/e2e/api-operations-history-roles.spec.ts
+• Prisma: один Pool в lib/prisma.ts; withDbRetry на DELETE платежей.
+• .env не входит в bundle (gitignore) — храните секреты отдельно.
+
+Повтор бэкапа кода: npm run backup:full
+Опционально свой ярлык: BACKUP_SLUG=my-label npm run backup:full
+
+Подробнее см. backups/README_RESTORE.txt

@@ -9,6 +9,7 @@ import {
   isStrictlyFutureEffectiveDate,
   recalculateInvestorAccruedFromRateHistory,
 } from "@/lib/business-rate-accrual-recalc";
+import { invalidateRateHistoryRowsCache } from "@/lib/rate-history-rows-cache";
 
 function parseDate(value?: string) {
   if (!value) return undefined;
@@ -105,6 +106,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     });
 
     await recalculateInvestorAccruedFromRateHistory();
+    invalidateRateHistoryRowsCache();
 
     return NextResponse.json({ success: true, rate });
   } catch (error) {
@@ -150,6 +152,7 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
     });
 
     await recalculateInvestorAccruedFromRateHistory();
+    invalidateRateHistoryRowsCache();
 
     return NextResponse.json({ success: true, deleted: result.count });
   } catch (error) {

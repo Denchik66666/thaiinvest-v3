@@ -29,6 +29,7 @@ export type OwnerNetworkInvestorRow = {
   name: string;
   handle?: string | null;
   investorUser?: { username: string } | null;
+  avatarUrl?: string | null;
   body: number;
   accrued: number;
   due: number;
@@ -76,6 +77,7 @@ function OwnerInvestorWithdrawRowsCompact({ rows }: { rows: OwnerPendingPaymentR
   const mutation = useOwnerPendingPaymentMutation();
   const disabled = mutation.isPending;
   const [approveFor, setApproveFor] = useState<OwnerPendingPaymentRow | null>(null);
+  const [rejectFor, setRejectFor] = useState<OwnerPendingPaymentRow | null>(null);
 
   return (
     <>
@@ -104,7 +106,10 @@ function OwnerInvestorWithdrawRowsCompact({ rows }: { rows: OwnerPendingPaymentR
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   )}
                   disabled={disabled}
-                  onClick={() => setApproveFor(p)}
+                  onClick={() => {
+                    setRejectFor(null);
+                    setApproveFor(p);
+                  }}
                 >
                   Одобрить
                 </button>
@@ -115,7 +120,10 @@ function OwnerInvestorWithdrawRowsCompact({ rows }: { rows: OwnerPendingPaymentR
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   )}
                   disabled={disabled}
-                  onClick={() => mutation.mutate({ paymentId: p.id, action: "owner_reject" })}
+                  onClick={() => {
+                    setApproveFor(null);
+                    setRejectFor(p);
+                  }}
                 >
                   Отклонить
                 </button>
@@ -135,6 +143,20 @@ function OwnerInvestorWithdrawRowsCompact({ rows }: { rows: OwnerPendingPaymentR
           mutation.mutate(
             { paymentId: approveFor.id, action: "owner_approve", comment },
             { onSuccess: () => setApproveFor(null) }
+          );
+        }}
+      />
+      <OwnerWithdrawApproveModal
+        variant="reject"
+        open={rejectFor !== null}
+        payment={rejectFor}
+        isPending={mutation.isPending}
+        onClose={() => setRejectFor(null)}
+        onConfirm={({ comment }) => {
+          if (!rejectFor || !comment?.trim()) return;
+          mutation.mutate(
+            { paymentId: rejectFor.id, action: "owner_reject", comment: comment.trim() },
+            { onSuccess: () => setRejectFor(null) }
           );
         }}
       />
@@ -182,11 +204,13 @@ function CompactMetricButton({
 function TopbarStyleInvestorIdentity({
   name,
   avatarInitialsSource,
+  avatarUrl,
   positionsActive,
   onOpenProfile,
 }: {
   name: string;
   avatarInitialsSource?: string | null;
+  avatarUrl?: string | null;
   positionsActive: boolean;
   onOpenProfile: () => void;
 }) {
@@ -196,25 +220,24 @@ function TopbarStyleInvestorIdentity({
       <button
         type="button"
         onClick={onOpenProfile}
-        className="relative shrink-0 rounded-full outline-none transition hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+        className="relative shrink-0 rounded-full outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         aria-label={`Карточка инвестора — ${name}`}
       >
-        <span
-          className={cn(
-            "thai-dashboard-avatar-ring relative block rounded-full p-[2px]",
-            "transition-[box-shadow] duration-300 ease-out"
-          )}
-          data-has-positions={positionsActive ? "true" : "false"}
-        >
-          <UserAvatar name={name} size={avatarSize} className="!ring-0 bg-transparent [&_img]:object-cover" />
-        </span>
+        <UserAvatar
+          name={name}
+          src={avatarUrl}
+          size={avatarSize}
+          variant="plain"
+          hasPositions={positionsActive}
+          className="thai-dashboard-avatar-ring transition-[box-shadow] duration-300 ease-out !ring-0 bg-transparent shadow-none [&_img]:object-cover"
+        />
       </button>
       <button
         type="button"
         onClick={onOpenProfile}
         className={cn(
-          "group flex min-w-0 max-w-[min(58vw,11rem)] items-center gap-1 rounded-lg py-0.5 pl-0.5 pr-1 outline-none transition sm:max-w-[14rem]",
-          "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+          "group inline-flex min-w-0 max-w-[min(58vw,11rem)] items-center gap-1 bg-transparent px-0 py-0 outline-none transition sm:max-w-[14rem]",
+          "hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         )}
         aria-label={`Открыть позицию ${name}`}
       >
@@ -312,6 +335,7 @@ export function OwnerNetworkInvestorsCompact({
                   <TopbarStyleInvestorIdentity
                     name={inv.name}
                     avatarInitialsSource={investorDisplayHandle(inv)}
+                    avatarUrl={inv.avatarUrl}
                     positionsActive={positionsActive}
                     onOpenProfile={() => onOpenInvestor(inv.id)}
                   />

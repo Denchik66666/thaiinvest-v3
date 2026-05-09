@@ -1,10 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useCallback, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Globe2, Lock } from "lucide-react";
 
+import { apiClient } from "@/lib/api-client";
+import type { OperationsHistoryResponse, OperationsSummaryResponse } from "@/types/operations-finance-api";
+import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard/finance/FinanceInvestorSelectionTruncationNotice";
 import { cn, formatCurrency } from "@/lib/utils";
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
+import type { HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 
 export type FinanceInvestorAccordionModel = {
@@ -12,9 +18,10 @@ export type FinanceInvestorAccordionModel = {
   name: string;
   /** Ник на позиции (`handle`), иначе логин привязанного аккаунта — см. `/api/investors` lean. */
   handle: string | null;
+  avatarUrl?: string | null;
   body: number;
   accrued: number;
-  due: number;
+  paid: number;
   status: string;
   isPrivate?: boolean;
   requestedPayments?: number;
@@ -30,13 +37,17 @@ export type FinanceMetricFilterScope = { kind: "network" } | { kind: "investor";
 
 type Props = {
   investors: FinanceInvestorAccordionModel[];
-  networkTotals: { body: number; accrued: number; due: number };
+  /** SUPER_ADMIN: фильтр для сводок и префетча истории при «вся сеть». */
+  superAdminHistoryNetwork?: "common" | "private" | "all" | null;
+  networkTotals: { body: number; accrued: number; paid: number; requestedPayments?: number };
   expanded: FinanceInvestorAccordionExpanded;
   onToggleNetwork: () => void;
   onToggleInvestor: (id: number) => void;
   /** Аватар и имя — открыть карточку позиции (как на главной у владельца). */
   onOpenInvestorProfile?: (id: number) => void;
   renderFeed: (investorId: number | null) => ReactNode;
+  periodValue: HistoryPeriodValue;
+  operationsHistoryScope: "investor" | "owner";
   opFilter: FinanceOperationsHistoryOpFilter;
   onApplyMetricFilter: (filter: FinanceOperationsHistoryOpFilter, scope: FinanceMetricFilterScope) => void;
 };
@@ -44,7 +55,7 @@ type Props = {
 /** Тело → пополнения; начислено → начисления; к выплате → открытые заявки на выплату. */
 const BODY_OPS_FILTER: FinanceOperationsHistoryOpFilter = "topup";
 const ACCRUED_OPS_FILTER: FinanceOperationsHistoryOpFilter = "accrual";
-const DUE_OPS_FILTER: FinanceOperationsHistoryOpFilter = "request";
+const PAID_OPS_FILTER: FinanceOperationsHistoryOpFilter = "payout";
 
 function MetricChipButton({
   label,
@@ -89,7 +100,7 @@ function MetricsRow({
   scope,
   body,
   accrued,
-  due,
+  paid,
   opFilter,
   onApplyMetricFilter,
   mutedSurface,
@@ -97,7 +108,7 @@ function MetricsRow({
   scope: FinanceMetricFilterScope;
   body: number;
   accrued: number;
-  due: number;
+  paid: number;
   opFilter: FinanceOperationsHistoryOpFilter;
   onApplyMetricFilter: (filter: FinanceOperationsHistoryOpFilter, scope: FinanceMetricFilterScope) => void;
   mutedSurface?: boolean;
@@ -125,12 +136,12 @@ function MetricsRow({
         onPick={() => onApplyMetricFilter(ACCRUED_OPS_FILTER, scope)}
       />
       <MetricChipButton
-        label="К выплате"
-        value={formatCurrency(due)}
+        label="Выплачено"
+        value={formatCurrency(paid)}
         valueClassName="thai-dashboard-premium-matte-amount text-[11px]"
-        selected={opFilter === DUE_OPS_FILTER}
-        ariaLabel="Фильтр операций: заявки на выплату"
-        onPick={() => onApplyMetricFilter(DUE_OPS_FILTER, scope)}
+        selected={opFilter === PAID_OPS_FILTER}
+        ariaLabel="Фильтр операций: выплаты"
+        onPick={() => onApplyMetricFilter(PAID_OPS_FILTER, scope)}
       />
     </div>
   );
@@ -138,23 +149,94 @@ function MetricsRow({
 
 export function FinanceInvestorAccordionCards({
   investors,
+  superAdminHistoryNetwork = null,
   networkTotals,
   expanded,
   onToggleNetwork,
   onToggleInvestor,
   onOpenInvestorProfile,
   renderFeed,
+  periodValue,
+  operationsHistoryScope,
   opFilter,
   onApplyMetricFilter,
 }: Props) {
+  const queryClient = useQueryClient();
   const networkOpen = expanded.kind === "network";
+  const idsParam = investors.map((i) => i.id).join(",");
+  const summaryNetworkSeg = superAdminHistoryNetwork ?? "-";
+  const [pendingExpand, setPendingExpand] = useState<FinanceInvestorAccordionExpanded | null>(null);
+
+  const { data: opsSummaryData } = useQuery({
+    queryKey: ["investors", "operations-summary", operationsHistoryScope, idsParam, periodValue, opFilter, summaryNetworkSeg] as const,
+    queryFn: () => {
+      const netQs =
+        superAdminHistoryNetwork != null ? `&network=${encodeURIComponent(superAdminHistoryNetwork)}` : "";
+      return apiClient.get<OperationsSummaryResponse>(
+        `/api/investors/operations-summary?ids=${encodeURIComponent(idsParam)}&period=${encodeURIComponent(
+          JSON.stringify(periodValue)
+        )}&filter=${encodeURIComponent(opFilter)}${netQs}`
+      );
+    },
+    enabled: investors.length > 0,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+  });
+
+  const summaryById = opsSummaryData?.byInvestorId ?? {};
+  const summaryReady = opsSummaryData != null;
+
+  const prefetchHistory = useCallback(
+    async (investorId: number | null) => {
+      const netSeg = superAdminHistoryNetwork ?? "-";
+      const key = ["investors", "operations-history", operationsHistoryScope, investorId ?? "all", netSeg] as const;
+      const params = new URLSearchParams();
+      if (investorId != null) params.set("investorId", String(investorId));
+      else if (superAdminHistoryNetwork) params.set("network", superAdminHistoryNetwork);
+      const qs = params.toString();
+      const url = qs ? `/api/investors/operations-history?${qs}` : "/api/investors/operations-history";
+      await queryClient.prefetchQuery({
+        queryKey: key,
+        queryFn: () => apiClient.get<OperationsHistoryResponse>(url),
+        staleTime: 30_000,
+      });
+    },
+    [operationsHistoryScope, queryClient, superAdminHistoryNetwork]
+  );
+
+  const openAfterLoad = useCallback(
+    (target: FinanceInvestorAccordionExpanded) => {
+      setPendingExpand(target);
+      const investorId = target.kind === "investor" ? target.id : target.kind === "network" ? null : null;
+      void prefetchHistory(investorId)
+        .catch(() => {
+          // если префетч не удался — всё равно раскроем, чтобы пользователь увидел ошибку/скелетон в ленте
+        })
+        .finally(() => {
+          setPendingExpand(null);
+          if (target.kind === "network") onToggleNetwork();
+          else if (target.kind === "investor") onToggleInvestor(target.id);
+        });
+    },
+    [onToggleInvestor, onToggleNetwork, prefetchHistory]
+  );
+
+  const networkBusy = pendingExpand?.kind === "network";
+  const investorBusyId = pendingExpand?.kind === "investor" ? pendingExpand.id : null;
 
   return (
     <div className="space-y-2">
+      <FinanceInvestorSelectionTruncationNotice
+        investorSelection={opsSummaryData?.meta?.investorSelection}
+        className="rounded-lg"
+      />
       <div className="flex items-center justify-between gap-2 px-0.5">
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Инвесторы в сети</span>
         <span className="text-[9px] text-muted-foreground/85">
-          Имя — карточка · шеврон — лента · метрики — тип
+          Ник — карточка · клик по строке — лента · метрики — тип
         </span>
       </div>
 
@@ -162,7 +244,9 @@ export function FinanceInvestorAccordionCards({
         <div className="overflow-hidden rounded-2xl border border-border/35 shadow-[0_10px_36px_-22px_rgba(0,0,0,0.35)] dark:border-white/[0.09]">
           <button
             type="button"
-            onClick={onToggleNetwork}
+            onClick={() => openAfterLoad({ kind: "network" })}
+            onPointerEnter={() => void prefetchHistory(null)}
+            onTouchStart={() => void prefetchHistory(null)}
             className={cn(
               "flex w-full flex-col gap-2 px-3 py-2.5 text-left outline-none transition",
               "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -171,6 +255,7 @@ export function FinanceInvestorAccordionCards({
                 : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
             )}
             aria-expanded={networkOpen}
+            aria-busy={networkBusy ? "true" : undefined}
           >
             <div className="flex items-center gap-2.5">
               <div
@@ -191,13 +276,18 @@ export function FinanceInvestorAccordionCards({
                 </div>
                 <p className="truncate text-[10px] text-muted-foreground">Сводка по всем позициям</p>
               </div>
+              {networkBusy ? (
+                <div className="flex shrink-0 items-center pr-0.5" aria-hidden>
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/35 border-t-transparent" />
+                </div>
+              ) : null}
             </div>
           </button>
           <MetricsRow
             scope={{ kind: "network" }}
             body={networkTotals.body}
             accrued={networkTotals.accrued}
-            due={networkTotals.due}
+            paid={networkTotals.paid}
             opFilter={opFilter}
             onApplyMetricFilter={onApplyMetricFilter}
             mutedSurface={networkOpen}
@@ -208,6 +298,9 @@ export function FinanceInvestorAccordionCards({
         {investors.map((inv) => {
           const open = expanded.kind === "investor" && expanded.id === inv.id;
           const inactive = inv.status !== "active";
+          const displayName = inv.handle?.trim() ? inv.handle.trim() : inv.name;
+
+          const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0 };
 
           const headingMeta = (
             <>
@@ -221,15 +314,8 @@ export function FinanceInvestorAccordionCards({
                 {inactive ? (
                   <span className="rounded-md bg-muted/45 px-1 py-px text-[8px] font-semibold uppercase text-muted-foreground">Пауза</span>
                 ) : null}
-                {(inv.requestedPayments ?? 0) > 0 ? (
-                  <span className="rounded-md bg-amber-500/18 px-1 py-px text-[8px] font-bold tabular-nums text-amber-100">
-                    {inv.requestedPayments} заявк.
-                  </span>
-                ) : null}
               </div>
-              {inv.handle?.trim() ? (
-                <p className="truncate text-[10px] text-muted-foreground">{inv.handle.trim()}</p>
-              ) : null}
+              <p className="truncate text-[10px] text-muted-foreground">{inv.name}</p>
             </>
           );
 
@@ -240,26 +326,84 @@ export function FinanceInvestorAccordionCards({
             >
               {onOpenInvestorProfile ? (
                 <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
+                  onPointerEnter={() => void prefetchHistory(inv.id)}
+                  onTouchStart={() => void prefetchHistory(inv.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openAfterLoad({ kind: "investor", id: inv.id });
+                    }
+                  }}
                   className={cn(
-                    "flex w-full min-w-0 items-center gap-0.5 px-2 py-2 sm:gap-1 sm:px-3 sm:py-2.5",
+                    "relative flex w-full min-w-0 items-center gap-0.5 px-2 py-2 outline-none transition sm:gap-1 sm:px-3 sm:py-2.5",
+                    "cursor-pointer",
+                    "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     open
                       ? "bg-gradient-to-br from-primary/[0.14] via-primary/[0.05] to-transparent ring-1 ring-primary/28"
-                      : "bg-background/25 dark:bg-black/18"
+                      : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
                   )}
+                  aria-busy={investorBusyId === inv.id ? "true" : undefined}
                 >
+                  <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-col items-end gap-1" aria-hidden>
+                    <div className="flex items-center gap-1">
+                    {invTotals.growth > 0 ? (
+                      <span
+                        className="inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95"
+                        title="Начисления и пополнения в выборке (период + тип)"
+                      >
+                        +{formatCurrency(invTotals.growth)}
+                      </span>
+                    ) : summaryReady ? null : (
+                      <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
+                        +…
+                      </span>
+                    )}
+                    {invTotals.paidOut > 0 ? (
+                      <span
+                        className="inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95"
+                        title="Завершённые выплаты в выборке (период + тип)"
+                      >
+                        −{formatCurrency(invTotals.paidOut)}
+                      </span>
+                    ) : summaryReady ? null : (
+                      <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
+                        −…
+                      </span>
+                    )}
+                    </div>
+                    {(inv.requestedPayments ?? 0) > 0 ? (
+                      <span
+                        className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/12 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-900 dark:text-amber-100"
+                        title="Активные заявки на выплату"
+                      >
+                        {inv.requestedPayments} заявк.
+                      </span>
+                    ) : null}
+                  </div>
+                  {investorBusyId === inv.id ? (
+                    <div className="pointer-events-none absolute right-2 top-2 z-20" aria-hidden>
+                      <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/35 border-t-transparent" />
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => onOpenInvestorProfile(inv.id)}
                     className={cn(
-                      "group flex min-w-0 flex-1 flex-col gap-2 rounded-xl px-1 py-1 text-left outline-none transition",
+                      "group flex min-w-0 max-w-[min(78vw,22rem)] flex-col gap-2 rounded-xl px-1 py-1 text-left outline-none transition",
                       "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                       "dark:hover:brightness-110"
                     )}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClickCapture={(e) => e.stopPropagation()}
                     aria-label={`Открыть карточку позиции ${inv.name}`}
                   >
                     <InvestorPositionAvatarHeading
-                      name={inv.name}
+                      name={displayName}
                       avatarInitialsSource={inv.handle}
+                      avatarUrl={inv.avatarUrl}
                       status={inv.status}
                       avatarSize={42}
                       className="gap-2.5"
@@ -271,30 +415,14 @@ export function FinanceInvestorAccordionCards({
                       metaBelowNick={headingMeta}
                     />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onToggleInvestor(inv.id)}
-                    aria-expanded={open}
-                    aria-label={open ? "Свернуть список операций" : "Развернуть список операций"}
-                    className={cn(
-                      "flex h-11 w-10 shrink-0 items-center justify-center rounded-xl outline-none transition",
-                      "hover:bg-muted/25 active:bg-muted/35",
-                      "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    )}
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                        open && "rotate-180"
-                      )}
-                      aria-hidden
-                    />
-                  </button>
+                  <div className="min-w-0 flex-1" aria-hidden />
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => onToggleInvestor(inv.id)}
+                  onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
+                  onPointerEnter={() => void prefetchHistory(inv.id)}
+                  onTouchStart={() => void prefetchHistory(inv.id)}
                   className={cn(
                     "flex w-full flex-col gap-2 px-3 py-2.5 text-left outline-none transition",
                     "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -307,18 +435,10 @@ export function FinanceInvestorAccordionCards({
                   <InvestorPositionAvatarHeading
                     name={inv.name}
                     avatarInitialsSource={inv.handle}
+                    avatarUrl={inv.avatarUrl}
                     status={inv.status}
                     avatarSize={42}
                     className="gap-2.5"
-                    nickTrailing={
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                          open && "rotate-180"
-                        )}
-                        aria-hidden
-                      />
-                    }
                     metaBelowNick={headingMeta}
                   />
                 </button>
@@ -327,7 +447,7 @@ export function FinanceInvestorAccordionCards({
                 scope={{ kind: "investor", id: inv.id }}
                 body={inv.body}
                 accrued={inv.accrued}
-                due={inv.due}
+                paid={inv.paid}
                 opFilter={opFilter}
                 onApplyMetricFilter={onApplyMetricFilter}
                 mutedSurface={open}

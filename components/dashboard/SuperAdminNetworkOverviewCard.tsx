@@ -20,7 +20,14 @@ type LeanInvestor = {
   payments?: { status: string }[];
 };
 
-export function SuperAdminNetworkOverviewCard() {
+type SuperAdminNetworkOverviewCardProps = {
+  /** Доп. классы корня (например компактная вставка на «Управлении»). */
+  className?: string;
+  /** Краткая сводка для «Управления»: акцент на ссылку на главную как источник дня. */
+  compact?: boolean;
+};
+
+export function SuperAdminNetworkOverviewCard({ className, compact }: SuperAdminNetworkOverviewCardProps = {}) {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -71,24 +78,39 @@ export function SuperAdminNetworkOverviewCard() {
     <div
       className={cn(
         "rounded-2xl border border-border/25 bg-gradient-to-b from-card/55 via-card/35 to-card/20",
-        "p-2 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.45)] backdrop-blur-xl md:p-2.5"
+        "p-2 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.45)] backdrop-blur-xl md:p-2.5",
+        className
       )}
     >
       <div className="flex items-center gap-2 border-b border-border/15 pb-2">
         <div className="min-w-0 flex-1 border-l-2 border-primary/35 pl-2">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <Text className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Сеть платформы</Text>
-            <span className="hidden text-[10px] text-muted-foreground/70 sm:inline">·</span>
-            <span className="hidden text-[10px] text-muted-foreground/75 sm:inline">главная — инвестор</span>
+            {compact ? (
+              <>
+                <span className="hidden text-[10px] text-muted-foreground/70 sm:inline">·</span>
+                <span className="text-[10px] text-muted-foreground/85">кратко · полная картина на главной</span>
+              </>
+            ) : (
+              <>
+                <span className="hidden text-[10px] text-muted-foreground/70 sm:inline">·</span>
+                <span className="hidden text-[10px] text-muted-foreground/75 sm:inline">главная — инвестор</span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           {isFetching && data ? (
             <span
               className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary/75"
               title="Обновление данных"
               aria-hidden
             />
+          ) : null}
+          {compact ? (
+            <button type="button" className={linkQuiet} onClick={() => router.push("/dashboard")}>
+              Главная →
+            </button>
           ) : null}
           <button type="button" className={linkQuiet} onClick={() => router.push("/dashboard/investors")}>
             Реестр
@@ -113,8 +135,12 @@ export function SuperAdminNetworkOverviewCard() {
             </span>
             <span className="hidden h-3 w-px bg-border/45 sm:block" aria-hidden />
             <InlineMetric label="Тело" value={formatCurrency(stats.body)} tone="neutral" />
-            <InlineMetric label="Начисл." value={formatCurrency(stats.accrued)} tone="accrued" />
-            <InlineMetric label="Выпл." value={formatCurrency(stats.paid)} tone="paid" />
+            {!compact ? (
+              <>
+                <InlineMetric label="Начисл." value={formatCurrency(stats.accrued)} tone="accrued" />
+                <InlineMetric label="Выпл." value={formatCurrency(stats.paid)} tone="paid" />
+              </>
+            ) : null}
             <InlineMetric label="К выплате" value={formatCurrency(stats.due)} tone="due" />
           </div>
 

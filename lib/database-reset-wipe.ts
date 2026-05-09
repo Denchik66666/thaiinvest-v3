@@ -44,6 +44,7 @@ export async function wipeDatabaseForReset(tx: PrismaLike) {
         "ChatMessage",
         "AuditLog",
         "RateHistory",
+        "PaymentCorrectionProposal",
         "Payment",
         "Accrual",
         "BodyTopUpRequest",

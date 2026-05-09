@@ -1,0 +1,21 @@
+services:
+  thaiinvest-db:
+    image: postgres:16-alpine
+    container_name: thaiinvest-dev-db
+    environment:
+      POSTGRES_USER: thaiinvest
+      POSTGRES_PASSWORD: thaiinvest
+      POSTGRES_DB: thaiinvest
+    ports:
+      - "54321:5432"
+    volumes:
+      - thaiinvest_dev_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thaiinvest -d thaiinvest"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  thaiinvest_dev_db:
+

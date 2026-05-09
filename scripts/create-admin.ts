@@ -31,7 +31,7 @@ async function ensureUser(
 async function main() {
   const password = "admin123";
 
-  await ensureUser("admin", "SUPER_ADMIN", password);
+  // В проекте основной SUPER_ADMIN — пользователь Den (id=1). Отдельный "admin" не создаём.
   await ensureUser("Sam", "OWNER", password);
 
   console.log("Пароль для всех пользователей:", password);

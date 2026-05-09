@@ -14,7 +14,8 @@ export type WeeklyLedgerRow = {
   bodyEnd: number;
 };
 
-type LedgerPayment = {
+/** Вход платежей для недельного леджера (совместимо с select Payment в Prisma). */
+export type WeeklyLedgerPaymentInput = {
   status: string;
   type: string;
   amount: number;
@@ -34,7 +35,7 @@ export function buildWeeklyLedgerRows(
     body: number;
     rate: number;
     isPrivate: boolean;
-    payments: LedgerPayment[];
+    payments: WeeklyLedgerPaymentInput[];
   },
   rateHistory: RateHistoryRow[],
   now: Date = new Date()

@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { cn, formatCurrency } from "@/lib/utils";
 import { openWeekDayProgress } from "@/lib/open-week-forecast";
@@ -17,7 +18,6 @@ import {
   OwnerNetworkInvestorsCompact,
   type OwnerNetworkInvestorRow,
 } from "@/components/dashboard/OwnerNetworkInvestorsCompact";
-
 function buildWeekRangeLabel(daySpan: number): string {
   const monday = getPreviousOrCurrentMonday(new Date());
   const sunday = new Date(monday);
@@ -55,6 +55,7 @@ export function OwnerPremiumDashboard({
   onOpenReports,
   onOpenInvestorReports,
 }: OwnerPremiumDashboardProps) {
+  const router = useRouter();
   const wp = openWeekDayProgress();
   const [barPct, setBarPct] = useState(0);
   const [pulseInvestorId, setPulseInvestorId] = useState<number | null>(null);
@@ -202,6 +203,11 @@ export function OwnerPremiumDashboard({
               glassCard={glassCard}
               showMultiPositionLabels={investors.length > 1}
               operationsHistoryScope="owner"
+              operationRowPredicate={(item) => item.kind === "payment"}
+              onOperationClick={(item) => {
+                if (item.kind !== "payment") return;
+                router.push(`/dashboard/finance?investor=${item.investorId}&payment=${item.paymentId}`);
+              }}
             />
           </div>
         </div>

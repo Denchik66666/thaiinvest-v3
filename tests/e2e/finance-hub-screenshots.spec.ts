@@ -12,7 +12,7 @@ async function newBrowserContextWithManagerSession(browser: Browser, baseURL: st
     ? [{ u: process.env.PLAYWRIGHT_LOGIN_USER, p: process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
         { u: "Sam", p: "admin123" },
-        { u: "admin", p: "admin123" },
+        { u: "Den", p: "den123" },
       ];
   for (const { u, p } of candidates) {
     const ctx = await browser.newContext({ baseURL });
@@ -68,8 +68,8 @@ test("finance hub screenshots owner + investor dark/light", async ({ browser, ba
     await setTheme(mgrPage, theme === "dark");
     await mgrPage.reload({ waitUntil: "load" });
     await mgrPage.waitForTimeout(500);
-    await expect(mgrPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 90_000 });
-    await expect(mgrPage.getByText("История операций", { exact: false }).first()).toBeVisible({ timeout: 90_000 });
+    // Стабильный якорь: кнопка периода в ленте (текст "История операций" может меняться).
+    await expect(mgrPage.getByRole("button", { name: /^Период/i }).first()).toBeVisible({ timeout: 90_000 });
     await mgrPage.screenshot({ path: `${OUT}/finance-hub-manager-${theme}.png`, fullPage: true });
   }
   await mgrContext.close();
@@ -83,8 +83,7 @@ test("finance hub screenshots owner + investor dark/light", async ({ browser, ba
     await setTheme(invPage, theme === "dark");
     await invPage.reload({ waitUntil: "load" });
     await invPage.waitForTimeout(500);
-    await expect(invPage.getByText("Финансы", { exact: false }).first()).toBeVisible({ timeout: 90_000 });
-    await expect(invPage.getByText("История операций", { exact: false }).first()).toBeVisible({ timeout: 90_000 });
+    await expect(invPage.getByRole("button", { name: /^Период/i }).first()).toBeVisible({ timeout: 90_000 });
     await invPage.screenshot({ path: `${OUT}/finance-hub-investor-${theme}.png`, fullPage: true });
   }
   await invContext.close();

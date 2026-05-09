@@ -15,8 +15,20 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "prisma:generate": "prisma generate",
-    "db:migrate:deploy": "prisma migrate deploy",
-    "clean": "node -e \"const fs=require('fs');['.next','tsconfig.tsbuildinfo'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true});console.log('removed',p)}catch{}})\""
+    "db:migrate:deploy": "node scripts/ensure-local-db.mjs && prisma migrate deploy",
+    "db:apply-payment-correction": "node scripts/ensure-local-db.mjs && node scripts/apply-payment-correction-table.mjs && node scripts/insert-payment-correction-migration-row.mjs",
+    "db:apply-dashboard-indexes": "node scripts/ensure-local-db.mjs && node scripts/apply-dashboard-indexes.mjs",
+    "clean": "node -e \"const fs=require('fs');['.next','tsconfig.tsbuildinfo'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true});console.log('removed',p)}catch{}})\"",
+    "db:dev:up": "docker compose -f docker-compose.dev-db.yml up -d",
+    "db:dev:down": "docker compose -f docker-compose.dev-db.yml down",
+    "db:dev:reset": "docker compose -f docker-compose.dev-db.yml down -v && docker compose -f docker-compose.dev-db.yml up -d",
+    "db:dev:bootstrap": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-db-bootstrap.ps1",
+    "db:dev:install-docker": "winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements",
+    "db:migrate:dev": "node scripts/ensure-local-db.mjs && prisma migrate dev --skip-generate",
+    "db:migrate:dev:ci": "node scripts/ensure-local-db.mjs && prisma migrate deploy",
+    "db:seed": "node scripts/ensure-local-db.mjs && tsx prisma/seed.ts",
+    "bench:seed-payment-may5": "tsx scripts/seed-benchmark-payment-5000-may5.ts",
+    "backup:full": "node scripts/ensure-local-db.mjs && node scripts/full-backup.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -29,7 +41,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cookie": "^1.1.1",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.7.0",
     "next": "16.2.1",

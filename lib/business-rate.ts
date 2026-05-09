@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
 import { withDbRetry } from "@/lib/db-retry";
+import { invalidateRateHistoryRowsCache } from "@/lib/rate-history-rows-cache";
 
 export interface BusinessRateSnapshot {
   rate: number;
@@ -38,7 +39,7 @@ export async function upsertBusinessRate(params: {
   const current = await getCurrentBusinessRate(effective);
   const oldRate = current?.rate ?? params.newRate;
 
-  return withDbRetry(() =>
+  const row = await withDbRetry(() =>
     prisma.rateHistory.create({
       data: {
         changedBy: params.changedBy,
@@ -49,4 +50,6 @@ export async function upsertBusinessRate(params: {
       },
     })
   );
+  invalidateRateHistoryRowsCache();
+  return row;
 }
