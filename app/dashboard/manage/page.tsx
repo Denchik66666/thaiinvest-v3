@@ -5,9 +5,7 @@ import { useState, useMemo, useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, UserPlus, Users, Wallet, UserRound } from "lucide-react";
-
-import { Button } from "@/components/ui/Button";
+import { ArrowLeft } from "lucide-react";
 import { Text } from "@/components/ui/Text";
 import { Container } from "@/components/ui/Container";
 import { BusinessRateControlCenter } from "@/components/manage/BusinessRateControlCenter";
@@ -109,31 +107,14 @@ type InvestorCreateResponse = {
   };
 };
 
-const quickLinkBase =
-  "group flex min-h-[2.75rem] items-center gap-2 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-1.5 text-left transition " +
-  "hover:border-foreground/[0.1] hover:bg-foreground/[0.04] active:scale-[0.99] dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:border-white/[0.1] dark:hover:bg-white/[0.05] " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const manageGhostLink =
+  "text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground underline-offset-2 transition hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
 
-function SectionTitle({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "primary" | "amber";
-}) {
-  const dot =
-    tone === "primary"
-      ? "bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.35)]"
-      : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.35)] dark:bg-amber-400";
-  const text = tone === "amber" ? "text-amber-900 dark:text-amber-100" : "text-foreground";
+const manageGhostLinkPrimary =
+  "text-[10px] font-semibold uppercase tracking-[0.1em] text-primary/90 underline-offset-2 transition hover:text-primary hover:underline disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
 
-  return (
-    <div className="mb-1.5 flex items-center gap-2">
-      <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", dot)} aria-hidden />
-      <Text className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", text)}>{label}</Text>
-    </div>
-  );
-}
+const roleStripShell =
+  "rounded-xl border border-foreground/[0.06] border-l-2 border-l-primary/45 bg-foreground/[0.02] px-2.5 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.02]";
 
 export default function DashboardManagePage() {
   const { user, loading: authLoading } = useAuth();
@@ -439,13 +420,13 @@ export default function DashboardManagePage() {
         </div>
 
         <section
-          className="flex flex-col gap-3 overflow-visible rounded-2xl border border-foreground/[0.06] p-2.5 sm:p-3 md:gap-3.5 md:p-4 dark:border-white/[0.07]"
+          className="flex flex-col gap-2.5 overflow-visible rounded-2xl border border-foreground/[0.06] p-2.5 sm:p-3 md:gap-3 md:p-4 dark:border-white/[0.07]"
           style={glassCard}
         >
           {isSuperAdmin && !loadingReadiness && !systemReady ? (
             <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-2 py-1.5">
               <Text className="text-[11px] font-medium leading-snug text-amber-950/95 dark:text-amber-50/95">
-                Завершите базовую настройку системы перед стартом учёта.
+                Завершите базовую настройку перед стартом учёта.
               </Text>
               {missingBlockingChecks?.length ? (
                 <ul className="mt-1 space-y-0.5 text-[10px] leading-snug text-amber-900/90 dark:text-amber-100/85">
@@ -457,12 +438,73 @@ export default function DashboardManagePage() {
             </div>
           ) : null}
 
+          {isOwner ? (
+            <div className={roleStripShell}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-snug">
+                <span className="font-semibold uppercase tracking-[0.14em] text-muted-foreground">Owner</span>
+                <span className="text-muted-foreground/45" aria-hidden>
+                  ·
+                </span>
+                {ownerWithdrawRequestedCount > 0 || ownerBodyTopUpPendingCount > 0 ? (
+                  <span className="text-muted-foreground">
+                    вывод{" "}
+                    <span className="tabular-nums font-semibold text-foreground">{ownerWithdrawRequestedCount}</span>
+                    <span className="mx-0.5 text-muted-foreground/50">·</span>
+                    пополнения{" "}
+                    <span className="tabular-nums font-semibold text-foreground">{ownerBodyTopUpPendingCount}</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">нет активных запросов</span>
+                )}
+                <span className="text-muted-foreground/45" aria-hidden>
+                  ·
+                </span>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard")}>
+                  Главная
+                </button>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/investors")}>
+                  Реестр
+                </button>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/finance")}>
+                  Финансы
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {isSuperAdmin ? (
+            <div className={cn(roleStripShell, !systemReady && "border-l-amber-500/50")}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-snug">
+                <span className="font-semibold uppercase tracking-[0.14em] text-muted-foreground">Super admin</span>
+                <span
+                  className={cn(
+                    "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+                    systemReady ? "bg-emerald-500" : "bg-red-500"
+                  )}
+                  title={systemReady ? "Учёт доступен" : "Учёт заблокирован"}
+                  aria-hidden
+                />
+                <span className={cn("font-medium tabular-nums", systemReady ? "text-emerald-600" : "text-red-500")}>
+                  {systemReady ? "учёт активен" : "нужна настройка"}
+                </span>
+                <span className="text-muted-foreground/45" aria-hidden>
+                  ·
+                </span>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard")}>
+                  Главная
+                </button>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/investors")}>
+                  Реестр
+                </button>
+                <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/finance")}>
+                  Финансы
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {(user.role === "OWNER" || user.role === "SUPER_ADMIN") && (
-            <div
-              className={cn(
-                isSuperAdmin && !loadingReadiness && !systemReady ? "border-t border-amber-500/20 pt-3 dark:border-amber-500/25" : ""
-              )}
-            >
+            <div className="border-t border-foreground/[0.06] pt-2.5 dark:border-white/[0.07]">
               <BusinessRateControlCenter
                 viewerRole={user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "OWNER"}
                 current={businessRateData?.current ?? null}
@@ -484,78 +526,41 @@ export default function DashboardManagePage() {
             </div>
           )}
 
-          <div
-            className={cn(
-              user.role === "OWNER" || user.role === "SUPER_ADMIN"
-                ? "border-t border-foreground/[0.06] pt-3 dark:border-white/[0.07]"
-                : "pt-1"
-            )}
-          >
-            <SectionTitle label="Быстрый доступ" tone="primary" />
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-              <button
-                type="button"
-                disabled={createDisabled}
-                onClick={() => setShowModal(true)}
-                className={cn(
-                  quickLinkBase,
-                  "border-primary/25 bg-primary/[0.07] hover:border-primary/40 hover:bg-primary/[0.11]",
-                  createDisabled && "pointer-events-none opacity-45"
-                )}
-              >
-                <UserPlus className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={2.25} aria-hidden />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold leading-tight text-foreground">Создать</div>
-                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/80">Инвестор</div>
-                </div>
-              </button>
-              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/investors")}>
-                <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold leading-tight text-foreground">Реестр</div>
-                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Позиции</div>
-                </div>
-              </button>
-              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/finance")}>
-                <Wallet className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold leading-tight text-foreground">Финансы</div>
-                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Очереди</div>
-                </div>
-              </button>
-              <button type="button" className={quickLinkBase} onClick={() => router.push("/dashboard/profile")}>
-                <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" strokeWidth={2.25} aria-hidden />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold leading-tight text-foreground">Профиль</div>
-                  <div className="text-[9px] text-muted-foreground group-hover:text-foreground/75">Безопасность</div>
-                </div>
-              </button>
-            </div>
-
-            {isOwner ? (
-              <div className="mt-2 rounded-xl border-l-2 border-l-primary/40 bg-foreground/[0.02] py-2 pl-3 pr-2 dark:bg-white/[0.02]">
-                {ownerWithdrawRequestedCount > 0 || ownerBodyTopUpPendingCount > 0 ? (
-                  <p className="text-[10px] leading-snug text-muted-foreground">
-                    <span className="font-medium text-foreground">Запросы:</span> вывод{" "}
-                    <span className="tabular-nums font-semibold text-foreground">{ownerWithdrawRequestedCount}</span>, пополнения ждут инвестора{" "}
-                    <span className="tabular-nums font-semibold text-foreground">{ownerBodyTopUpPendingCount}</span>
-                    <span className="mx-1 opacity-40">·</span>
-                    <button
-                      type="button"
-                      className="font-semibold text-primary underline-offset-2 transition hover:underline"
-                      onClick={() => router.push("/dashboard")}
-                    >
-                      Разбор на главной
-                    </button>
-                  </p>
-                ) : (
-                  <p className="text-[10px] leading-snug text-muted-foreground">
-                    Нет активных запросов на вывод и пополнение тела.
-                  </p>
-                )}
-              </div>
-            ) : null}
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-foreground/[0.06] pt-2.5 dark:border-white/[0.07]">
+            <button
+              type="button"
+              disabled={createDisabled}
+              onClick={() => setShowModal(true)}
+              className={manageGhostLinkPrimary}
+            >
+              Создать инвестора
+            </button>
+            <span className="text-[10px] text-muted-foreground/35" aria-hidden>
+              ·
+            </span>
+            <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/investors")}>
+              Реестр
+            </button>
+            <span className="text-[10px] text-muted-foreground/35" aria-hidden>
+              ·
+            </span>
+            <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/finance")}>
+              Финансы
+            </button>
+            <span className="text-[10px] text-muted-foreground/35" aria-hidden>
+              ·
+            </span>
+            <button type="button" className={manageGhostLink} onClick={() => router.push("/dashboard/profile")}>
+              Профиль
+            </button>
           </div>
+
+          {isSuperAdmin ? (
+            <SuperAdminNetworkOverviewCard
+              compact
+              className="rounded-2xl border border-foreground/[0.06] border-l-primary/30 bg-gradient-to-b from-card/40 to-transparent shadow-none dark:border-white/[0.07] md:p-2"
+            />
+          ) : null}
 
           {isSuperAdmin ? (
             <CollapsibleSection
@@ -567,13 +572,13 @@ export default function DashboardManagePage() {
                     : "readiness-blocked"
               }
               title="Система"
-              subtitle={systemReady ? "Готова к учёту" : "Требуется настройка"}
+              subtitle={systemReady ? "Чеклист по запросу" : "Требуется настройка"}
               defaultOpen={!systemReady}
               className="rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] shadow-none dark:border-white/[0.07] dark:bg-white/[0.03]"
               contentClassName="px-2.5 py-2"
             >
               <div className="rounded-xl border border-foreground/[0.05] bg-background/30 p-2.5 dark:border-white/[0.06] dark:bg-black/20">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <span
                       className={cn(
@@ -587,14 +592,13 @@ export default function DashboardManagePage() {
                       {systemReady ? "Учёт доступен" : "Учёт заблокирован"}
                     </Text>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 shrink-0 px-2 text-[11px]"
+                  <button
+                    type="button"
+                    className={manageGhostLink}
                     onClick={() => setShowReadinessDetails((v) => !v)}
                   >
-                    {showReadinessDetails ? "Скрыть" : "Чеклист"}
-                  </Button>
+                    {showReadinessDetails ? "Скрыть чеклист" : "Чеклист"}
+                  </button>
                 </div>
 
                 {showReadinessDetails ? (
@@ -619,13 +623,6 @@ export default function DashboardManagePage() {
                 ) : null}
               </div>
             </CollapsibleSection>
-          ) : null}
-
-          {isSuperAdmin ? (
-            <SuperAdminNetworkOverviewCard
-              compact
-              className="rounded-2xl border border-foreground/[0.06] border-l-primary/30 bg-gradient-to-b from-card/40 to-transparent shadow-none dark:border-white/[0.07] md:p-2"
-            />
           ) : null}
         </section>
 

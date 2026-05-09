@@ -74,7 +74,7 @@
 | **`/dashboard/reports`** | `app/dashboard/reports/page.tsx` | Лента отчётов (`/api/reports/feed`) | Работает |
 | **`/dashboard/investors`** | `app/dashboard/investors/page.tsx` | Список инвесторов; редирект инвестора на finance | Работает |
 | **`/dashboard/investors/[id]`** | `app/dashboard/investors/[id]/page.tsx` | Карточка инвестора | Работает |
-| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает; **редизайн** — этап 1 (тулбар журнала ставки + выбор сети в модалке под Финансы) зафиксирован в `docs/UI_ETALONS_REGISTRY.md` |
+| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает; **редизайн** — этапы 1–2 (см. `docs/UI_ETALONS_REGISTRY.md` § редизайн Manage) |
 | **`/dashboard/chat`** | `app/dashboard/chat/page.tsx` | Чат | Работает |
 | **`/dashboard/profile`** | `app/dashboard/profile/page.tsx` | Профиль, аккаунт, тема, блок сброса БД для SUPER_ADMIN; смена аватара по клику на круг (скрытый `input type="file"`, бейдж камеры) → **`POST /api/auth/avatar`** | Работает |
 
@@ -223,7 +223,8 @@
 - **Документ плана и эталонов:** `docs/UI_ETALONS_REGISTRY.md` (раздел «Управление» → подраздел редизайна Manage).  
 - **Промпт для нового агента Cursor:** `docs/MANAGE_REDESIGN_AGENT_PROMPT.md`.  
 - **Уже зафиксировано в коде:** единая сетка календаря и общая оболочка попапа; отдельная позиция попапа для `DatePicker`; эталон Финансов (`HistoryPeriodPopover` + `computeFinanceCalendarPopoverPosition`) не меняется.  
-- **Дальше по плану:** списки/аккордеон в духе Финансов, плотность страницы и карточки ставки, соблюдение защищённых файлов инвестора.
+- **Этапы 1–2:** тулбар журнала ставки и сеть в модалке; на странице Manage — порядок блоков, полосы OWNER/SUPER_ADMIN, строка ghost-ссылок вместо плит «Быстрый доступ».  
+- **Дальше по плану:** этап 3 — VIP-компакт `BusinessRateControlCenter`; далее по реестру.
 
 ---
 
