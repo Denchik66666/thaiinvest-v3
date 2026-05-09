@@ -8,6 +8,7 @@ import { ChevronDown, Globe2, Lock } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import type { OperationsHistoryResponse, OperationsSummaryResponse } from "@/types/operations-finance-api";
 import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard/finance/FinanceInvestorSelectionTruncationNotice";
+import { normalizeHandleDisplay } from "@/lib/investor-display-handle";
 import { cn, formatCurrency } from "@/lib/utils";
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 import type { HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
@@ -16,7 +17,7 @@ import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operation
 export type FinanceInvestorAccordionModel = {
   id: number;
   name: string;
-  /** Ник на позиции (`handle`), иначе логин привязанного аккаунта — см. `/api/investors` lean. */
+  /** Публичный ник в UI: родитель передаёт `investorDisplayHandle(…)` (логин аккаунта в приоритете). */
   handle: string | null;
   avatarUrl?: string | null;
   body: number;
@@ -80,6 +81,7 @@ function MetricChipButton({
   valueClassName,
   selected,
   ariaLabel,
+  title,
   onPick,
 }: {
   label: string;
@@ -87,12 +89,15 @@ function MetricChipButton({
   valueClassName?: string;
   selected: boolean;
   ariaLabel: string;
+  /** Подсказка при наведении (например, как читается «Начислено» vs лента). */
+  title?: string;
   onPick: () => void;
 }) {
   return (
     <button
       type="button"
       aria-label={ariaLabel}
+      title={title}
       aria-pressed={selected}
       onClick={(e) => {
         e.preventDefault();
@@ -150,6 +155,7 @@ function MetricsRow({
         valueClassName="text-[color:var(--thai-color-accrued)]"
         selected={opFilter === ACCRUED_OPS_FILTER}
         ariaLabel="Фильтр операций: начисления"
+        title="Текущий остаток начисленных процентов: накоплено по неделям минус подтверждённые выплаты процентов, плюс доля текущей открытой недели. В ленте сумма по строкам «Начисление» — начисление за неделю; выплаты процентов — отдельными строками."
         onPick={() => onApplyMetricFilter(ACCRUED_OPS_FILTER, scope)}
       />
       <MetricChipButton
@@ -256,7 +262,7 @@ export function FinanceInvestorAccordionCards({
   function renderInvestorCard(inv: FinanceInvestorAccordionModel) {
     const open = expanded.kind === "investor" && expanded.id === inv.id;
     const inactive = inv.status !== "active";
-    const displayName = inv.handle?.trim() ? inv.handle.trim() : inv.name;
+    const displayName = normalizeHandleDisplay(inv.handle) ?? inv.name;
 
     const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0 };
 
@@ -286,6 +292,7 @@ export function FinanceInvestorAccordionCards({
           <div
             role="button"
             tabIndex={0}
+            data-finance-investor-row-toggle={inv.id}
             onClick={(e) => {
               if ((e.target as HTMLElement).closest("[data-finance-investor-profile-open]")) return;
               openAfterLoad({ kind: "investor", id: inv.id });
@@ -367,7 +374,7 @@ export function FinanceInvestorAccordionCards({
             >
               <InvestorPositionAvatarHeading
                 name={displayName}
-                avatarInitialsSource={inv.handle}
+                avatarInitialsSource={normalizeHandleDisplay(inv.handle)}
                 avatarUrl={inv.avatarUrl}
                 status={inv.status}
                 avatarSize={42}
@@ -385,6 +392,7 @@ export function FinanceInvestorAccordionCards({
         ) : (
           <button
             type="button"
+            data-finance-investor-row-toggle={inv.id}
             onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
             onPointerEnter={() => void prefetchHistory(inv.id)}
             onTouchStart={() => void prefetchHistory(inv.id)}
@@ -399,7 +407,7 @@ export function FinanceInvestorAccordionCards({
           >
             <InvestorPositionAvatarHeading
               name={inv.name}
-              avatarInitialsSource={inv.handle}
+              avatarInitialsSource={normalizeHandleDisplay(inv.handle)}
               avatarUrl={inv.avatarUrl}
               status={inv.status}
               avatarSize={42}
@@ -417,7 +425,11 @@ export function FinanceInvestorAccordionCards({
           onApplyMetricFilter={onApplyMetricFilter}
           mutedSurface={open}
         />
-        {open ? renderFeed(inv.id) : null}
+        {open ? (
+          <div data-finance-accordion-feed="investor" data-finance-feed-investor-id={inv.id}>
+            {renderFeed(inv.id)}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -439,6 +451,7 @@ export function FinanceInvestorAccordionCards({
         <div className="overflow-hidden rounded-2xl border border-border/35 shadow-[0_10px_36px_-22px_rgba(0,0,0,0.35)] dark:border-white/[0.09]">
           <button
             type="button"
+            data-finance-network-row-toggle
             onClick={() => openAfterLoad({ kind: "network" })}
             onPointerEnter={() => void prefetchHistory(null)}
             onTouchStart={() => void prefetchHistory(null)}
@@ -487,7 +500,9 @@ export function FinanceInvestorAccordionCards({
             onApplyMetricFilter={onApplyMetricFilter}
             mutedSurface={networkOpen}
           />
-          {networkOpen ? renderFeed(null) : null}
+          {networkOpen ? (
+            <div data-finance-accordion-feed="network">{renderFeed(null)}</div>
+          ) : null}
         </div>
 
         {superAdminHistoryNetwork === "common" ? (

@@ -1,3 +1,4 @@
+import { openWeekDayProgress } from "@/lib/open-week-forecast";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
 
 export type WeeklyLedgerRow = {
@@ -123,38 +124,41 @@ export function buildWeeklyLedgerRows(
     return eventDate >= currentWeekStart && eventDate <= now;
   });
 
-  if (currentWeekPayments.length > 0) {
-    const interestPaid = currentWeekPayments
-      .filter((payment) => payment.type === "interest")
-      .reduce((sum, payment) => sum + payment.amount, 0);
-    const bodyPaid = currentWeekPayments
-      .filter((payment) => payment.type === "body")
-      .reduce((sum, payment) => sum + payment.amount, 0);
-    const closingPaid = currentWeekPayments
-      .filter((payment) => payment.type === "close")
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  const interestPaid = currentWeekPayments
+    .filter((payment) => payment.type === "interest")
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const bodyPaid = currentWeekPayments
+    .filter((payment) => payment.type === "body")
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const closingPaid = currentWeekPayments
+    .filter((payment) => payment.type === "close")
+    .reduce((sum, payment) => sum + payment.amount, 0);
 
-    accrued = Math.max(accrued - interestPaid, 0);
-    if (bodyPaid > 0) body = Math.max(body - bodyPaid, 0);
-    if (closingPaid > 0) {
-      accrued = 0;
-      body = 0;
-    }
+  /** Как в `recalculateInvestorAccruedFromRateHistory`: сначала доля недели, затем выплаты. */
+  const { frac: openWeekFrac } = openWeekDayProgress(now);
+  const openWeekGross = body > 0 ? body * (currentWeeklyRatePercent / 100) * openWeekFrac : 0;
 
-    rows.push({
-      weekStart: currentWeekStart.toISOString(),
-      weekEnd: currentWeekEnd.toISOString(),
-      bodyStart: body + bodyPaid,
-      weeklyRatePercent: currentWeeklyRatePercent,
-      networkRatePercent: currentBusinessRate,
-      accruedAdded: 0,
-      interestPaid,
-      bodyPaid,
-      closingPaid,
-      accruedEnd: accrued,
-      bodyEnd: body,
-    });
+  accrued += openWeekGross;
+  accrued = Math.max(accrued - interestPaid, 0);
+  if (bodyPaid > 0) body = Math.max(body - bodyPaid, 0);
+  if (closingPaid > 0) {
+    accrued = 0;
+    body = 0;
   }
+
+  rows.push({
+    weekStart: currentWeekStart.toISOString(),
+    weekEnd: currentWeekEnd.toISOString(),
+    bodyStart: body + bodyPaid,
+    weeklyRatePercent: currentWeeklyRatePercent,
+    networkRatePercent: currentBusinessRate,
+    accruedAdded: openWeekGross,
+    interestPaid,
+    bodyPaid,
+    closingPaid,
+    accruedEnd: accrued,
+    bodyEnd: body,
+  });
 
   return rows;
 }
