@@ -1,6 +1,6 @@
 # PROJECT_AUDIT — ThaiInvest v3.x
 
-**Дата ревизии:** 2026-05-05  
+**Дата ревизии:** 2026-05-08  
 **Корень проекта:** `THAIINVEST v3.0`  
 **Версия приложения (package.json):** 3.1.0  
 
@@ -74,7 +74,7 @@
 | **`/dashboard/reports`** | `app/dashboard/reports/page.tsx` | Лента отчётов (`/api/reports/feed`) | Работает |
 | **`/dashboard/investors`** | `app/dashboard/investors/page.tsx` | Список инвесторов; редирект инвестора на finance | Работает |
 | **`/dashboard/investors/[id]`** | `app/dashboard/investors/[id]/page.tsx` | Карточка инвестора | Работает |
-| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает |
+| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает; **идёт редизайн** (см. `docs/UI_ETALONS_REGISTRY.md` § Управление, `docs/MANAGE_REDESIGN_AGENT_PROMPT.md`) |
 | **`/dashboard/chat`** | `app/dashboard/chat/page.tsx` | Чат | Работает |
 | **`/dashboard/profile`** | `app/dashboard/profile/page.tsx` | Профиль, аккаунт, тема, блок сброса БД для SUPER_ADMIN; смена аватара по клику на круг (скрытый `input type="file"`, бейдж камеры) → **`POST /api/auth/avatar`** | Работает |
 
@@ -118,7 +118,8 @@
 | Зона | Требование |
 |------|------------|
 | **`/api/system/readiness`**, **`/api/investors/private-create-context`**, **`/api/investors/become-semen-investor`**, **`/api/chat/admin-test-send`**, **`/api/admin/database-reset/*`** | **SUPER_ADMIN** |
-| **`POST /api/system/business-rate`**, история ставок (часть методов) | **OWNER** или **SUPER_ADMIN** |
+| **`POST /api/system/business-rate`**, история ставок (**`PATCH`/`DELETE`** будущих записей) | **OWNER** или **SUPER_ADMIN** |
+| **`GET /api/system/business-rate/history`** | **OWNER** или **SUPER_ADMIN** |
 | **`POST /api/body-topup-requests`** | **OWNER** |
 | **`GET /api/body-topup-requests`** | Фильтр по роли: OWNER — свои общие позиции; SUPER_ADMIN — все; иначе — связанные с пользователем инвесторы |
 | **`/api/investors/[id]`** PATCH/DELETE чувствительные операции | **OWNER** или **SUPER_ADMIN** с проверками владения / приватной сети |
@@ -208,12 +209,21 @@
 | Тема | Детали |
 |------|--------|
 | **Аватары в проде** | Файлы лежат на диске в **`public/uploads/avatars/`** — для деплоя нужны персистентный том / объектное хранилище и исключение из «эфемерного» контейнера без тома. |
-| **Зависимость `jose`** | В `package.json` есть, в основном коде auth не видна — проверить необходимость или удалить. |
+| **Зависимость `jose`** | В `package.json` есть; в `lib/auth.ts` основной JWT-поток — через `jsonwebtoken`. Пакет установлен, но по коду не используется — кандидат на удаление, если хотите сузить зависимости. |
 | **`console.error` в API** | Широко используется в `catch` — норм для отладки; при проде стоит согласовать структурированный логгер. |
-| **ESLint (прогон 2026-05-05)** | Ошибки: **`prefer-const`** и **`no-explicit-any`** в **`app/api/investors/[id]/route.ts`**; **`no-explicit-any`** в **`app/dashboard/manage/page.tsx`**; правило React Compiler / cascading renders в **`components/dashboard/HistoryPeriodPopover.tsx`** (setState внутри `useEffect`). Предупреждения: неиспользуемые импорты/переменные в **`app/dashboard/chat/page.tsx`**, **`app/dashboard/manage/page.tsx`**, **`app/dashboard/page.tsx`**, неиспользуемый импорт в **`app/api/investors/[id]/route.ts`**. |
+| **ESLint (прогон 2026-05-08)** | Ошибок нет (lint проходит), остаются предупреждения: неиспользуемые импорты/переменные в **`app/dashboard/chat/page.tsx`**, **`app/dashboard/page.tsx`**, **`components/dashboard/OwnerNetworkInvestorsCompact.tsx`**, **`components/dashboard/SuperAdminNetworkOverviewCard.tsx`**, **`components/investors/EditInvestorModal.tsx`**, **`components/investors/InvestorCardPremium.tsx`**. Компонент **`BusinessRateMonthCalendar`** удалён (календарь плана — через **`FinanceMonthCalendar`** в **`BusinessRateControlCenter`**). |
 | **Папка `Для анализа/`** | Не код; при публикации репозитория решить, оставлять ли в git. |
 | **`create-test-investors.js`** и debug-скрипты | Убедиться, что не попадают в прод-сборку и не содержат секретов. |
 | **Связка INVESTOR + `linkedUserId`** | В **`GET /api/investors`** для инвестора фильтр **`investorUserId`**; если нужны сценарии только по **`linkedUserId`**, сверить с продуктом. |
+
+---
+
+## 9.1 Редизайн `/dashboard/manage` (в процессе)
+
+- **Документ плана и эталонов:** `docs/UI_ETALONS_REGISTRY.md` (раздел «Управление» → подраздел редизайна Manage).  
+- **Промпт для нового агента Cursor:** `docs/MANAGE_REDESIGN_AGENT_PROMPT.md`.  
+- **Уже зафиксировано в коде:** единая сетка календаря и общая оболочка попапа; отдельная позиция попапа для `DatePicker`; эталон Финансов (`HistoryPeriodPopover` + `computeFinanceCalendarPopoverPosition`) не меняется.  
+- **Дальше по плану:** списки/аккордеон в духе Финансов, плотность страницы и карточки ставки, соблюдение защищённых файлов инвестора.
 
 ---
 
