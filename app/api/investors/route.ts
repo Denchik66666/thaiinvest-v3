@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       decoded.role !== 'INVESTOR'
 
     const leanCacheKey = lean
-      ? `${decoded.userId}:${decoded.role}:${decoded.role === 'OWNER' ? 'scoped' : network}:lean`
+      ? `${decoded.userId}:${decoded.role}:${decoded.role === 'OWNER' ? 'owner-all' : network}:lean`
       : null
 
     if (leanCacheKey) {
@@ -131,9 +131,9 @@ export async function GET(request: NextRequest) {
 
     let whereClause: { isPrivate?: boolean; ownerId?: number; investorUserId?: number } = {}
 
-    // OWNER видит только СВОИХ инвесторов в общей сети
+    // OWNER видит все свои позиции (общая и личная); фильтр по сети — на клиенте для SUPER_ADMIN.
     if (decoded.role === 'OWNER') {
-      whereClause = { isPrivate: false, ownerId: decoded.userId }
+      whereClause = { ownerId: decoded.userId }
     }
 
     // SUPER_ADMIN видит всё, но может переключать фильтр

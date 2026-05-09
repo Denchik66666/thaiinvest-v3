@@ -81,6 +81,7 @@ type SystemReadinessResponse = {
 /** Lean-снимок для счётчиков OWNER (совпадает с главным дашбордом). */
 type ManageLeanInvestor = {
   id: number;
+  ownerId?: number;
   owner: { username: string };
   payments?: { status: string }[];
 };
@@ -299,10 +300,11 @@ export default function DashboardManagePage() {
   const missingOptionalChecks = readinessData?.missingOptional ?? [];
 
   const ownerMyInvestors = useMemo(() => {
-    if (!isOwner || !user?.username) return [];
+    if (!isOwner || !user?.id) return [];
     const list = ownerInvestorsData?.investors ?? [];
-    return list.filter((inv) => inv.owner.username === user.username);
-  }, [isOwner, user?.username, ownerInvestorsData?.investors]);
+    // GET /api/investors уже ограничивает OWNER по ownerId; не сравниваем username (регистр/расхождения с /me).
+    return list.filter((inv) => (inv.ownerId != null ? inv.ownerId === user.id : inv.owner?.username === user.username));
+  }, [isOwner, user?.id, user?.username, ownerInvestorsData?.investors]);
 
   const ownerWithdrawRequestedCount = useMemo(() => {
     let n = 0;

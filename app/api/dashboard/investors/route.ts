@@ -36,7 +36,7 @@ export async function GET() {
     // Те же границы списка, что и GET /api/investors (без утечки «чужих» инвесторов).
     let whereClause: { isPrivate?: boolean; ownerId?: number; investorUserId?: number } = {}
     if (decoded.role === 'OWNER') {
-      whereClause = { isPrivate: false, ownerId: decoded.userId }
+      whereClause = { ownerId: decoded.userId }
     } else if (decoded.role === 'INVESTOR') {
       whereClause = { investorUserId: decoded.userId }
     }

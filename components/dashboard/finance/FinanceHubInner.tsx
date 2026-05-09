@@ -32,6 +32,7 @@ import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operation
 
 type LeanInvestor = {
   id: number;
+  ownerId?: number;
   name: string;
   handle?: string | null;
   investorUser?: { username: string; avatarUrl?: string | null } | null;
@@ -43,7 +44,8 @@ type LeanInvestor = {
   isPrivate?: boolean;
   linkedUserId?: number | null;
   investorUserId?: number | null;
-  owner?: { username: string };
+  owner?: { username: string; role?: string };
+  isSystemOwner?: boolean;
   payments?: { status: string }[];
 };
 
@@ -145,7 +147,11 @@ export function FinanceHubInner() {
     const investors = investorsData?.investors ?? [];
     if (!user) return [];
     if (user.role === "SUPER_ADMIN") return investors;
-    if (user.role === "OWNER") return investors.filter((inv) => inv.owner?.username === user.username);
+    if (user.role === "OWNER") {
+      return investors.filter((inv) =>
+        inv.ownerId != null ? inv.ownerId === user.id : inv.owner?.username === user.username
+      );
+    }
     return investors.filter((inv) => inv.investorUserId === user.id);
   }, [investorsData, user]);
 
@@ -327,6 +333,9 @@ export function FinanceHubInner() {
             status: inv.status ?? "",
             isPrivate: inv.isPrivate,
             requestedPayments: inv.payments?.filter((p) => p.status === "requested").length ?? 0,
+            ownerRole: inv.owner?.role ?? null,
+            ownerUsername: inv.owner?.username ?? null,
+            isSystemOwner: inv.isSystemOwner,
           }))}
           networkTotals={networkTotals}
           expanded={accordionExpanded}

@@ -25,6 +25,10 @@ export type FinanceInvestorAccordionModel = {
   status: string;
   isPrivate?: boolean;
   requestedPayments?: number;
+  /** Роль владельца позиции (lean); для группировки «Общая» у SUPER_ADMIN. */
+  ownerRole?: string | null;
+  ownerUsername?: string | null;
+  isSystemOwner?: boolean;
 };
 
 export type FinanceInvestorAccordionExpanded =
@@ -56,6 +60,19 @@ type Props = {
 const BODY_OPS_FILTER: FinanceOperationsHistoryOpFilter = "topup";
 const ACCRUED_OPS_FILTER: FinanceOperationsHistoryOpFilter = "accrual";
 const PAID_OPS_FILTER: FinanceOperationsHistoryOpFilter = "payout";
+
+function isSuperAdminPlatformInvestor(inv: FinanceInvestorAccordionModel) {
+  return Boolean(inv.isSystemOwner) || inv.ownerRole === "SUPER_ADMIN";
+}
+
+function FinanceAccordionSectionLabel({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5 pt-1">
+      <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</span>
+      {subtitle ? <span className="truncate text-[10px] font-medium text-foreground/88">{subtitle}</span> : null}
+    </div>
+  );
+}
 
 function MetricChipButton({
   label,
@@ -227,6 +244,184 @@ export function FinanceInvestorAccordionCards({
   const networkBusy = pendingExpand?.kind === "network";
   const investorBusyId = pendingExpand?.kind === "investor" ? pendingExpand.id : null;
 
+  const commonOwnerInvestors =
+    superAdminHistoryNetwork === "common" ? investors.filter((i) => !isSuperAdminPlatformInvestor(i)) : [];
+  const commonPlatformInvestors =
+    superAdminHistoryNetwork === "common" ? investors.filter((i) => isSuperAdminPlatformInvestor(i)) : [];
+  const commonOwnerSubtitle =
+    superAdminHistoryNetwork === "common" && commonOwnerInvestors.length
+      ? [...new Set(commonOwnerInvestors.map((o) => o.ownerUsername).filter(Boolean))].join(", ") || undefined
+      : undefined;
+
+  function renderInvestorCard(inv: FinanceInvestorAccordionModel) {
+    const open = expanded.kind === "investor" && expanded.id === inv.id;
+    const inactive = inv.status !== "active";
+    const displayName = inv.handle?.trim() ? inv.handle.trim() : inv.name;
+
+    const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0 };
+
+    const headingMeta = (
+      <>
+        <div className="flex flex-wrap gap-1">
+          {inv.isPrivate ? (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-violet-500/14 px-1 py-px text-[8px] font-bold uppercase text-violet-200">
+              <Lock className="h-2.5 w-2.5" strokeWidth={2} aria-hidden />
+              Личн.
+            </span>
+          ) : null}
+          {inactive ? (
+            <span className="rounded-md bg-muted/45 px-1 py-px text-[8px] font-semibold uppercase text-muted-foreground">Пауза</span>
+          ) : null}
+        </div>
+        <p className="truncate text-[10px] text-muted-foreground">{inv.name}</p>
+      </>
+    );
+
+    return (
+      <div
+        key={inv.id}
+        className="overflow-hidden rounded-2xl border border-border/35 shadow-[0_10px_36px_-22px_rgba(0,0,0,0.35)] dark:border-white/[0.09]"
+      >
+        {onOpenInvestorProfile ? (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest("[data-finance-investor-profile-open]")) return;
+              openAfterLoad({ kind: "investor", id: inv.id });
+            }}
+            onPointerEnter={() => void prefetchHistory(inv.id)}
+            onTouchStart={() => void prefetchHistory(inv.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                if ((e.target as HTMLElement).closest("[data-finance-investor-profile-open]")) return;
+                e.preventDefault();
+                openAfterLoad({ kind: "investor", id: inv.id });
+              }
+            }}
+            className={cn(
+              "relative flex w-full min-w-0 items-center gap-0.5 px-2 py-2 outline-none transition sm:gap-1 sm:px-3 sm:py-2.5",
+              "cursor-pointer",
+              "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              open
+                ? "bg-gradient-to-br from-primary/[0.14] via-primary/[0.05] to-transparent ring-1 ring-primary/28"
+                : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
+            )}
+            aria-busy={investorBusyId === inv.id ? "true" : undefined}
+          >
+            <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-col items-end gap-1" aria-hidden>
+              <div className="flex items-center gap-1">
+                {invTotals.growth > 0 ? (
+                  <span
+                    className="inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95"
+                    title="Начисления и пополнения в выборке (период + тип)"
+                  >
+                    +{formatCurrency(invTotals.growth)}
+                  </span>
+                ) : summaryReady ? null : (
+                  <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
+                    +…
+                  </span>
+                )}
+                {invTotals.paidOut > 0 ? (
+                  <span
+                    className="inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95"
+                    title="Завершённые выплаты в выборке (период + тип)"
+                  >
+                    −{formatCurrency(invTotals.paidOut)}
+                  </span>
+                ) : summaryReady ? null : (
+                  <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
+                    −…
+                  </span>
+                )}
+              </div>
+              {(inv.requestedPayments ?? 0) > 0 ? (
+                <span
+                  className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/12 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-900 dark:text-amber-100"
+                  title="Активные заявки на выплату"
+                >
+                  {inv.requestedPayments} заявк.
+                </span>
+              ) : null}
+            </div>
+            {investorBusyId === inv.id ? (
+              <div className="pointer-events-none absolute right-2 top-2 z-20" aria-hidden>
+                <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/35 border-t-transparent" />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              data-finance-investor-profile-open
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenInvestorProfile(inv.id);
+              }}
+              className={cn(
+                "group flex min-w-0 max-w-[min(78vw,22rem)] flex-col gap-2 rounded-xl px-1 py-1 text-left outline-none transition",
+                "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                "dark:hover:brightness-110"
+              )}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label={`Открыть карточку позиции ${inv.name}`}
+            >
+              <InvestorPositionAvatarHeading
+                name={displayName}
+                avatarInitialsSource={inv.handle}
+                avatarUrl={inv.avatarUrl}
+                status={inv.status}
+                avatarSize={42}
+                className="gap-2.5"
+                nickTrailing={
+                  <span className="shrink-0 text-muted-foreground group-hover:text-foreground/80 sm:text-sm" aria-hidden>
+                    ›
+                  </span>
+                }
+                metaBelowNick={headingMeta}
+              />
+            </button>
+            <div className="min-w-0 flex-1" aria-hidden />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
+            onPointerEnter={() => void prefetchHistory(inv.id)}
+            onTouchStart={() => void prefetchHistory(inv.id)}
+            className={cn(
+              "flex w-full flex-col gap-2 px-3 py-2.5 text-left outline-none transition",
+              "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              open
+                ? "bg-gradient-to-br from-primary/[0.14] via-primary/[0.05] to-transparent ring-1 ring-primary/28"
+                : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
+            )}
+            aria-expanded={open}
+          >
+            <InvestorPositionAvatarHeading
+              name={inv.name}
+              avatarInitialsSource={inv.handle}
+              avatarUrl={inv.avatarUrl}
+              status={inv.status}
+              avatarSize={42}
+              className="gap-2.5"
+              metaBelowNick={headingMeta}
+            />
+          </button>
+        )}
+        <MetricsRow
+          scope={{ kind: "investor", id: inv.id }}
+          body={inv.body}
+          accrued={inv.accrued}
+          paid={inv.paid}
+          opFilter={opFilter}
+          onApplyMetricFilter={onApplyMetricFilter}
+          mutedSurface={open}
+        />
+        {open ? renderFeed(inv.id) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <FinanceInvestorSelectionTruncationNotice
@@ -295,167 +490,24 @@ export function FinanceInvestorAccordionCards({
           {networkOpen ? renderFeed(null) : null}
         </div>
 
-        {investors.map((inv) => {
-          const open = expanded.kind === "investor" && expanded.id === inv.id;
-          const inactive = inv.status !== "active";
-          const displayName = inv.handle?.trim() ? inv.handle.trim() : inv.name;
-
-          const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0 };
-
-          const headingMeta = (
-            <>
-              <div className="flex flex-wrap gap-1">
-                {inv.isPrivate ? (
-                  <span className="inline-flex items-center gap-0.5 rounded-md bg-violet-500/14 px-1 py-px text-[8px] font-bold uppercase text-violet-200">
-                    <Lock className="h-2.5 w-2.5" strokeWidth={2} aria-hidden />
-                    Личн.
-                  </span>
-                ) : null}
-                {inactive ? (
-                  <span className="rounded-md bg-muted/45 px-1 py-px text-[8px] font-semibold uppercase text-muted-foreground">Пауза</span>
-                ) : null}
-              </div>
-              <p className="truncate text-[10px] text-muted-foreground">{inv.name}</p>
-            </>
-          );
-
-          return (
-            <div
-              key={inv.id}
-              className="overflow-hidden rounded-2xl border border-border/35 shadow-[0_10px_36px_-22px_rgba(0,0,0,0.35)] dark:border-white/[0.09]"
-            >
-              {onOpenInvestorProfile ? (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
-                  onPointerEnter={() => void prefetchHistory(inv.id)}
-                  onTouchStart={() => void prefetchHistory(inv.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openAfterLoad({ kind: "investor", id: inv.id });
-                    }
-                  }}
-                  className={cn(
-                    "relative flex w-full min-w-0 items-center gap-0.5 px-2 py-2 outline-none transition sm:gap-1 sm:px-3 sm:py-2.5",
-                    "cursor-pointer",
-                    "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    open
-                      ? "bg-gradient-to-br from-primary/[0.14] via-primary/[0.05] to-transparent ring-1 ring-primary/28"
-                      : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
-                  )}
-                  aria-busy={investorBusyId === inv.id ? "true" : undefined}
-                >
-                  <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-col items-end gap-1" aria-hidden>
-                    <div className="flex items-center gap-1">
-                    {invTotals.growth > 0 ? (
-                      <span
-                        className="inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95"
-                        title="Начисления и пополнения в выборке (период + тип)"
-                      >
-                        +{formatCurrency(invTotals.growth)}
-                      </span>
-                    ) : summaryReady ? null : (
-                      <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
-                        +…
-                      </span>
-                    )}
-                    {invTotals.paidOut > 0 ? (
-                      <span
-                        className="inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95"
-                        title="Завершённые выплаты в выборке (период + тип)"
-                      >
-                        −{formatCurrency(invTotals.paidOut)}
-                      </span>
-                    ) : summaryReady ? null : (
-                      <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
-                        −…
-                      </span>
-                    )}
-                    </div>
-                    {(inv.requestedPayments ?? 0) > 0 ? (
-                      <span
-                        className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/12 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-900 dark:text-amber-100"
-                        title="Активные заявки на выплату"
-                      >
-                        {inv.requestedPayments} заявк.
-                      </span>
-                    ) : null}
-                  </div>
-                  {investorBusyId === inv.id ? (
-                    <div className="pointer-events-none absolute right-2 top-2 z-20" aria-hidden>
-                      <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/35 border-t-transparent" />
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => onOpenInvestorProfile(inv.id)}
-                    className={cn(
-                      "group flex min-w-0 max-w-[min(78vw,22rem)] flex-col gap-2 rounded-xl px-1 py-1 text-left outline-none transition",
-                      "hover:brightness-[1.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                      "dark:hover:brightness-110"
-                    )}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClickCapture={(e) => e.stopPropagation()}
-                    aria-label={`Открыть карточку позиции ${inv.name}`}
-                  >
-                    <InvestorPositionAvatarHeading
-                      name={displayName}
-                      avatarInitialsSource={inv.handle}
-                      avatarUrl={inv.avatarUrl}
-                      status={inv.status}
-                      avatarSize={42}
-                      className="gap-2.5"
-                      nickTrailing={
-                        <span className="shrink-0 text-muted-foreground group-hover:text-foreground/80 sm:text-sm" aria-hidden>
-                          ›
-                        </span>
-                      }
-                      metaBelowNick={headingMeta}
-                    />
-                  </button>
-                  <div className="min-w-0 flex-1" aria-hidden />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openAfterLoad({ kind: "investor", id: inv.id })}
-                  onPointerEnter={() => void prefetchHistory(inv.id)}
-                  onTouchStart={() => void prefetchHistory(inv.id)}
-                  className={cn(
-                    "flex w-full flex-col gap-2 px-3 py-2.5 text-left outline-none transition",
-                    "focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    open
-                      ? "bg-gradient-to-br from-primary/[0.14] via-primary/[0.05] to-transparent ring-1 ring-primary/28"
-                      : "bg-background/25 hover:bg-muted/15 dark:bg-black/18 dark:hover:bg-white/[0.05]"
-                  )}
-                  aria-expanded={open}
-                >
-                  <InvestorPositionAvatarHeading
-                    name={inv.name}
-                    avatarInitialsSource={inv.handle}
-                    avatarUrl={inv.avatarUrl}
-                    status={inv.status}
-                    avatarSize={42}
-                    className="gap-2.5"
-                    metaBelowNick={headingMeta}
-                  />
-                </button>
-              )}
-              <MetricsRow
-                scope={{ kind: "investor", id: inv.id }}
-                body={inv.body}
-                accrued={inv.accrued}
-                paid={inv.paid}
-                opFilter={opFilter}
-                onApplyMetricFilter={onApplyMetricFilter}
-                mutedSurface={open}
-              />
-              {open ? renderFeed(inv.id) : null}
-            </div>
-          );
-        })}
+        {superAdminHistoryNetwork === "common" ? (
+          <>
+            {commonOwnerInvestors.length > 0 ? (
+              <>
+                <FinanceAccordionSectionLabel title="Владелец" subtitle={commonOwnerSubtitle} />
+                {commonOwnerInvestors.map((inv) => renderInvestorCard(inv))}
+              </>
+            ) : null}
+            {commonPlatformInvestors.length > 0 ? (
+              <>
+                <FinanceAccordionSectionLabel title="Платформа" subtitle="позиция администратора" />
+                {commonPlatformInvestors.map((inv) => renderInvestorCard(inv))}
+              </>
+            ) : null}
+          </>
+        ) : (
+          investors.map((inv) => renderInvestorCard(inv))
+        )}
       </div>
     </div>
   );
