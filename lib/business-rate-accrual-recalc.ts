@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
 import { withDbRetry } from "@/lib/db-retry";
-import { getCurrentBusinessRate } from "@/lib/business-rate";
 
 /**
  * Пересчитывает `Investor.accrued` по полной истории `RateHistory`
  * (копия логики POST `/api/system/business-rate` после любого изменения истории).
+ *
+ * `accrued` — только **законченные** недельные циклы (до начала текущей понедельничной недели),
+ * плюс вычет подтверждённых выплат процентов/тела/закрытия, попавших в **текущую** открытую неделю.
+ * Доля начисления за незавершённую неделю в поле не входит (прогноз — в UI ленты/hero).
  */
 export async function recalculateInvestorAccruedFromRateHistory(): Promise<void> {
   const now = new Date();
@@ -59,8 +62,6 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
     }
     return rateHistory[pointer.idx]?.newRate;
   };
-
-  const openWeekBusinessSnap = await getCurrentBusinessRate(lastClosedWeekStart);
 
   const eps = 0.00001;
   for (const inv of investors) {
@@ -117,22 +118,6 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
     }
 
     const currentWeekStart = new Date(lastClosedWeekStart);
-    const weekMonSod = startOfDay(currentWeekStart);
-    const todaySod = startOfDay(now);
-    let daySpan = Math.floor((todaySod.getTime() - weekMonSod.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-    if (daySpan < 1) daySpan = 1;
-    if (daySpan > 7) daySpan = 7;
-    const openWeekFrac = daySpan / 7;
-
-    let brOpen = openWeekBusinessSnap?.rate;
-    if (brOpen === undefined || brOpen === null) {
-      brOpen = resolveRate(currentWeekStart);
-    }
-    const appliedOpen = inv.isPrivate ? brOpen / 2 : brOpen;
-    const weeklyRatePercentOpen = appliedOpen / 4;
-    if (body > 0) {
-      accrued += body * (weeklyRatePercentOpen / 100) * openWeekFrac;
-    }
 
     const currentWeekPayments = inv.payments.filter((payment) => {
       if (payment.status !== "completed") return false;

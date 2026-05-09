@@ -134,7 +134,7 @@ export function buildWeeklyLedgerRows(
     .filter((payment) => payment.type === "close")
     .reduce((sum, payment) => sum + payment.amount, 0);
 
-  /** Как в `recalculateInvestorAccruedFromRateHistory`: сначала доля недели, затем выплаты. */
+  /** Строка открытой недели для ленты: доля недели (день/7), затем выплаты. В БД `Investor.accrued` доля незавершённой недели не хранится — см. `recalculateInvestorAccruedFromRateHistory`. */
   const { frac: openWeekFrac } = openWeekDayProgress(now);
   const openWeekGross = body > 0 ? body * (currentWeeklyRatePercent / 100) * openWeekFrac : 0;
 
