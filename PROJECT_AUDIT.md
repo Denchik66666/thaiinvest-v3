@@ -1,6 +1,6 @@
 # PROJECT_AUDIT — ThaiInvest v3.x
 
-**Дата ревизии:** 2026-05-08  
+**Дата ревизии:** 2026-05-09  
 **Корень проекта:** `THAIINVEST v3.0`  
 **Версия приложения (package.json):** 3.1.0  
 
@@ -74,7 +74,7 @@
 | **`/dashboard/reports`** | `app/dashboard/reports/page.tsx` | Лента отчётов (`/api/reports/feed`) | Работает |
 | **`/dashboard/investors`** | `app/dashboard/investors/page.tsx` | Список инвесторов; редирект инвестора на finance | Работает |
 | **`/dashboard/investors/[id]`** | `app/dashboard/investors/[id]/page.tsx` | Карточка инвестора | Работает |
-| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает; **идёт редизайн** (см. `docs/UI_ETALONS_REGISTRY.md` § Управление, `docs/MANAGE_REDESIGN_AGENT_PROMPT.md`) |
+| **`/dashboard/manage`** | `app/dashboard/manage/page.tsx` | Управление, ставка, создание инвесторов | Работает; **редизайн** — этап 1 (тулбар журнала ставки + выбор сети в модалке под Финансы) зафиксирован в `docs/UI_ETALONS_REGISTRY.md` |
 | **`/dashboard/chat`** | `app/dashboard/chat/page.tsx` | Чат | Работает |
 | **`/dashboard/profile`** | `app/dashboard/profile/page.tsx` | Профиль, аккаунт, тема, блок сброса БД для SUPER_ADMIN; смена аватара по клику на круг (скрытый `input type="file"`, бейдж камеры) → **`POST /api/auth/avatar`** | Работает |
 
