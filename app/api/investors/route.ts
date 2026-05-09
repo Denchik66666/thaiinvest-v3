@@ -77,6 +77,26 @@ async function fetchCommonNetworkOwnersSummary() {
   )
 }
 
+/**
+ * Внешняя общая сеть в продукте закреплена за OWNER (операционный владелец, напр. Сэм).
+ * Карточки общей сети, созданные SUPER_ADMIN, должны числиться на него — иначе OWNER не видит их на главной и в реестре.
+ */
+async function resolveOwnerIdForNewInvestor(
+  role: string,
+  creatorUserId: number,
+  isPrivateNetwork: boolean
+): Promise<number> {
+  if (role !== 'SUPER_ADMIN' || isPrivateNetwork) return creatorUserId
+  const owner = await withDbRetry(() =>
+    prisma.user.findFirst({
+      where: { role: 'OWNER', isArchived: false },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    })
+  )
+  return owner?.id ?? creatorUserId
+}
+
 async function generateUniqueInvestorUsername(baseName: string) {
   const slug = (baseName || 'investor')
     .toLowerCase()
@@ -526,6 +546,7 @@ export async function POST(request: NextRequest) {
 
     const generatedUsername = await generateUniqueInvestorUsername(name)
     const generatedPassword = randomPassword(10)
+    const investorOwnerId = await resolveOwnerIdForNewInvestor(decoded.role, decoded.userId, isPrivateNetwork)
 
     const investor = await withDbRetry(() => prisma.$transaction(async (tx: InvestorCreateTxClient) => {
       const investorUser = await tx.user.create({
@@ -539,7 +560,7 @@ export async function POST(request: NextRequest) {
 
       return tx.investor.create({
         data: {
-          ownerId: decoded.userId,
+          ownerId: investorOwnerId,
           investorUserId: investorUser.id,
           name,
           handle: handle ?? null,

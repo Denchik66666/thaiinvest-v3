@@ -37,6 +37,7 @@ import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashbo
 import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 type InvestorRow = {
   id: number;
+  ownerId?: number;
   name: string;
   handle?: string | null;
   investorUser?: { username: string; avatarUrl?: string | null } | null;
@@ -223,7 +224,9 @@ export default function DashboardPage() {
       user?.role === "SUPER_ADMIN"
         ? investors.filter((inv) => !inv.isPrivate && inv.linkedUserId === user.id)
         : user?.role === "OWNER"
-          ? investors.filter((inv) => inv.owner.username === user?.username)
+          ? investors.filter((inv) =>
+              inv.ownerId != null && user?.id != null ? inv.ownerId === user.id : inv.owner.username === user?.username
+            )
           : investors.filter((inv) => inv.investorUserId === user?.id),
     [investors, user]
   );
