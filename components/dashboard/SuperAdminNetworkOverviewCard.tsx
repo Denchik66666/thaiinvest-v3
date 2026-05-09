@@ -18,6 +18,13 @@ type LeanInvestor = {
   paid: number;
   due: number;
   payments?: { status: string }[];
+  owner?: { id: number; username: string; role: string };
+};
+
+type LeanInvestorsResponse = {
+  investors: LeanInvestor[];
+  /** Только SUPER_ADMIN + `network=common` в lean: активные пользователи роли OWNER (внешняя сеть Семёна). */
+  commonNetworkOwners?: { id: number; username: string }[];
 };
 
 type SuperAdminNetworkOverviewCardProps = {
@@ -36,7 +43,7 @@ export function SuperAdminNetworkOverviewCard({ className, compact }: SuperAdmin
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: investorsQueryKey,
     queryFn: () =>
-      apiClient.get<{ investors: LeanInvestor[] }>(
+      apiClient.get<LeanInvestorsResponse>(
         `/api/investors?network=${investorsDashboardNetworkParam(user!.role)}&lean=1`
       ),
     enabled: !!user && user.role === "SUPER_ADMIN",
@@ -45,6 +52,18 @@ export function SuperAdminNetworkOverviewCard({ className, compact }: SuperAdmin
   });
 
   const investors = data?.investors ?? [];
+
+  const ownerLine = useMemo(() => {
+    const fromApi = data?.commonNetworkOwners;
+    if (fromApi?.length) return fromApi.map((o) => o.username).join(", ");
+    const fromRows = new Map<number, string>();
+    for (const inv of investors) {
+      const ow = inv.owner;
+      if (ow?.role === "OWNER") fromRows.set(ow.id, ow.username);
+    }
+    if (fromRows.size) return Array.from(fromRows.values()).join(", ");
+    return null;
+  }, [data?.commonNetworkOwners, investors]);
 
   const stats = useMemo(() => {
     return investors.reduce(
@@ -98,6 +117,12 @@ export function SuperAdminNetworkOverviewCard({ className, compact }: SuperAdmin
               </>
             )}
           </div>
+          {ownerLine ? (
+            <p className="mt-1 text-[10px] leading-tight">
+              <span className="font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">Owner</span>
+              <span className="mx-1.5 font-semibold tabular-nums text-foreground/95">{ownerLine}</span>
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
           {isFetching && data ? (

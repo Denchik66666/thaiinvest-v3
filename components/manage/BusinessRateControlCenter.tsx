@@ -91,10 +91,10 @@ const rateShellClass =
 const insetWellClass =
   "rounded-xl border border-white/[0.06] bg-black/[0.12] px-3 py-2 dark:border-white/[0.07] dark:bg-black/30";
 
-const labelClass = "mb-1 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/90";
+const labelClass = "mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/88";
 
 const compactInputClass =
-  "h-10 rounded-xl border-0 bg-foreground/[0.04] px-3 text-sm tabular-nums text-foreground ring-1 ring-inset ring-foreground/[0.08] transition placeholder:text-muted-foreground/50 focus-visible:bg-foreground/[0.06] focus-visible:ring-primary/35 dark:bg-white/[0.04] dark:ring-white/[0.08]";
+  "h-9 rounded-xl border-0 bg-foreground/[0.04] px-2.5 text-xs tabular-nums text-foreground ring-1 ring-inset ring-foreground/[0.08] transition placeholder:text-muted-foreground/50 focus-visible:bg-foreground/[0.06] focus-visible:ring-primary/35 dark:bg-white/[0.04] dark:ring-white/[0.08]";
 
 const compactTextareaClass =
   "min-h-[3rem] resize-none rounded-xl border-0 bg-foreground/[0.04] px-3 py-2 text-xs leading-snug ring-1 ring-inset ring-foreground/[0.08] focus-visible:ring-primary/35 dark:bg-white/[0.04] dark:ring-white/[0.08]";
@@ -327,58 +327,53 @@ export function BusinessRateControlCenter({
         }}
       />
 
-      <div className="relative px-3.5 pb-3 pt-3.5 md:px-5 md:pb-4 md:pt-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+      <div className="relative px-3 pb-2.5 pt-3 md:px-4 md:pb-3 md:pt-3.5">
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/82">
                 Ставка сети
               </span>
               {current == null ? (
-                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-100">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-100">
                   Нет базы
                 </span>
               ) : (
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/90 shadow-[0_0_10px_rgba(52,211,153,0.45)]" title="Активна" />
               )}
             </div>
-            <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
-              <span className="text-[2.1rem] font-semibold leading-none tracking-tight text-foreground tabular-nums md:text-[2.35rem]">
-                {current != null ? `${current.rate}` : "—"}
-                <span className="text-[0.45em] font-medium text-muted-foreground">%</span>
-              </span>
-              <div className="min-w-0 pb-0.5">
-                {current?.effectiveDate ? (
-                  <p className="text-[11px] leading-tight text-muted-foreground">
-                    с <span className="font-medium tabular-nums text-foreground/90">{formatRuDate(current.effectiveDate)}</span>
-                  </p>
-                ) : (
-                  <p className="max-w-[16rem] text-[11px] leading-snug text-muted-foreground">
-                    Учётный цикл — с <span className="text-foreground/90">понедельника</span>. Задайте % и дату ниже.
-                  </p>
-                )}
-              </div>
-            </div>
+            <span className="text-[1.65rem] font-semibold leading-none tracking-tight text-foreground tabular-nums sm:text-[1.85rem] md:text-[2rem]">
+              {current != null ? `${current.rate}` : "—"}
+              <span className="text-[0.45em] font-medium text-muted-foreground">%</span>
+            </span>
+            {current?.effectiveDate ? (
+              <p className="pb-px text-[10px] leading-none text-muted-foreground sm:text-[11px]">
+                с <span className="font-semibold tabular-nums text-foreground/90">{formatRuDate(current.effectiveDate)}</span>
+              </p>
+            ) : (
+              <p className="max-w-[14rem] pb-px text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                Цикл с <span className="text-foreground/90">пн</span> · задайте % и дату.
+              </p>
+            )}
           </div>
           <div className="shrink-0 text-right">
             {nextPlanned ? (
-              <>
-                <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/75">Далее</p>
-                <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
-                  {nextPlanned.rate}
-                  <span className="text-[0.75em] font-medium text-muted-foreground">%</span>
-                </p>
-                <p className="text-[10px] tabular-nums text-muted-foreground">{formatRuDate(nextPlanned.effectiveDate)}</p>
-              </>
+              <p className="text-[10px] leading-tight tabular-nums text-muted-foreground">
+                <span className="font-semibold uppercase tracking-[0.12em] text-muted-foreground/78">Далее</span>
+                <span className="mx-1 text-muted-foreground/35">·</span>
+                <span className="font-semibold text-foreground">{nextPlanned.rate}%</span>
+                <span className="mx-1 text-muted-foreground/35">·</span>
+                <span>{formatRuDate(nextPlanned.effectiveDate)}</span>
+              </p>
             ) : (
-              <p className="max-w-[9rem] text-right text-[10px] leading-snug text-muted-foreground/80">Нет запланированных смен</p>
+              <p className="max-w-[9rem] text-right text-[10px] leading-snug text-muted-foreground/78">Нет смен в плане</p>
             )}
           </div>
         </div>
 
-        <form className="mt-4 space-y-2.5" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-0 flex-1 sm:max-w-[13rem]">
+        <form className="mt-3 space-y-2" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-0 flex-1 sm:max-w-[12.5rem]">
               <span className={labelClass}>Понедельник</span>
               <DatePicker
                 value={form.effectiveDate}
@@ -386,7 +381,7 @@ export function BusinessRateControlCenter({
                 highlightedDates={Array.from(changeDays)}
               />
             </div>
-            <div className="w-full sm:w-[6.5rem]">
+            <div className="w-full sm:w-24">
               <label htmlFor="br-new-rate-quick" className={labelClass}>
                 Новая %
               </label>
@@ -406,7 +401,7 @@ export function BusinessRateControlCenter({
               type="submit"
               variant="primary"
               size="sm"
-              className="h-10 w-full shrink-0 rounded-xl px-5 text-xs font-semibold sm:w-auto"
+              className="h-9 w-full shrink-0 rounded-xl px-4 text-[11px] font-semibold sm:w-auto"
               disabled={isSubmitting}
             >
               {isSubmitting ? "Сохранение…" : "Применить"}
@@ -437,7 +432,7 @@ export function BusinessRateControlCenter({
           )}
         </form>
         {submitError ? (
-          <Text className="mt-2 text-[11px] leading-snug text-red-400">{submitError}</Text>
+          <Text className="mt-1.5 text-[10px] leading-snug text-red-400">{submitError}</Text>
         ) : null}
       </div>
 
@@ -448,7 +443,7 @@ export function BusinessRateControlCenter({
           aria-label={historyExpanded ? "Свернуть историю" : "Развернуть историю"}
           aria-expanded={historyExpanded}
           className={cn(
-            "flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition md:px-5",
+            "flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition md:px-4",
             "hover:bg-foreground/[0.03] dark:hover:bg-white/[0.03]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
           )}
@@ -469,7 +464,7 @@ export function BusinessRateControlCenter({
         </button>
 
         {historyExpanded ? (
-          <div className="space-y-2 px-3.5 pb-3 md:px-5">
+          <div className="space-y-1.5 px-3 pb-2.5 md:px-4">
             {isHistoryLoading ? (
               <p className="text-[11px] text-muted-foreground">Загрузка…</p>
             ) : historyVisibleRows.length === 0 ? (
@@ -562,7 +557,7 @@ export function BusinessRateControlCenter({
           aria-expanded={calendarPlanExpanded}
           aria-label={calendarPlanExpanded ? "Свернуть календарь" : "Развернуть календарь"}
           className={cn(
-            "flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition md:px-5",
+            "flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition md:px-4",
             "hover:bg-foreground/[0.03] dark:hover:bg-white/[0.03]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
           )}
@@ -581,7 +576,7 @@ export function BusinessRateControlCenter({
         </button>
 
         {calendarPlanExpanded ? (
-          <div className="space-y-3 px-3.5 pb-3.5 md:px-5 md:pb-4">
+          <div className="space-y-2 px-3 pb-3 md:px-4 md:pb-3.5">
             <FinanceMonthCalendar
               viewMonth={viewMonth}
               onViewMonthChange={setViewMonth}
@@ -607,18 +602,23 @@ export function BusinessRateControlCenter({
             </p>
 
             {selectedDay ? (
-              <div className={cn(insetWellClass, "flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] leading-tight")}>
+              <div
+                className={cn(
+                  insetWellClass,
+                  "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5 text-[10px] leading-tight sm:text-[11px]"
+                )}
+              >
                 <span className="text-muted-foreground">
-                  День <span className="font-medium tabular-nums text-foreground">{formatRuDate(selectedDay)}</span>
+                  День <span className="font-semibold tabular-nums text-foreground">{formatRuDate(selectedDay)}</span>
                 </span>
                 <span className="hidden text-muted-foreground/35 sm:inline">·</span>
                 <span className="text-muted-foreground">
-                  % <span className="font-medium tabular-nums text-foreground">{rateOnSelected != null ? rateOnSelected : "—"}</span>
+                  % <span className="font-semibold tabular-nums text-foreground">{rateOnSelected != null ? rateOnSelected : "—"}</span>
                 </span>
                 <span className="hidden text-muted-foreground/35 sm:inline">·</span>
                 <span className="text-muted-foreground">
                   Пн{" "}
-                  <span className="font-medium tabular-nums text-primary">
+                  <span className="font-semibold tabular-nums text-primary">
                     {accountingMonday ? formatRuDate(accountingMonday) : "—"}
                   </span>
                 </span>
@@ -658,8 +658,8 @@ export function BusinessRateControlCenter({
                         {!edit ? (
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
-                              <span className="text-[11px] tabular-nums text-muted-foreground">{formatRuDate(m.effectiveDate)}</span>
-                              <span className="text-sm font-semibold tabular-nums text-foreground">{m.newRate}%</span>
+                              <span className="text-[10px] tabular-nums text-muted-foreground sm:text-[11px]">{formatRuDate(m.effectiveDate)}</span>
+                              <span className="text-[12px] font-semibold tabular-nums text-foreground">{m.newRate}%</span>
                               {m.comment ? (
                                 <span className="max-w-full truncate text-[10px] text-muted-foreground">{m.comment}</span>
                               ) : null}

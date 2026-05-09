@@ -36,6 +36,10 @@ for (const { label, username, passwords } of [samCase, { label: "Den" as const, 
     await expect(page.getByRole("heading", { name: "Управление" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Ставка сети", { exact: false })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Создать инвестора" })).toBeVisible({ timeout: 15_000 });
+    if (label === "Den") {
+      await expect(page.getByText("Сеть платформы", { exact: false })).toBeVisible();
+      await expect(page.getByText("Owner", { exact: true })).toBeVisible();
+    }
 
     await page.screenshot({ path: `test-results/manage-smoke-${label}.png`, fullPage: true });
   });

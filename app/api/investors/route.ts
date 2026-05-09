@@ -66,6 +66,17 @@ function randomPassword(length = 10): string {
   return result
 }
 
+/** Активные OWNER — для SUPER_ADMIN при `network=common` (карточка «Сеть платформы» на Manage). */
+async function fetchCommonNetworkOwnersSummary() {
+  return withDbRetry(() =>
+    prisma.user.findMany({
+      where: { role: 'OWNER', isArchived: false },
+      select: { id: true, username: true },
+      orderBy: { id: 'asc' },
+    })
+  )
+}
+
 async function generateUniqueInvestorUsername(baseName: string) {
   const slug = (baseName || 'investor')
     .toLowerCase()
@@ -229,6 +240,16 @@ export async function GET(request: NextRequest) {
 
       const { investors, completedAll, completedInterest, openPayments } = leanPayload
       if (!investors.length) {
+        if (decoded.role === 'SUPER_ADMIN' && network === 'common') {
+          const commonNetworkOwners = await fetchCommonNetworkOwnersSummary()
+          const emptyPayload = { investors: [], commonNetworkOwners }
+          if (leanCacheKey) {
+            memoryCache.set(leanCacheKey, { expiresAt: Date.now() + LEAN_CACHE_TTL_MS, payload: emptyPayload })
+          }
+          return NextResponse.json(emptyPayload, {
+            headers: { 'Cache-Control': 'private, max-age=45, stale-while-revalidate=90' },
+          })
+        }
         return NextResponse.json({ investors: [] })
       }
 
@@ -288,7 +309,10 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      const payload = { investors: result }
+      const payload =
+        decoded.role === 'SUPER_ADMIN' && network === 'common'
+          ? { investors: result, commonNetworkOwners: await fetchCommonNetworkOwnersSummary() }
+          : { investors: result }
       if (leanCacheKey) {
         memoryCache.set(leanCacheKey, { expiresAt: Date.now() + LEAN_CACHE_TTL_MS, payload })
       }
