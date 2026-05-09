@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ import {
   FinanceInvestorAccordionCards,
   type FinanceInvestorAccordionExpanded,
 } from "@/components/dashboard/finance/FinanceInvestorAccordionCards";
+import { FinanceBodyTopUpModal } from "@/components/dashboard/finance/FinanceBodyTopUpModal";
 import { FinanceOperationDetailModal } from "@/components/dashboard/finance/FinanceOperationDetailModal";
 import { PaymentCorrectionQueue } from "@/components/dashboard/finance/PaymentCorrectionQueue";
 import type { FinanceOperationItem } from "@/types/finance-operations";
@@ -93,9 +94,13 @@ function serverHtmlDark() {
 export function FinanceHubInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { user, loading: authLoading } = useAuth();
   const [detailItem, setDetailItem] = useState<FinanceOperationItem | null>(null);
+  const [bodyTopUpOpen, setBodyTopUpOpen] = useState(false);
   const [networkExpanded, setNetworkExpanded] = useState(false);
+  /** Владелец с одной позицией: лента по умолчанию «открыта» без ?investor= — без этого флага повторный клик не сворачивал (URL пустой ≠ «открыто» в onToggleInvestor). */
+  const [ownerSingleInvestorFeedCollapsed, setOwnerSingleInvestorFeedCollapsed] = useState(false);
 
   const saFinanceNetwork: SuperAdminInvestorsNetwork = useMemo(() => {
     if (user?.role !== "SUPER_ADMIN") return "common";
@@ -155,6 +160,22 @@ export function FinanceHubInner() {
     return investors.filter((inv) => inv.investorUserId === user.id);
   }, [investorsData, user]);
 
+  const { data: ownerTopUpData } = useQuery({
+    queryKey: ["body-topup-requests"],
+    queryFn: () =>
+      apiClient.get<{ requests: { investorId: number; status: string }[] }>("/api/body-topup-requests"),
+    enabled: !!user && user.role === "OWNER" && myInvestors.length > 0,
+    staleTime: 30_000,
+  });
+
+  const pendingBodyTopUpIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of ownerTopUpData?.requests ?? []) {
+      if (r.status === "pending_investor") ids.add(r.investorId);
+    }
+    return ids;
+  }, [ownerTopUpData?.requests]);
+
   const rawInvestorParam = searchParams.get("investor");
   const investorIdFromUrl = useMemo(() => {
     if (!rawInvestorParam) return null;
@@ -192,15 +213,29 @@ export function FinanceHubInner() {
     router.replace(qs ? `/dashboard/finance?${qs}` : "/dashboard/finance");
   }, [investorIdFromUrl, validatedInvestorFilterId, investorsData, searchParams, router]);
 
+  useEffect(() => {
+    if (validatedInvestorFilterId != null || networkExpanded) setOwnerSingleInvestorFeedCollapsed(false);
+  }, [validatedInvestorFilterId, networkExpanded]);
+
   // Сворачиваем “сеть” сразу в обработчике выбора инвестора; отдельный effect не нужен.
 
   const accordionExpanded: FinanceInvestorAccordionExpanded = useMemo(() => {
     if (validatedInvestorFilterId != null) return { kind: "investor", id: validatedInvestorFilterId };
-    /** Одна позиция — сразу узкий запрос ленты (?investorId), без «вся сеть» по умолчанию. */
-    if (user?.role === "OWNER" && myInvestors.length === 1) return { kind: "investor", id: myInvestors[0].id };
+    /** Явный выбор «Вся сеть» — до дефолта одной позиции OWNER, иначе при одном инвесторе сеть никогда не раскрывалась (`renderFeed(null)` не вызывался). */
     if (networkExpanded) return { kind: "network" };
+    /** Одна позиция у владельца: по умолчанию узкая лента без «вся сеть»; явное сворачивание — `ownerSingleInvestorFeedCollapsed`. */
+    if (user?.role === "OWNER" && myInvestors.length === 1) {
+      if (ownerSingleInvestorFeedCollapsed) return { kind: "collapsed" };
+      return { kind: "investor", id: myInvestors[0].id };
+    }
     return { kind: "collapsed" };
-  }, [validatedInvestorFilterId, networkExpanded, user?.role, myInvestors]);
+  }, [
+    validatedInvestorFilterId,
+    networkExpanded,
+    user?.role,
+    myInvestors,
+    ownerSingleInvestorFeedCollapsed,
+  ]);
 
   const effectiveFilterInvestorId = accordionExpanded.kind === "investor" ? accordionExpanded.id : null;
 
@@ -297,13 +332,30 @@ export function FinanceHubInner() {
   const onToggleInvestor = useCallback(
     (id: number) => {
       setNetworkExpanded(false);
+      const singleOwner = user?.role === "OWNER" && myInvestors.length === 1;
+      const soleId = singleOwner ? myInvestors[0]?.id : undefined;
+      const isSoleCard = singleOwner && soleId === id;
+
       if (validatedInvestorFilterId === id) {
         pushInvestorQuery(null);
+        if (isSoleCard) setOwnerSingleInvestorFeedCollapsed(true);
         return;
       }
+
+      if (isSoleCard && validatedInvestorFilterId == null && ownerSingleInvestorFeedCollapsed) {
+        setOwnerSingleInvestorFeedCollapsed(false);
+        return;
+      }
+
+      if (isSoleCard && validatedInvestorFilterId == null && !ownerSingleInvestorFeedCollapsed) {
+        setOwnerSingleInvestorFeedCollapsed(true);
+        return;
+      }
+
+      setOwnerSingleInvestorFeedCollapsed(false);
       pushInvestorQuery(id);
     },
-    [validatedInvestorFilterId, pushInvestorQuery]
+    [validatedInvestorFilterId, pushInvestorQuery, user?.role, myInvestors, ownerSingleInvestorFeedCollapsed]
   );
 
   const investorCardsSlot = showInvestorFilter
@@ -465,6 +517,21 @@ export function FinanceHubInner() {
               ))}
             </div>
           ) : null}
+          {user.role === "OWNER" && myInvestors.length > 0 ? (
+            <div className="mt-2 flex justify-center border-t border-border/20 pt-2 dark:border-white/[0.06]">
+              <button
+                type="button"
+                onClick={() => setBodyTopUpOpen(true)}
+                className={cn(
+                  "text-[11px] font-semibold uppercase tracking-wide outline-none transition",
+                  "text-[var(--thai-color-topup)] hover:underline",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                )}
+              >
+                Пополнение тела
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <section className="flex flex-col overflow-visible rounded-xl border border-border/25 p-2 sm:p-3 md:rounded-2xl md:p-4" style={glassCard}>
@@ -502,6 +569,34 @@ export function FinanceHubInner() {
           clearPaymentFromUrl();
         }}
       />
+
+      {user.role === "OWNER" ? (
+        <FinanceBodyTopUpModal
+          open={bodyTopUpOpen}
+          onClose={() => setBodyTopUpOpen(false)}
+          investors={myInvestors.map((inv) => ({
+            id: inv.id,
+            name: inv.name,
+            handle: inv.handle ?? null,
+            body: inv.body ?? 0,
+            status: inv.status ?? "",
+            isPrivate: inv.isPrivate,
+            investorUser: inv.investorUser ?? null,
+            linkedUser: inv.linkedUser ?? null,
+            investorUserId: inv.investorUserId ?? null,
+            linkedUserId: inv.linkedUserId ?? null,
+          }))}
+          hintInvestorId={effectiveFilterInvestorId}
+          pendingTopUpIds={pendingBodyTopUpIds}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] });
+            queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] });
+            queryClient.invalidateQueries({ queryKey: ["investors"] });
+            queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
+            queryClient.invalidateQueries({ queryKey: ["reports-feed"] });
+          }}
+        />
+      ) : null}
     </Container>
   );
 }
