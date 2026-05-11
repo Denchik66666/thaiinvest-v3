@@ -7,7 +7,6 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
-import { userHasInvestorScopedAccess } from "@/lib/investor-payment-access";
 import {
   assertCorrectionAllowedForPayment,
   resolvePaymentCorrectionAssigneeUserId,
@@ -21,6 +20,14 @@ import { isPrismaMissingTableForModel } from "@/lib/prisma-known-errors";
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
+
+const paymentCorrectionInvestorSelect = {
+  id: true,
+  name: true,
+  handle: true,
+  investorUser: { select: { username: true } },
+  linkedUser: { select: { username: true } },
+} as const;
 
 function mapAssertError(e: unknown): string {
   if (!(e instanceof Error)) return "Некорректные данные правки";
@@ -141,7 +148,7 @@ export async function GET() {
           type: true,
           status: true,
           amount: true,
-          investor: { select: { id: true, name: true } },
+          investor: { select: paymentCorrectionInvestorSelect },
         },
       },
       createdBy: { select: { id: true, username: true } },
@@ -239,9 +246,11 @@ export async function POST(request: Request) {
     );
     if (!payment) return NextResponse.json({ error: "Заявка не найдена" }, { status: 404 });
 
-    if (!userHasInvestorScopedAccess(decoded.userId, decoded.role, payment.investor)) {
-      return NextResponse.json({ error: "Недостаточно прав по позиции" }, { status: 403 });
-    }
+    /**
+     * Для SUPER_ADMIN здесь та же ветка проверки позиции, что у INVESTOR (linkedUserId / investorUserId).
+     * Учётка администратора платформы не «привязана» к каждой позиции — иначе 403 при сохранении правки дат.
+     * POST уже ограничен ролью SUPER_ADMIN.
+     */
 
     if (
       raw.mode === "rollback" &&
@@ -307,7 +316,7 @@ export async function POST(request: Request) {
               type: true,
               status: true,
               amount: true,
-              investor: { select: { id: true, name: true } },
+              investor: { select: paymentCorrectionInvestorSelect },
             },
           },
           createdBy: { select: { id: true, username: true } },

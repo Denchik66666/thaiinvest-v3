@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { Badge } from "@/components/ui/Badge";
@@ -38,8 +37,11 @@ export function InvestorCardPremium({ investor, weekInfo, compact = false }: Inv
 
   // Calculate available for withdrawal
   const availableForWithdrawal = useMemo(() => {
-    return Math.max(investor.accrued - (investor.paid || 0), 0);
-  }, [investor.accrued, investor.paid]);
+    if (typeof investor.due === "number" && Number.isFinite(investor.due)) {
+      return Math.max(investor.due, 0);
+    }
+    return Math.max(investor.accrued, 0);
+  }, [investor.due, investor.accrued]);
 
   // Role-based permissions
   const canEdit = user?.role === "OWNER" || user?.role === "SUPER_ADMIN";

@@ -157,8 +157,7 @@ export function AppDialogsProvider({ children }: { children: React.ReactNode }) 
   return (
     <AppDialogsContext.Provider value={value}>
       {/*
-        Toaster должен монтироваться до GlobalLiveNotifier: иначе первый refetch чата
-        может вызвать toast до регистрации Sonner — всплывашки «не приходят».
+        Toaster монтируется в корне провайдера, чтобы refetch не вызывал toast до регистрации Sonner.
       */}
       <Toaster
         theme="dark"
