@@ -16,7 +16,9 @@ import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRateHistoryRowsForLedger } from "@/lib/rate-history-rows-cache";
 import { superAdminFinanceMaxPositions } from "@/lib/super-admin-finance-limits";
+import { findBodyTopUpsForOperationsHistory } from "@/lib/body-topup-request-date-compat";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { mergeLedgerWeeks, type MergedHistoryWeek } from "@/lib/merge-ledger-weeks";
 import { buildWeeklyLedgerRows, type WeeklyLedgerPaymentInput } from "@/lib/weekly-ledger-rows";
 import { isSameOpenWeekAsNow, openWeekDayProgress } from "@/lib/open-week-forecast";
@@ -27,7 +29,7 @@ type CacheEntry = { expiresAt: number; payload: OperationsHistoryResponse };
 const CACHE_TTL_MS = 60_000;
 const memoryCache = new Map<string, CacheEntry>();
 
-/** В ленте и сортировке — дата заявки (createdAt), не момент подтверждения. */
+/** В ленте и сортировке выплат — момент подачи (`createdAt`), не подтверждения. */
 function paymentSortAt(p: { createdAt: Date }) {
   return p.createdAt.toISOString();
 }
@@ -99,7 +101,10 @@ export async function GET(request: NextRequest) {
     let investorsWhere: Prisma.InvestorWhereInput;
 
     if (decoded.role === "INVESTOR") {
-      investorsWhere = { investorUserId: decoded.userId };
+      /** Как в GET `/api/body-topup-requests`: позиции «моего» аккаунта и привязка к общей сети. */
+      investorsWhere = {
+        OR: [{ investorUserId: decoded.userId }, { linkedUserId: decoded.userId, isPrivate: false }],
+      };
     } else if (decoded.role === "OWNER") {
       investorsWhere = { ownerId: decoded.userId };
     } else if (decoded.role === "SUPER_ADMIN") {
@@ -170,6 +175,7 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           name: true,
+          handle: true,
           body: true,
           rate: true,
           isPrivate: true,
@@ -177,6 +183,8 @@ export async function GET(request: NextRequest) {
           activationDate: true,
           createdAt: true,
           updatedAt: true,
+          investorUser: { select: { username: true } },
+          linkedUser: { select: { username: true } },
         },
         orderBy: superAdminAllNetworkUnscoped ? { updatedAt: "desc" } : { createdAt: "desc" },
         take: takeFetch,
@@ -226,20 +234,7 @@ export async function GET(request: NextRequest) {
           },
           orderBy: { createdAt: "desc" },
         }),
-        prisma.bodyTopUpRequest.findMany({
-          /** Без фильтра isPrivate: позиции уже ограничены `ids`; личная сеть тоже должна попадать в историю. */
-          where: { investorId: { in: ids } },
-          select: {
-            id: true,
-            investorId: true,
-            amount: true,
-            status: true,
-            comment: true,
-            createdAt: true,
-            decidedAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-        }),
+        findBodyTopUpsForOperationsHistory(ids),
         prisma.auditLog.findMany({
           where: {
             entityType: "Investor",
@@ -271,7 +266,9 @@ export async function GET(request: NextRequest) {
 
     const { scopedInvestors, rateHistory, payments, topUps, createInvestorAudits, investorSelectionMeta } = histBundle;
 
-    const positionNameById = new Map(scopedInvestors.map((i) => [i.id, i.name]));
+    const positionNameById = new Map(
+      scopedInvestors.map((i) => [i.id, investorDisplayHandle(i) ?? i.name])
+    );
 
     const paymentsByInvestorId = new Map<number, typeof payments>();
     for (const p of payments) {
@@ -335,19 +332,23 @@ export async function GET(request: NextRequest) {
       acceptedAt: p.acceptedAt?.toISOString() ?? null,
     }));
 
-    const topUpFromRequests: FinanceOperationItem[] = topUps.map((t) => ({
-      kind: "topup" as const,
-      id: `top:${t.id}`,
-      sortAt: (t.decidedAt ?? t.createdAt).toISOString(),
-      requestId: t.id,
-      investorId: t.investorId,
-      positionName: positionNameById.get(t.investorId) ?? "",
-      amount: t.amount,
-      status: t.status,
-      comment: t.comment,
-      createdAt: t.createdAt.toISOString(),
-      decidedAt: t.decidedAt?.toISOString() ?? null,
-    }));
+    const topUpFromRequests: FinanceOperationItem[] = topUps.map((t) => {
+      const requestAt = t.requestDate ?? t.createdAt;
+      return {
+        kind: "topup" as const,
+        id: `top:${t.id}`,
+        sortAt: requestAt.toISOString(),
+        requestId: t.id,
+        investorId: t.investorId,
+        positionName: positionNameById.get(t.investorId) ?? "",
+        amount: t.amount,
+        status: t.status,
+        comment: t.comment,
+        createdAt: t.createdAt.toISOString(),
+        requestDate: t.requestDate?.toISOString() ?? null,
+        decidedAt: t.decidedAt?.toISOString() ?? null,
+      };
+    });
 
     /** Начальное тело при создании позиции — в ленте как пополнение (без BodyTopUpRequest). */
     const topUpFromCreation: FinanceOperationItem[] = scopedInvestors.map((inv) => {
@@ -359,7 +360,7 @@ export async function GET(request: NextRequest) {
         sortAt: inv.activationDate.toISOString(),
         requestId: -inv.id,
         investorId: inv.id,
-        positionName: inv.name,
+        positionName: investorDisplayHandle(inv) ?? inv.name,
         amount: initialBody,
         status: "completed_at_creation",
         comment: null,

@@ -18,6 +18,9 @@ function actionTimelineMeta(action: string): { kind: string; title: string } {
     PAYMENT_DISPUTE: { kind: "disputed", title: "Спор" },
     PAYMENT_FORCE_APPROVE: { kind: "force_completed", title: "Проведение (адм.)" },
     PAYMENT_FORCE_REJECT: { kind: "force_rejected", title: "Отклонение (адм.)" },
+    PAYMENT_CORRECTION_PROPOSE: { kind: "correction_propose", title: "Запрос правки (админ.)" },
+    PAYMENT_CORRECTION_APPROVE: { kind: "correction_approve", title: "Правка применена" },
+    PAYMENT_CORRECTION_REJECT: { kind: "correction_reject", title: "Правка отклонена" },
   };
   return map[action] ?? { kind: "other", title: action };
 }

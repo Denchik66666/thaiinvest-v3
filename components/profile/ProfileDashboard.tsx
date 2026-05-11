@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
+  Banknote,
   Camera,
   CheckCircle2,
   KeyRound,
@@ -37,7 +38,28 @@ import {
 } from "@/lib/notification-preferences";
 import { NOTIFICATION_PRESETS, matchNotificationPresetId } from "@/lib/notification-presets";
 import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
-import { INVESTORS_LIST_QUERY_ROOT } from "@/lib/investors-query";
+import {
+  INVESTORS_LIST_QUERY_ROOT,
+  investorsDashboardListQueryKey,
+  investorsDashboardNetworkParam,
+} from "@/lib/investors-query";
+import { FinanceBodyTopUpModal } from "@/components/dashboard/finance/FinanceBodyTopUpModal";
+
+type LeanInvestorForTopUp = {
+  id: number;
+  ownerId?: number;
+  name: string;
+  handle?: string | null;
+  body: number;
+  entryDate?: string | null;
+  status: string;
+  isPrivate?: boolean;
+  investorUser?: { username: string } | null;
+  linkedUser?: { id: number; username: string; avatarUrl?: string | null } | null;
+  investorUserId?: number | null;
+  linkedUserId?: number | null;
+  owner?: { username: string; role?: string };
+};
 
 type AccountPatchResponse = {
   success: boolean;
@@ -201,6 +223,43 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
   const [confirmPassword, setConfirmPassword] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [bodyTopUpOpen, setBodyTopUpOpen] = useState(false);
+
+  const { data: ownerInvestorsData } = useQuery({
+    queryKey: investorsDashboardListQueryKey("OWNER"),
+    queryFn: () =>
+      apiClient.get<{ investors: LeanInvestorForTopUp[] }>(
+        `/api/investors?network=${investorsDashboardNetworkParam("OWNER")}&lean=1`
+      ),
+    enabled: user.role === "OWNER",
+    placeholderData: keepPreviousData,
+    staleTime: 45_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const myInvestorsForTopUp = useMemo(() => {
+    const list = ownerInvestorsData?.investors ?? [];
+    if (user.role !== "OWNER") return [];
+    return list.filter((inv) =>
+      inv.ownerId != null ? inv.ownerId === user.id : inv.owner?.username === user.username
+    );
+  }, [ownerInvestorsData?.investors, user.id, user.role, user.username]);
+
+  const { data: ownerTopUpData } = useQuery({
+    queryKey: ["body-topup-requests"],
+    queryFn: () =>
+      apiClient.get<{ requests: { investorId: number; status: string }[] }>("/api/body-topup-requests"),
+    enabled: user.role === "OWNER" && myInvestorsForTopUp.length > 0,
+    staleTime: 30_000,
+  });
+
+  const pendingBodyTopUpIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of ownerTopUpData?.requests ?? []) {
+      if (r.status === "pending_investor") ids.add(r.investorId);
+    }
+    return ids;
+  }, [ownerTopUpData?.requests]);
 
   const goHistoryBack = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -546,6 +605,31 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
                   <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden />
                   Пароль — «Безопасность», тема и уведомления — «Настройки».
                 </p>
+                {user.role === "OWNER" && myInvestorsForTopUp.length > 0 ? (
+                  <div className="flex flex-col gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 backdrop-blur-sm dark:bg-white/[0.02]">
+                    <div className="flex items-start gap-2">
+                      <Banknote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--thai-color-topup)]" aria-hidden />
+                      <div className="min-w-0 space-y-1">
+                        <ProfileFieldLabel>Пополнение тел</ProfileFieldLabel>
+                        <p className="text-[11px] leading-snug text-muted-foreground">
+                          Общая сеть. Инвестор подтверждает в кабинете.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-8 w-full rounded-lg text-[11px] font-semibold sm:w-auto",
+                        glassAccentSurface
+                      )}
+                      onClick={() => setBodyTopUpOpen(true)}
+                    >
+                      Запросить пополнение
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -685,6 +769,35 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
 
         <MobileBottomNav />
       </div>
+
+      {user.role === "OWNER" ? (
+        <FinanceBodyTopUpModal
+          open={bodyTopUpOpen}
+          onClose={() => setBodyTopUpOpen(false)}
+          investors={myInvestorsForTopUp.map((inv) => ({
+            id: inv.id,
+            name: inv.name,
+            handle: inv.handle ?? null,
+            body: inv.body ?? 0,
+            entryDate: inv.entryDate != null ? String(inv.entryDate) : null,
+            status: inv.status ?? "",
+            isPrivate: inv.isPrivate,
+            investorUser: inv.investorUser ?? null,
+            linkedUser: inv.linkedUser ?? null,
+            investorUserId: inv.investorUserId ?? null,
+            linkedUserId: inv.linkedUserId ?? null,
+          }))}
+          hintInvestorId={null}
+          pendingTopUpIds={pendingBodyTopUpIds}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] });
+            queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] });
+            queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] });
+            queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
+            queryClient.invalidateQueries({ queryKey: ["reports-feed"] });
+          }}
+        />
+      ) : null}
     </Container>
   );
 }

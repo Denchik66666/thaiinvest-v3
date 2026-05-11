@@ -3,7 +3,7 @@
 /** Общая лента операций для главной дашборда (INVESTOR / OWNER). Вёрстка — нейтральные `thai-dashboard-*`. */
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Banknote, ChevronDown, Percent, PlusCircle } from "lucide-react";
@@ -19,7 +19,11 @@ import { Button } from "@/components/ui/Button";
 import { HistoryPeriodPopover, sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
 import { FinanceOperationsSubFeed } from "@/components/dashboard/finance/FinanceOperationsSubFeed";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
-import { paymentAttentionBadgeLabel, paymentNeedsViewerAction } from "@/lib/finance-payment-attention";
+import {
+  paymentAttentionBadgeLabel,
+  paymentNeedsViewerAction,
+  topupNeedsViewerAction,
+} from "@/lib/finance-payment-attention";
 
 type OpFilter = FinanceOperationsHistoryOpFilter;
 
@@ -33,7 +37,11 @@ function opMatchesFilter(item: FinanceOperationItem, f: OpFilter): boolean {
   if (f === "accrual") return item.kind === "week_accrual";
   if (f === "topup") return item.kind === "topup";
   if (f === "payout") return item.kind === "payment" && item.status === "completed";
-  if (f === "request") return item.kind === "payment" && item.status !== "completed";
+  if (f === "request") {
+    if (item.kind === "payment" && item.status !== "completed") return true;
+    if (item.kind === "topup" && !item.initialFromCreation && item.status === "pending_investor") return true;
+    return false;
+  }
   return false;
 }
 
@@ -67,15 +75,27 @@ function paymentTypeLabel(type: string) {
 function paymentStatusShort(status: string) {
   const map: Record<string, string> = {
     completed: "Выполнено",
-    requested: "На рассмотрении",
+    requested: "На рассмотрении у владельца",
     pending: "В очереди",
-    approved_waiting_accept: "Ожидает решения",
+    approved_waiting_accept: "Одобрено — ждём инвестора",
     rejected: "Отклонено",
     expired: "Истекло",
     disputed: "Спор",
     completed_at_creation: "При создании позиции",
+    pending_investor: "Ожидает решения инвестора",
+    accepted_by_investor: "Принято инвестором",
+    rejected_by_investor: "Отклонено инвестором",
+    cancelled_by_owner: "Отозвано владельцем",
   };
   return map[status] ?? status;
+}
+
+function formatTopUpHistorySubline(item: Extract<FinanceOperationItem, { kind: "topup" }>) {
+  if (item.initialFromCreation) {
+    return `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)}`;
+  }
+  const when = item.requestDate ?? item.createdAt;
+  return `${paymentStatusShort(item.status)} · ${formatDateTime(when)}`;
 }
 
 function formatDate(dateStr: string) {
@@ -95,8 +115,10 @@ function financeSelectionTotals(ops: FinanceOperationItem[]) {
   let openRequests = 0;
   for (const op of ops) {
     if (op.kind === "week_accrual") growth += op.accrued;
-    else if (op.kind === "topup") growth += op.amount;
-    else if (op.kind === "payment") {
+    else if (op.kind === "topup") {
+      growth += op.amount;
+      if (!op.initialFromCreation && op.status === "pending_investor") openRequests += 1;
+    } else if (op.kind === "payment") {
       if (op.status === "completed") paidOut += op.amount;
       else openRequests += 1;
     }
@@ -187,6 +209,8 @@ export type DashboardOperationsHistoryProps = {
   onOperationClick?: (item: FinanceOperationItem) => void;
   /** Рядом с выбором периода (напр. legacy-слоты). */
   financeSecondaryFiltersSlot?: ReactNode;
+  /** В строке заголовка «Лента» (стр. «Финансы»), рядом со счётчиками. */
+  financeFeedHeaderSlot?: ReactNode;
   /** Под фильтрами периода и типа: полоса карточек позиций (Финансы владельца / SA). Режим функции — под каждой карточкой своя лента через renderFeed. */
   financeInvestorCardsSlot?:
     | ReactNode
@@ -255,6 +279,7 @@ export function DashboardOperationsHistory({
   financePageScroll = false,
   onOperationClick,
   financeSecondaryFiltersSlot,
+  financeFeedHeaderSlot,
   financeInvestorCardsSlot,
   filterInvestorId,
   financeSuppressBottomFeed = false,
@@ -267,6 +292,12 @@ export function DashboardOperationsHistory({
   const [expanded, setExpanded] = useState(false);
   const [embeddedExpanded, setEmbeddedExpanded] = useState(embeddedInitiallyExpanded);
 
+  /** Раскрыть журнал при появлении явного `?investor=` (initial state не обновляется при смене пропа). */
+  useEffect(() => {
+    if (!embeddedCollapsible) return;
+    if (embeddedInitiallyExpanded) setEmbeddedExpanded(true);
+  }, [embeddedCollapsible, embeddedInitiallyExpanded]);
+
   const showPanel = embedded ? (embeddedCollapsible ? embeddedExpanded : true) : expanded;
   const [opFilter, setOpFilter] = useState<OpFilter>("all");
   const [periodValue, setPeriodValue] = useState<HistoryPeriodValue>({ kind: "preset", preset: "all" });
@@ -276,13 +307,19 @@ export function DashboardOperationsHistory({
    * «Финансы» с аккордеоном: фильтры и карточки показываем даже при свёрнутой ленте,
    * а тяжёлый GET не дергаем, пока не развернули журнал или не выбрана одна позиция (investorId).
    */
+  /** Пока нижняя лента скрыта (Финансы OWNER/SUPER_ADMIN), откладывать GET нельзя — иначе шапка «Лента» и карточки живут без тех же данных, что под‑аккордеоном. */
   const deferHeavyHistoryFetch =
     embedded &&
     embeddedCollapsible &&
     financeProminentFilters &&
-    typeof financeInvestorCardsSlot === "function";
+    typeof financeInvestorCardsSlot === "function" &&
+    !financeSuppressBottomFeed;
 
-  const showFiltersAndCards = deferHeavyHistoryFetch || showPanel;
+  const financeInvestorAccordionChrome =
+    embedded && financeProminentFilters && typeof financeInvestorCardsSlot === "function";
+
+  /** Свёрнутый «Журнал» не должен прятать фильтры и карточки — только нижний блок (см. `showPanel && !financeSuppressBottomFeed`). */
+  const showFiltersAndCards = deferHeavyHistoryFetch || showPanel || financeInvestorAccordionChrome;
 
   const opsHistoryEnabled =
     enabled && (!deferHeavyHistoryFetch || embeddedExpanded || filterInvestorId != null);
@@ -520,6 +557,7 @@ export function DashboardOperationsHistory({
                   ) : (
                     <span className="h-5 w-16 animate-pulse rounded-md bg-muted/35" />
                   )}
+                  {financeFeedHeaderSlot}
                 </div>
                 {!isBusy && financeTotals ? (
                   <div className="flex flex-wrap items-center justify-end gap-1">
@@ -667,7 +705,7 @@ export function DashboardOperationsHistory({
                           opFilter={opFilter}
                           financePageScroll={financePageScroll}
                           showMultiPositionLabels={investorId != null ? false : showMultiPositionLabels}
-                          enabled={opsHistoryEnabled && (!embeddedCollapsible || embeddedExpanded)}
+                          enabled={enabled}
                           onOperationClick={onOperationClick}
                           operationRowPredicate={operationRowPredicate}
                         />
@@ -821,41 +859,81 @@ export function DashboardOperationsHistory({
                   }
 
                   if (item.kind === "topup") {
-                    const subline = item.initialFromCreation
-                      ? `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)}`
-                      : `${paymentStatusShort(item.status)} · ${formatDateTime(item.sortAt)}`;
+                    const subline = formatTopUpHistorySubline(item);
+                    const needsTopUpAction = topupNeedsViewerAction(operationsHistoryScope, item);
+                    const rowClickableTopUp =
+                      Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+                    const attentionTitleTopUp = needsTopUpAction
+                      ? rowClickableTopUp
+                        ? operationsHistoryScope === "investor"
+                          ? "Откройте строку: подтвердите или отклоните пополнение тела"
+                          : "Откройте строку: отзовите запрос или откройте карточку заявки"
+                        : operationsHistoryScope === "investor"
+                          ? "Финансы: откройте эту строку, чтобы подтвердить или отклонить пополнение"
+                          : "Финансы: откройте эту строку по запросу пополнения"
+                      : undefined;
+                    const topUpPendingRequest =
+                      !item.initialFromCreation && item.status === "pending_investor";
                     return (
                       <div
                         key={item.id}
                         {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
+                        title={attentionTitleTopUp}
+                        data-finance-history-attention={needsTopUpAction ? "action" : undefined}
                         className={cn(
                           "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                          operationRowPointerCn(onOperationClick, item, operationRowPredicate)
+                          operationRowPointerCn(onOperationClick, item, operationRowPredicate),
+                          needsTopUpAction &&
+                            "border-l-[3px] border-l-amber-500/85 bg-amber-500/[0.07] dark:border-l-amber-400/80 dark:bg-amber-400/[0.09]"
                         )}
-                        style={{ background: "var(--thai-color-topup-bg)" }}
+                        style={
+                          needsTopUpAction
+                            ? undefined
+                            : { background: "var(--thai-color-topup-bg)" }
+                        }
                       >
                         <div
                           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background/50"
                           style={{
-                            borderColor: "color-mix(in srgb, var(--thai-color-topup) 45%, transparent)",
+                            borderColor: needsTopUpAction
+                              ? "color-mix(in srgb, rgb(245 158 11) 55%, transparent)"
+                              : "color-mix(in srgb, var(--thai-color-topup) 45%, transparent)",
                           }}
                           aria-hidden
                         >
-                          <PlusCircle className="h-4 w-4 shrink-0 text-[var(--thai-color-topup)]" strokeWidth={2} />
+                          <PlusCircle
+                            className="h-4 w-4 shrink-0 text-[var(--thai-color-topup)]"
+                            strokeWidth={2}
+                            style={
+                              needsTopUpAction
+                                ? { color: "rgb(245 158 11)", opacity: 0.92 }
+                                : undefined
+                            }
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[12px] font-semibold text-foreground">
-                            {showMultiPositionLabels ? `Пополнение · ${item.positionName}` : "Пополнение тела"}
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[12px] font-semibold text-foreground">
+                              {showMultiPositionLabels ? `Пополнение · ${item.positionName}` : "Пополнение тела"}
+                            </span>
+                            {needsTopUpAction ? (
+                              <span className="inline-flex shrink-0 rounded border border-amber-500/45 bg-amber-500/14 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-950 dark:text-amber-100">
+                                {paymentAttentionBadgeLabel(operationsHistoryScope)}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="line-clamp-2 text-[10px] text-muted-foreground">{subline}</div>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <span
+                        <div className="shrink-0 text-right leading-tight">
+                          <div
                             className="text-[12px] font-semibold tabular-nums"
                             style={{ color: "var(--thai-color-topup)", WebkitTextFillColor: "var(--thai-color-topup)" }}
                           >
                             +{formatAmount(item.amount)}
-                          </span>
+                          </div>
+                          {topUpPendingRequest ? (
+                            <div className="text-[9px] text-muted-foreground">заявка</div>
+                          ) : null}
                         </div>
                       </div>
                     );

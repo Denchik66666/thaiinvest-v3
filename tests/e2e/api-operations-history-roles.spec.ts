@@ -66,11 +66,11 @@ test("GET /api/investors/operations-history?network=all — SUPER_ADMIN: meta и
     process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ??
     process.env.SUPERADMIN_PASSWORD ??
     process.env.PLAYWRIGHT_LOGIN_PASSWORD ??
-    process.env.PLAYWRIGHT_DEN_PASSWORD;
-  test.skip(!password, "Задайте пароль супера в .env (PLAYWRIGHT_LOGIN_PASSWORD и т.п.)");
+    process.env.PLAYWRIGHT_DEN_PASSWORD ??
+    "admin123";
 
   const b = baseURL ?? "http://127.0.0.1:3000";
-  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
+  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
   const ctx = await newContextWithLogin(browser, b, user, password!);
   try {
     const res = await ctx.request.get("/api/investors/operations-history?network=all", { timeout: 150_000 });

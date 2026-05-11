@@ -39,6 +39,8 @@ export type FinanceOperationItem =
       amount: number;
       status: string;
       comment: string | null;
+      /** Календарная дата заявки (выбор владельца); если null — только `createdAt`. */
+      requestDate?: string | null;
       createdAt: string;
       decidedAt: string | null;
       /** Начальное тело при создании позиции (не отдельная заявка BodyTopUpRequest). */

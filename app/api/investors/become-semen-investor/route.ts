@@ -10,6 +10,8 @@ import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 const BecomeSemenInvestorSchema = z.object({
   name: z.string().min(2, "Имя должно содержать минимум 2 символа"),
+  handle: z.string().max(200).optional(),
+  phone: z.string().max(80).optional(),
   body: z.number().positive("Сумма вклада должна быть больше 0"),
   rate: z.number().positive("Ставка должна быть больше 0"),
   entryDate: z.string().min(1, "Дата входа обязательна"),
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, body, rate, entryDate, allowMultiple } = parsed.data;
+    const handleTrim = parsed.data.handle?.trim() ?? "";
+    const phoneTrim = parsed.data.phone?.trim() ?? "";
     const owner = await withDbRetry(() => prisma.user.findFirst({ where: { role: "OWNER" } }));
     if (!owner) return NextResponse.json({ error: "OWNER не найден" }, { status: 400 });
 
@@ -73,6 +77,8 @@ export async function POST(request: NextRequest) {
         ownerId: owner.id,
         linkedUserId: decoded.userId,
         name,
+        handle: handleTrim || null,
+        phone: phoneTrim || null,
         body,
         rate,
         accrued,

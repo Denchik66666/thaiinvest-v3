@@ -17,8 +17,9 @@ test("OWNER investors registry + SUPER_ADMIN finance nick → investor card", as
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const samPw = process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
-  const denUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
-  const denPw = process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "den123";
+  const superAdminUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const superAdminPw =
+    process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
 
   let loginSam = await context.request.post("/api/auth/login", {
     data: { username: "Sam", password: samPw },
@@ -37,16 +38,18 @@ test("OWNER investors registry + SUPER_ADMIN finance nick → investor card", as
 
   await context.request.post("/api/auth/logout");
 
-  let loginDen = await context.request.post("/api/auth/login", {
-    data: { username: denUser, password: denPw },
+  let loginSuperAdmin = await context.request.post("/api/auth/login", {
+    data: { username: superAdminUser, password: superAdminPw },
   });
-  if (!loginDen.ok()) {
-    for (const p of ["admin123", "den123"]) {
-      loginDen = await context.request.post("/api/auth/login", { data: { username: denUser, password: p } });
-      if (loginDen.ok()) break;
+  if (!loginSuperAdmin.ok()) {
+    for (const p of ["admin123"]) {
+      loginSuperAdmin = await context.request.post("/api/auth/login", {
+        data: { username: superAdminUser, password: p },
+      });
+      if (loginSuperAdmin.ok()) break;
     }
   }
-  expect(loginDen.ok(), await loginDen.text()).toBeTruthy();
+  expect(loginSuperAdmin.ok(), await loginSuperAdmin.text()).toBeTruthy();
 
   await page.goto("/dashboard/finance", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Финансы" })).toBeVisible({ timeout: 90_000 });

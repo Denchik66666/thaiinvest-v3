@@ -8,6 +8,7 @@ import { getNextMonday } from "@/lib/weekly";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
 import { moneyRound2 } from "@/lib/money-round";
+import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -425,6 +426,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT ACCEPT AUDIT ERROR:", auditError);
       }
+      scheduleBusinessRateRecalc();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -503,6 +505,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT FORCE APPROVE AUDIT ERROR:", auditError);
       }
+      scheduleBusinessRateRecalc();
       return NextResponse.json({ success: true, payment: updated });
     }
 

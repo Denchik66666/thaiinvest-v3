@@ -13,6 +13,7 @@ import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { superAdminFinanceMaxPositions } from "@/lib/super-admin-finance-limits";
 import { getRateHistoryRowsForLedger } from "@/lib/rate-history-rows-cache";
+import { findBodyTopUpsForOperationsSummary } from "@/lib/body-topup-request-date-compat";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { buildWeeklyLedgerRows, type WeeklyLedgerPaymentInput } from "@/lib/weekly-ledger-rows";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
@@ -254,11 +255,7 @@ export async function GET(request: NextRequest) {
     const [rateHistory, topUps, createInvestorAudits] = await withDbRetry(() =>
       Promise.all([
         getRateHistoryRowsForLedger(),
-        prisma.bodyTopUpRequest.findMany({
-          where: { investorId: { in: ids } },
-          select: { investorId: true, amount: true, createdAt: true, decidedAt: true, status: true },
-          orderBy: { createdAt: "desc" },
-        }),
+        findBodyTopUpsForOperationsSummary(ids),
         prisma.auditLog.findMany({
           where: {
             entityType: "Investor",
@@ -305,7 +302,7 @@ export async function GET(request: NextRequest) {
 
       const invTopups = topUpsByInv.get(inv.id) ?? [];
       const topupGrowth = invTopups.reduce((s, t) => {
-        const sortAt = (t.decidedAt ?? t.createdAt).toISOString();
+        const sortAt = (t.requestDate ?? t.createdAt).toISOString();
         if (!sortAtInHistoryPeriod(sortAt, period)) return s;
         return s + t.amount;
       }, 0);

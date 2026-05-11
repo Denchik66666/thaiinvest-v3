@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+import { findBodyTopUpsForReportsFeed } from "@/lib/body-topup-request-date-compat";
 import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -59,47 +60,23 @@ export async function GET() {
       }
     }
 
-    const topUpInclude = {
-      investor: {
-        select: {
-          id: true,
-          name: true,
-          body: true,
-          ownerId: true,
-          linkedUserId: true,
-          investorUserId: true,
-          isPrivate: true,
-        },
-      },
-      createdBy: { select: { id: true, username: true, role: true } },
-      decidedBy: { select: { id: true, username: true, role: true } },
-    } as const;
-
     let bodyTopUps: unknown[] = [];
     if (role === "SUPER_ADMIN") {
-      bodyTopUps = await prisma.bodyTopUpRequest.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 120,
-        include: topUpInclude,
-      });
+      bodyTopUps = await findBodyTopUpsForReportsFeed({ take: 120 });
     } else if (role === "OWNER") {
-      bodyTopUps = await prisma.bodyTopUpRequest.findMany({
+      bodyTopUps = await findBodyTopUpsForReportsFeed({
         where: { investor: { ownerId: decoded.userId, isPrivate: false } },
-        orderBy: { createdAt: "desc" },
         take: 120,
-        include: topUpInclude,
       });
     } else {
-      bodyTopUps = await prisma.bodyTopUpRequest.findMany({
+      bodyTopUps = await findBodyTopUpsForReportsFeed({
         where: {
           investor: {
             OR: [{ linkedUserId: decoded.userId }, { investorUserId: decoded.userId }],
             isPrivate: false,
           },
         },
-        orderBy: { createdAt: "desc" },
         take: 120,
-        include: topUpInclude,
       });
     }
 

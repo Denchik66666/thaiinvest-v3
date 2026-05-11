@@ -1,6 +1,13 @@
 "use client";
 
-import { type Dispatch, type ReactNode, type SetStateAction } from "react";
+import {
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -30,6 +37,7 @@ import { Text } from "@/components/ui/Text";
 import { apiClient } from "@/lib/api-client";
 import { investDeskModalEmphasisClass, investDeskModalFigureClass } from "@/lib/dashboard-glass-accent";
 import type { PrivateInvestorCreateContext } from "@/lib/private-investor-create-context";
+import { getNextMonday, startOfDay } from "@/lib/weekly";
 import { cn, formatCurrency } from "@/lib/utils";
 
 export type InvestorForm = {
@@ -56,20 +64,13 @@ const deskGhostRound =
 const deskGhostRoundDanger = "hover:text-red-400";
 
 /** Поля модалки: крупнее и без «клинического» белого. */
-const deskFieldInputClass =
+export const deskFieldInputClass =
   "w-full bg-transparent text-[15px] leading-snug outline-none text-slate-800 placeholder:text-slate-500/75 dark:text-slate-100 dark:placeholder:text-slate-500/50";
 
-function formatIsoDateShortRu(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
+export const investorDeskCardShellClass = cn(
+  "border-violet-200/45 bg-gradient-to-b from-violet-50/30 via-card to-card shadow-xl",
+  "dark:border-violet-500/[0.14] dark:from-[#1c1c2e] dark:via-[#15151f] dark:to-[#111118] dark:shadow-[0_28px_56px_-28px_rgba(0,0,0,0.75)]"
+);
 
 /** ДД.ММ.ГГ из локальной даты */
 function formatLocalDdMmYy(d: Date) {
@@ -79,17 +80,52 @@ function formatLocalDdMmYy(d: Date) {
   return `${day}.${mo}.${y}`;
 }
 
+/** YYYY-MM-DD → локальная полночь или null */
+function parseYmdLocal(ymd: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return startOfDay(dt);
+}
+
 /**
- * Понедельник–воскресенье текущей начисляемой недели (выплата по ней — следующий понедельник, как в реестре).
+ * Пн активации карточки (как в API создания). Неделя 30.03–05.04 при входе 24.03 — первая «учётная» после входа.
  */
-function getCurrentAccrualWeekRangeDdMmYy() {
-  const today = new Date();
-  const dow = today.getDay();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+function activationMondayLocal(entryYmd: string): Date | null {
+  const entry = parseYmdLocal(entryYmd);
+  if (!entry) return null;
+  return getNextMonday(entry);
+}
+
+/**
+ * Пн первой недели в сводке деска: **следующий** пн после недели активации (активация + 7 дн.).
+ * Показывает период уже под ставкой, действующей с пн активации (напр. 5% с 30.03 → первая строка 06.04–12.04).
+ * Леджер в БД по-прежнему может вестись с пн активации — здесь только превью формы.
+ */
+function deskFirstShownWeekMonday(entryYmd: string): Date | null {
+  const activationMon = activationMondayLocal(entryYmd);
+  if (!activationMon) return null;
+  const d = new Date(activationMon);
+  d.setDate(activationMon.getDate() + 7);
+  return d;
+}
+
+function getDeskFirstShownWeekRangeDdMmYy(entryYmd: string) {
+  const monday = deskFirstShownWeekMonday(entryYmd);
+  if (!monday) return "…";
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   return `${formatLocalDdMmYy(monday)} — ${formatLocalDdMmYy(sunday)}`;
+}
+
+/** Выплата % за эту показанную неделю — пн после её воскресенья. */
+function firstPayoutMondayAfterDeskShownWeek(entryYmd: string): Date | null {
+  const start = deskFirstShownWeekMonday(entryYmd);
+  if (!start) return null;
+  const payout = new Date(start);
+  payout.setDate(start.getDate() + 7);
+  return payout;
 }
 
 /** Оценка процентов за неделю: месячная ставка сети / 4, как в `buildWeeklyLedgerRows` для общей сети */
@@ -111,12 +147,38 @@ function formatRateDate(iso: string) {
   }
 }
 
-function entryAndEffectiveHighlights(entryYmd: string, effectiveIso?: string | null) {
+function toYmdLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** «·» в календаре: вход; пн/вс недели активации; пн/вс недели из сводки; выплата %; строка ставки в журнале. */
+function commonNetworkDeskCalendarHighlights(entryYmd: string, effectiveIso?: string | null) {
   const out = new Set<string>();
   if (entryYmd) out.add(entryYmd);
   if (effectiveIso) {
     const y = effectiveIso.split("T")[0];
     if (y) out.add(y);
+  }
+  const entry = parseYmdLocal(entryYmd);
+  if (entry) {
+    const actMon = getNextMonday(entry);
+    const actSun = new Date(actMon);
+    actSun.setDate(actMon.getDate() + 6);
+    out.add(toYmdLocal(actMon));
+    out.add(toYmdLocal(actSun));
+
+    const shownMon = deskFirstShownWeekMonday(entryYmd);
+    if (shownMon) {
+      const shownSun = new Date(shownMon);
+      shownSun.setDate(shownMon.getDate() + 6);
+      out.add(toYmdLocal(shownMon));
+      out.add(toYmdLocal(shownSun));
+    }
+    const pay = firstPayoutMondayAfterDeskShownWeek(entryYmd);
+    if (pay) out.add(toYmdLocal(pay));
   }
   return [...out];
 }
@@ -133,7 +195,7 @@ function formatAmountInput(value: string) {
 
 type DeskFieldTone = "neutral" | "violet" | "sky" | "amber";
 
-function DeskInlineField({
+export function DeskInlineField({
   icon: Icon,
   children,
   className,
@@ -226,7 +288,10 @@ type CreateModeProps = {
 
 export type LinkSelfFormState = {
   name: string;
+  handle: string;
+  phone: string;
   body: string;
+  /** Подставляется из ставки сети на дату входа (как в «Новой карточке»). */
   rate: string;
   entryDate: string;
   allowMultiple: boolean;
@@ -245,6 +310,8 @@ type LinkSelfModeProps = {
   systemReady: boolean;
   submitDisabled?: boolean;
   error?: string;
+  /** Роль для ключа запроса ставки (`GET /api/system/business-rate`). */
+  userRole?: string;
 };
 
 type BodyTopUpModeProps = {
@@ -549,98 +616,274 @@ function CreateInvestorContent(p: CreateModeProps) {
   );
 }
 
+/** Общая сеть: шапка с датой входа, сводка «Сеть / Неделя / Оценка» — одна разметка для «Новая карточка», «Привязка», «Пополнение тела». */
+export function CommonNetworkInvestorDeskShell({
+  open,
+  onClose,
+  title,
+  entryDate,
+  onEntryDateChange,
+  bodyForEstimate,
+  loading,
+  rateQueryRole,
+  titleRightExtra,
+  onBusinessRateCurrent,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  entryDate: string;
+  onEntryDateChange: (ymd: string) => void;
+  bodyForEstimate: string;
+  loading: boolean;
+  rateQueryRole: string | undefined;
+  titleRightExtra?: ReactNode;
+  onBusinessRateCurrent?: (current: BusinessRateHint | null) => void;
+  children: ReactNode;
+}) {
+  const businessRateAtYmd = useMemo(() => {
+    const m = deskFirstShownWeekMonday(entryDate);
+    return m ? toYmdLocal(m) : entryDate;
+  }, [entryDate]);
+
+  const { data: rateHdr, isPending: rateHdrPending } = useQuery({
+    queryKey: ["business-rate-at-desk-shown-week", businessRateAtYmd, rateQueryRole],
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: BusinessRateHint | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(businessRateAtYmd)}`
+      ),
+    enabled: open && Boolean(entryDate) && Boolean(businessRateAtYmd),
+    staleTime: 30_000,
+  });
+
+  const rateCallbackRef = useRef(onBusinessRateCurrent);
+  rateCallbackRef.current = onBusinessRateCurrent;
+
+  useEffect(() => {
+    if (!open) return;
+    rateCallbackRef.current?.(rateHdr?.current ?? null);
+  }, [open, rateHdr?.current]);
+
+  const bodyNum = parseAmountInput(bodyForEstimate);
+  const weeklyEst =
+    rateHdr?.current && bodyNum > 0
+      ? estimateWeeklyInterestThb(bodyNum, rateHdr.current.rate)
+      : null;
+
+  const firstWeekRangeLabel = getDeskFirstShownWeekRangeDdMmYy(entryDate);
+  const rateAnchorDay = parseYmdLocal(businessRateAtYmd);
+  const rateAnchorShortRu = rateAnchorDay ? formatLocalDdMmYy(rateAnchorDay) : businessRateAtYmd;
+
+  const datePickerCommon = (
+    <DatePicker
+      inline
+      financeFeedToolbar
+      value={entryDate}
+      onChange={onEntryDateChange}
+      variant="default"
+      allowClear={false}
+      disabled={loading}
+      placeholder="Вход"
+      className="shrink-0"
+      highlightedDates={commonNetworkDeskCalendarHighlights(entryDate, rateHdr?.current?.effectiveDate)}
+      triggerTitle="Дата входа в позицию"
+    />
+  );
+
+  const headerDateSlot = (
+    <span className="inline-flex items-center gap-1">
+      {datePickerCommon}
+      {titleRightExtra}
+      {rateHdrPending ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary opacity-80" aria-hidden />
+      ) : null}
+    </span>
+  );
+
+  const summary = rateHdrPending ? (
+    <p className="text-sm text-muted-foreground/90">Проверяем ставку на понедельник 1-й недели…</p>
+  ) : rateHdr?.current ? (
+    <dl className="space-y-1.5">
+      <div className="space-y-0">
+        <dt className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
+          Ставка сети
+        </dt>
+        <dd className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 tabular-nums">
+          <span className="text-[17px] font-bold leading-tight text-violet-600 dark:text-violet-400">
+            {rateHdr.current.rate}%
+          </span>
+          <span className="text-sm font-medium text-foreground/65 dark:text-foreground/60">
+            (на {rateAnchorShortRu})
+          </span>
+        </dd>
+      </div>
+      <div className="space-y-0">
+        <dt className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
+          Первая неделя
+        </dt>
+        <dd className="text-sm font-semibold leading-tight text-sky-800/90 tabular-nums dark:text-sky-300/95 sm:text-[15px]">
+          {firstWeekRangeLabel}
+        </dd>
+      </div>
+      <div className="space-y-0">
+        <dt className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
+          Оценка дохода за неделю
+        </dt>
+        <dd
+          className={cn(
+            "text-[17px] font-bold leading-tight tabular-nums",
+            weeklyEst != null && weeklyEst > 0
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-muted-foreground/80"
+          )}
+        >
+          {weeklyEst != null && weeklyEst > 0
+            ? `+${formatCurrency(Math.round(weeklyEst))}`
+            : "—"}
+        </dd>
+      </div>
+    </dl>
+  ) : (
+    <p className="text-xs leading-snug text-amber-900 dark:text-amber-200/90">
+      На эту дату ставки нет — задайте в «Управлении» или смените дату.
+    </p>
+  );
+
+  return (
+    <InvestDeskModalShell
+      open={open}
+      onClose={onClose}
+      minimal
+      title={title}
+      titleRight={headerDateSlot}
+      titleRowClassName="items-center gap-2"
+      titleRightWrapClassName="max-w-[min(58%,17rem)] shrink-0 pt-0 flex items-center justify-end"
+      summary={summary}
+      cardClassName={investorDeskCardShellClass}
+      headerClassName="border-b border-violet-200/35 pb-2 pt-3 dark:border-violet-500/[0.1]"
+      summaryWrapClassName="mt-1.5 text-foreground/90"
+      bodyClassName="px-4 py-2.5"
+    >
+      {children}
+    </InvestDeskModalShell>
+  );
+}
+
+function LinkSelfDeskWithShell(props: LinkSelfModeProps) {
+  const { form, setForm, loading } = props;
+  return (
+    <CommonNetworkInvestorDeskShell
+      open={props.open}
+      onClose={props.onClose}
+      title="Привязка"
+      entryDate={form.entryDate}
+      onEntryDateChange={(v) => setForm((p) => ({ ...p, entryDate: v }))}
+      bodyForEstimate={form.body}
+      loading={loading}
+      rateQueryRole={props.userRole}
+      titleRightExtra={
+        <button
+          type="button"
+          title={form.allowMultiple ? "Разрешена вторая карточка" : "Одна карточка на владельца"}
+          aria-label={form.allowMultiple ? "Выключить вторую карточку" : "Разрешить вторую карточку"}
+          aria-pressed={form.allowMultiple}
+          disabled={loading}
+          onClick={() => setForm((p) => ({ ...p, allowMultiple: !p.allowMultiple }))}
+          className={cn(deskGhostRound, form.allowMultiple && "text-primary")}
+        >
+          <Layers className="h-[1.125rem] w-[1.125rem]" strokeWidth={2} />
+        </button>
+      }
+      onBusinessRateCurrent={(cur) => {
+        setForm((p) => ({ ...p, rate: cur ? String(cur.rate) : "" }));
+      }}
+    >
+      <LinkSelfContent {...props} />
+    </CommonNetworkInvestorDeskShell>
+  );
+}
+
 function LinkSelfContent(p: LinkSelfModeProps) {
   const { form, setForm, onSubmit, onClose, loading, systemReady, submitDisabled, error } = p;
 
   return (
     <form
-      className="space-y-4"
+      className="space-y-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
     >
-      <div className="flex flex-wrap items-center justify-center gap-2 text-[10px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1" title="Аккаунт">
-          <User className="h-3.5 w-3.5 opacity-70" aria-hidden />
-          <span className={cn("max-w-[12rem] truncate font-medium", investDeskModalEmphasisClass)}>
+      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-[10px]">
+        <span
+          className="rounded border border-violet-500/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400"
+          title="Текущий аккаунт"
+        >
+          Аккаунт
+        </span>
+        <span className="inline-flex items-center gap-1 text-muted-foreground" title="Логин">
+          <User className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+          <span className="max-w-[12rem] truncate font-medium text-violet-800 dark:text-violet-300">
             @{p.actorUsername.replace(/^@/, "")}
           </span>
         </span>
         {p.ownerUsername ? (
-          <span className="inline-flex items-center gap-1 opacity-80" title="Книга">
-            <Globe2 className="h-3.5 w-3.5" aria-hidden />
-            <span className={cn("max-w-[10rem] truncate", investDeskModalEmphasisClass)}>{p.ownerUsername}</span>
+          <span className="inline-flex items-center gap-1 text-muted-foreground" title="Книга владельца">
+            <Globe2 className="h-3.5 w-3.5 shrink-0 opacity-80 text-[hsl(var(--thai-metric-info))]" aria-hidden />
+            <span className="max-w-[10rem] truncate font-medium text-[hsl(var(--thai-metric-info))]">
+              {p.ownerUsername}
+            </span>
           </span>
         ) : null}
       </div>
 
-      <div className="space-y-3">
-        <DeskInlineField icon={User}>
+      <div className="space-y-2.5 pt-0.5">
+        <DeskInlineField icon={User} tone="violet">
           <input
             required
+            disabled={loading}
             value={form.name}
             onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             placeholder="Имя и Отчество"
-            disabled={loading}
-            className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/45"
+            autoComplete="name"
+            className={deskFieldInputClass}
           />
         </DeskInlineField>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <DeskInlineField icon={Banknote}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <DeskInlineField icon={AtSign} tone="sky">
             <input
-              required
-              type="text"
-              inputMode="numeric"
-              value={form.body}
-              onChange={(e) => setForm((prev) => ({ ...prev, body: formatAmountInput(e.target.value) }))}
-              placeholder="Тело · ฿"
               disabled={loading}
-              className="w-full bg-transparent text-sm tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45"
+              value={form.handle}
+              onChange={(e) => setForm((prev) => ({ ...prev, handle: e.target.value }))}
+              placeholder="Telegram"
+              autoComplete="nickname"
+              className={deskFieldInputClass}
             />
           </DeskInlineField>
-          <DeskInlineField icon={Percent}>
+          <DeskInlineField icon={Phone} tone="sky">
             <input
-              required
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={form.rate}
-              onChange={(e) => setForm((prev) => ({ ...prev, rate: e.target.value }))}
-              placeholder="% / мес"
               disabled={loading}
-              className="w-full bg-transparent text-sm tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45"
+              value={form.phone}
+              onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+              placeholder="Телефон"
+              autoComplete="tel"
+              className={deskFieldInputClass}
             />
           </DeskInlineField>
         </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <p className="text-[12px] text-muted-foreground">Дата входа</p>
-        <div className="flex items-stretch gap-2">
-          <div className="min-w-0 flex-1">
-            <DatePicker
-              value={form.entryDate}
-              onChange={(v) => setForm((prev) => ({ ...prev, entryDate: v }))}
-              variant="default"
-              allowClear={false}
-              disabled={loading}
-              placeholder="Дата входа"
-              className="w-full"
-            />
-          </div>
-          <button
-            type="button"
-            title={form.allowMultiple ? "Разрешена вторая карточка" : "Одна карточка на владельца"}
-            aria-label={form.allowMultiple ? "Выключить вторую карточку" : "Разрешить вторую карточку"}
-            aria-pressed={form.allowMultiple}
+        <DeskInlineField icon={Banknote} tone="amber">
+          <input
+            type="text"
+            required
             disabled={loading}
-            onClick={() => setForm((prev) => ({ ...prev, allowMultiple: !prev.allowMultiple }))}
-            className={cn(deskGhostRound, form.allowMultiple && "text-primary")}
-          >
-            <Layers className="h-[1.125rem] w-[1.125rem]" strokeWidth={2} />
-          </button>
-        </div>
+            value={form.body}
+            onChange={(e) => setForm((prev) => ({ ...prev, body: formatAmountInput(e.target.value) }))}
+            placeholder="Тело · ฿"
+            inputMode="numeric"
+            className={cn(deskFieldInputClass, "font-medium tabular-nums", investDeskModalFigureClass)}
+          />
+        </DeskInlineField>
       </div>
 
       {!systemReady ? (
@@ -650,13 +893,13 @@ function LinkSelfContent(p: LinkSelfModeProps) {
         </div>
       ) : null}
       {error ? (
-        <div className="flex items-start justify-center gap-2 text-center text-[10px] text-red-600 dark:text-red-400">
+        <div className="flex items-start justify-center gap-2 rounded-lg border border-red-400/25 bg-red-500/[0.08] px-2.5 py-2 text-center text-xs leading-snug text-red-700 dark:border-red-500/20 dark:text-red-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/35 pt-3 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between gap-2 border-t border-violet-200/40 pt-2.5 dark:border-violet-500/[0.12]">
         <button
           type="button"
           title="Закрыть"
@@ -669,10 +912,14 @@ function LinkSelfContent(p: LinkSelfModeProps) {
         </button>
         <button
           type="submit"
-          title="Создать"
+          title="Создать карточку"
           aria-label="Создать"
           disabled={loading || submitDisabled}
-            className={cn(deskGhostRound, !(loading || submitDisabled) && "text-primary hover:text-primary")}
+          className={cn(
+            deskGhostRound,
+            !(loading || submitDisabled) &&
+              "text-violet-600 hover:text-violet-500 dark:text-emerald-400 dark:hover:text-emerald-300"
+          )}
         >
           {loading ? (
             <Loader2 className="h-[1.125rem] w-[1.125rem] animate-spin" strokeWidth={2.25} />
@@ -764,130 +1011,35 @@ function CreateInvestorDeskWithShell(props: CreateModeProps) {
   const commonHdr =
     !props.formData.isPrivate && (props.userRole === "OWNER" || props.userRole === "SUPER_ADMIN");
 
-  const { data: rateHdr, isPending: rateHdrPending } = useQuery({
-    queryKey: ["business-rate-at-entry", props.formData.entryDate, props.userRole],
-    queryFn: () =>
-      apiClient.get<{ success: boolean; current: { rate: number; effectiveDate: string } | null }>(
-        `/api/system/business-rate?at=${encodeURIComponent(props.formData.entryDate)}`
-      ),
-    enabled: props.open && commonHdr && Boolean(props.formData.entryDate),
-    staleTime: 30_000,
-  });
-
-  const bodyNum = parseAmountInput(props.formData.body);
-  const weeklyEst =
-    commonHdr && rateHdr?.current && bodyNum > 0
-      ? estimateWeeklyInterestThb(bodyNum, rateHdr.current.rate)
-      : null;
-
-  const datePickerCommon = (
-    <DatePicker
-      inline
-      financeFeedToolbar
-      value={props.formData.entryDate}
-      onChange={(v) => props.setFormData({ ...props.formData, entryDate: v })}
-      variant="default"
-      allowClear={false}
-      disabled={props.loading}
-      placeholder="Вход"
-      className="shrink-0"
-      highlightedDates={entryAndEffectiveHighlights(
-        props.formData.entryDate,
-        rateHdr?.current?.effectiveDate
-      )}
-    />
-  );
-
-  const headerDateSlot = commonHdr ? (
-    <span className="inline-flex items-center gap-2">
-      {datePickerCommon}
-      {rateHdrPending ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary opacity-80" aria-hidden />
-      ) : null}
-    </span>
-  ) : null;
-
-  const summary = commonHdr ? (
-    rateHdrPending ? (
-      <p className="text-xs text-muted-foreground">Проверяем ставку на дату входа…</p>
-    ) : rateHdr?.current ? (
-      <div className="space-y-1.5">
-        <div
-          className={cn(
-            "rounded-lg border px-2.5 py-2",
-            "border-violet-200/50 bg-gradient-to-r from-violet-100/70 via-sky-100/50 to-amber-100/60",
-            "dark:border-violet-500/20 dark:from-violet-500/[0.14] dark:via-sky-500/[0.08] dark:to-amber-500/[0.11]"
-          )}
-        >
-          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-            <div className="shrink-0" title={`Ставка сети ${rateHdr.current.rate}% в месяц по дате входа`}>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300/80">
-                Сеть
-              </span>
-              <span className="inline-flex items-baseline gap-0.5 tabular-nums">
-                <span className="text-2xl font-bold leading-none text-violet-800 dark:text-violet-100">
-                  {rateHdr.current.rate}
-                </span>
-                <span className="text-sm font-semibold text-violet-600 dark:text-violet-300/85">%</span>
-              </span>
-            </div>
-            <div
-              className="min-w-0 flex-[1_1_9rem] text-center"
-              title="Текущая начисляемая неделя (пн–вс), выплата — в следующий понедельник"
-            >
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-800 dark:text-sky-300/75">
-                Неделя
-              </span>
-              <span className="text-sm font-semibold tabular-nums text-sky-950 dark:text-sky-50/95">
-                {getCurrentAccrualWeekRangeDdMmYy()}
-              </span>
-            </div>
-            <div className="shrink-0 text-right" title="Оценка за неделю по телу ниже (¼ месячной ставки)">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300/70">
-                Оценка
-              </span>
-              <span
-                className={cn(
-                  "text-base font-semibold tabular-nums",
-                  weeklyEst != null && weeklyEst > 0 ? investDeskModalFigureClass : "text-slate-500 dark:text-slate-500"
-                )}
-              >
-                {weeklyEst != null && weeklyEst > 0 ? formatCurrency(Math.round(weeklyEst)) : "…"}
-              </span>
-            </div>
-          </div>
-        </div>
-        <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-400">
-          Действует с {formatIsoDateShortRu(rateHdr.current.effectiveDate)} · сумма после ввода тела
-        </p>
-      </div>
-    ) : (
-      <p className="text-xs leading-snug text-amber-900 dark:text-amber-200/90">
-        На эту дату ставки нет — задайте в «Управлении» или смените дату.
-      </p>
-    )
-  ) : null;
+  if (!commonHdr) {
+    return (
+      <InvestDeskModalShell
+        open={props.open}
+        onClose={props.onClose}
+        minimal
+        title="Новая карточка"
+        cardClassName={investorDeskCardShellClass}
+        headerClassName="border-b border-violet-200/35 pb-2 pt-3 dark:border-violet-500/[0.1]"
+        bodyClassName="px-4 py-2.5"
+      >
+        <CreateInvestorContent {...props} />
+      </InvestDeskModalShell>
+    );
+  }
 
   return (
-    <InvestDeskModalShell
+    <CommonNetworkInvestorDeskShell
       open={props.open}
       onClose={props.onClose}
-      minimal
       title="Новая карточка"
-      titleRight={headerDateSlot}
-      titleRowClassName="items-center gap-2"
-      titleRightWrapClassName="max-w-[min(54%,15rem)] shrink-0 pt-0 flex items-center justify-end"
-      summary={summary}
-      cardClassName={cn(
-        "border-violet-200/45 bg-gradient-to-b from-violet-50/30 via-card to-card shadow-xl",
-        "dark:border-violet-500/[0.14] dark:from-[#1c1c2e] dark:via-[#15151f] dark:to-[#111118] dark:shadow-[0_28px_56px_-28px_rgba(0,0,0,0.75)]"
-      )}
-      headerClassName="border-b border-violet-200/35 pb-2 pt-3 dark:border-violet-500/[0.1]"
-      summaryWrapClassName="mt-2 text-[13px] leading-relaxed text-slate-700 dark:text-slate-200/95"
-      bodyClassName="px-4 py-2.5"
+      entryDate={props.formData.entryDate}
+      onEntryDateChange={(v) => props.setFormData({ ...props.formData, entryDate: v })}
+      bodyForEstimate={props.formData.body}
+      loading={props.loading ?? false}
+      rateQueryRole={props.userRole}
     >
       <CreateInvestorContent {...props} />
-    </InvestDeskModalShell>
+    </CommonNetworkInvestorDeskShell>
   );
 }
 
@@ -899,16 +1051,7 @@ export function ManagePositionDeskModal(props: ManagePositionDeskModalProps) {
   }
 
   if (props.mode === "link_self") {
-    return (
-      <InvestDeskModalShell
-        open={props.open}
-        onClose={props.onClose}
-        minimal
-        title="Привязка"
-      >
-        <LinkSelfContent {...props} />
-      </InvestDeskModalShell>
-    );
+    return <LinkSelfDeskWithShell {...props} />;
   }
 
   return (

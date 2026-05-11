@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { Modal } from "@/components/ui/Modal";
+import { InvestDeskModalShell } from "@/components/investors/InvestDeskModalShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
-import { Text } from "@/components/ui/Text";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { apiClient } from "@/lib/api-client";
 import { toast } from "@/lib/notify";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import { glassAccentSurface } from "@/lib/dashboard-glass-accent";
 import { useAuth } from "@/hooks/useAuth";
 import type { Investor } from "@/types/investor";
 
@@ -21,18 +21,29 @@ type EditInvestorModalProps = {
   investor: Investor;
 };
 
+function investorToForm(inv: Investor) {
+  return {
+    name: inv.name,
+    body: inv.body.toString(),
+    accrued: inv.accrued.toString(),
+    rate: inv.rate.toString(),
+    entryDate: inv.entryDate ? inv.entryDate.split("T")[0] : new Date().toISOString().split("T")[0],
+    activationDate: inv.activationDate
+      ? inv.activationDate.split("T")[0]
+      : new Date().toISOString().split("T")[0],
+  };
+}
+
 export function EditInvestorModal({ open, onClose, investor }: EditInvestorModalProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const [formData, setFormData] = useState({
-    name: investor.name,
-    body: investor.body.toString(),
-    accrued: investor.accrued.toString(),
-    rate: investor.rate.toString(),
-    entryDate: investor.entryDate ? investor.entryDate.split("T")[0] : new Date().toISOString().split("T")[0],
-    activationDate: investor.activationDate ? investor.activationDate.split("T")[0] : new Date().toISOString().split("T")[0],
-  });
+  const [formData, setFormData] = useState(() => investorToForm(investor));
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData(investorToForm(investor));
+  }, [open, investor]);
 
   const isCommonNetwork = investor.isPrivate !== true;
 
@@ -63,7 +74,7 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
       return apiClient.put(`/api/investors/${investor.id}`, payload);
     },
     onSuccess: () => {
-      toast.success("Investor updated successfully");
+      toast.success("Карточка сохранена");
       queryClient.invalidateQueries({ queryKey: ["investors"] });
       queryClient.invalidateQueries({ queryKey: ["investor", investor.id.toString()] });
       onClose();
@@ -93,159 +104,154 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
     return Array.from(s);
   }, [formData.entryDate, formData.activationDate]);
 
+  const networkLine = isCommonNetwork ? "Общая сеть · ставка с сервера на дату входа" : "Личная сеть · ставка вручную";
+
+  if (!open) return null;
+
   return (
-    <Modal open={open} onClose={onClose} className="max-w-2xl">
-      <div className="bg-black/40 backdrop-blur-2xl border border-white/10 rounded-3xl p-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Edit Investor</h2>
-          <Text className="text-slate-400">
-            Editing: <span className="text-white font-semibold">{investor.name}</span>
-          </Text>
+    <InvestDeskModalShell
+      open={open}
+      onClose={onClose}
+      maxWidthClass="max-w-[min(100vw-2rem,40rem)]"
+      eyebrow="Реестр · карточка"
+      title="Редактирование позиции"
+      summary={
+        <span>
+          <strong className="font-medium text-foreground">{investor.name}</strong>
+          <span className="text-muted-foreground"> · </span>
+          <span>{networkLine}</span>
+        </span>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="space-y-1">
+          <Label className="text-[11px] font-medium text-muted-foreground">Имя и Отчество</Label>
+          <Input
+            value={formData.name}
+            onChange={(e) => handleInputChange("name", e.target.value)}
+            placeholder="Имя и Отчество"
+            required
+            className="h-9 text-sm"
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <Label className="text-slate-300">Name</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => handleInputChange("name", e.target.value)}
-                className="bg-slate-800/50 border-slate-700/50 text-white placeholder-slate-500"
-                required
-              />
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-[11px] font-medium text-muted-foreground">Тело, ฿</Label>
+            <Input
+              type="number"
+              value={formData.body}
+              onChange={(e) => handleInputChange("body", e.target.value)}
+              step="0.01"
+              min="0"
+              required
+              className="h-9 text-sm tabular-nums"
+            />
+            <p className="text-[10px] text-amber-600 dark:text-amber-400">Смена тела пересчитает начисления.</p>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-slate-300">Body (Deposit)</Label>
+          <div className="space-y-1">
+            <Label className="text-[11px] font-medium text-muted-foreground">
+              {isCommonNetwork ? "Ставка (сеть на дату входа)" : "Ставка, %"}
+            </Label>
+            {isCommonNetwork ? (
+              <>
                 <Input
-                  type="number"
-                  value={formData.body}
-                  onChange={(e) => handleInputChange("body", e.target.value)}
-                  className="bg-slate-800/50 border-slate-700/50 text-white placeholder-slate-500"
-                  step="0.01"
-                  min="0"
-                  required
+                  disabled
+                  value={
+                    rateAtEntryPending ? "…" : rateAtEntryRes?.current ? `${rateAtEntryRes.current.rate}%` : "—"
+                  }
+                  className="h-9 cursor-not-allowed bg-muted/40 text-sm tabular-nums opacity-90"
                 />
-                <Text className="text-xs mt-1" style={{ color: "#fbbf24" }}>
-                  Warning: Changing body will recalculate accruals
-                </Text>
-              </div>
-
-              <div>
-                <Label className="text-slate-300">{isCommonNetwork ? "Rate (network at entry)" : "Rate (%)"}</Label>
-                {isCommonNetwork ? (
-                  <>
-                    <Input
-                      disabled
-                      value={
-                        rateAtEntryPending
-                          ? "Checking…"
-                          : rateAtEntryRes?.current
-                            ? `${rateAtEntryRes.current.rate}%`
-                            : "—"
-                      }
-                      className="bg-slate-800/50 border-slate-700/50 text-white opacity-90 cursor-not-allowed"
-                    />
-                    <Text className="text-xs mt-1 text-slate-400">
-                      Common network: card rate follows business rate on entry date (set on save).
-                    </Text>
-                  </>
-                ) : (
-                  <Input
-                    type="number"
-                    value={formData.rate}
-                    onChange={(e) => handleInputChange("rate", e.target.value)}
-                    className="bg-slate-800/50 border-slate-700/50 text-white placeholder-slate-500"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    required
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {user?.role === "SUPER_ADMIN" ? (
-                <div>
-                  <Label className="text-slate-300">Accrued</Label>
-                  <Input
-                    type="number"
-                    value={formData.accrued}
-                    onChange={(e) => handleInputChange("accrued", e.target.value)}
-                    className="bg-slate-800/50 border-slate-700/50 text-white placeholder-slate-500"
-                    step="0.01"
-                    min="0"
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-slate-300">Entry Date</Label>
-                <DatePicker value={formData.entryDate} onChange={(value) => handleInputChange("entryDate", value)} />
-                <Text className="text-xs mt-1" style={{ color: "#fbbf24" }}>
-                  Warning: Changing entry date will recalculate accruals
-                </Text>
-              </div>
-
-              <div>
-                <Label className="text-slate-300">Activation Date</Label>
-                <DatePicker
-                  value={formData.activationDate}
-                  onChange={(value) => handleInputChange("activationDate", value)}
-                  highlightedDates={dateHighlights}
-                />
-              </div>
-            </div>
-
+                <p className="text-[10px] text-muted-foreground">Сохранится вместе с датой входа.</p>
+              </>
+            ) : (
+              <Input
+                type="number"
+                value={formData.rate}
+                onChange={(e) => handleInputChange("rate", e.target.value)}
+                step="0.01"
+                min="0"
+                max="100"
+                required
+                className="h-9 text-sm tabular-nums"
+              />
+            )}
           </div>
+        </div>
 
-          <div className="bg-slate-800/30 border border-slate-700/30 rounded-xl p-4">
-            <Text className="text-sm font-semibold text-slate-300 mb-3">Current Values</Text>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Body:</span>
-                <span style={{ color: "#ffffff" }}>{investor.body.toLocaleString("ru-RU")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Accrued:</span>
-                <span style={{ color: "#60a5fa" }}>{investor.accrued.toLocaleString("ru-RU")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Paid:</span>
-                <span style={{ color: "#4ade80" }}>{(investor.paid || 0).toLocaleString("ru-RU")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Due:</span>
-                <span style={{ color: "#fbbf24" }}>{investor.due.toLocaleString("ru-RU")}</span>
-              </div>
+        {user?.role === "SUPER_ADMIN" ? (
+          <div className="space-y-1">
+            <Label className="text-[11px] font-medium text-muted-foreground">Начислено (ручная правка)</Label>
+            <Input
+              type="number"
+              value={formData.accrued}
+              onChange={(e) => handleInputChange("accrued", e.target.value)}
+              step="0.01"
+              min="0"
+              className="h-9 max-w-xs text-sm tabular-nums"
+            />
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-[11px] font-medium text-muted-foreground">Дата входа</Label>
+            <DatePicker value={formData.entryDate} onChange={(value) => handleInputChange("entryDate", value)} />
+            <p className="text-[10px] text-amber-600 dark:text-amber-400">Смена даты входа пересчитает начисления.</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px] font-medium text-muted-foreground">Дата активации</Label>
+            <DatePicker
+              value={formData.activationDate}
+              onChange={(value) => handleInputChange("activationDate", value)}
+              highlightedDates={dateHighlights}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border/45 bg-muted/10 px-2.5 py-2 dark:border-white/[0.06]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Сейчас в системе</p>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-4">
+            <div className="flex justify-between gap-2 tabular-nums">
+              <span className="text-muted-foreground">Тело</span>
+              <span className="font-medium text-foreground">{formatCurrency(investor.body)}</span>
+            </div>
+            <div className="flex justify-between gap-2 tabular-nums">
+              <span className="text-muted-foreground">Начислено</span>
+              <span className="font-medium text-foreground">{formatCurrency(investor.accrued)}</span>
+            </div>
+            <div className="flex justify-between gap-2 tabular-nums">
+              <span className="text-muted-foreground">Выплачено</span>
+              <span className="font-medium text-foreground">{formatCurrency(investor.paid || 0)}</span>
+            </div>
+            <div className="flex justify-between gap-2 tabular-nums">
+              <span className="text-muted-foreground">К выплате</span>
+              <span className="font-medium text-foreground">{formatCurrency(investor.due)}</span>
             </div>
           </div>
+        </div>
 
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="submit"
-              disabled={
-                updateMutation.isPending || (isCommonNetwork && (rateAtEntryPending || !rateAtEntryRes?.current))
-              }
-              className={cn("bg-blue-600 hover:bg-blue-700 border-blue-500/30")}
-            >
-              {updateMutation.isPending ? "Updating..." : "Update Investor"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="border-slate-600 text-slate-300 hover:bg-slate-800"
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </div>
-    </Modal>
+        <div className="flex flex-wrap gap-2 border-t border-border/40 pt-3 dark:border-white/[0.06]">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 flex-1 text-sm sm:flex-none"
+            onClick={onClose}
+            disabled={updateMutation.isPending}
+          >
+            Отмена
+          </Button>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={updateMutation.isPending || (isCommonNetwork && (rateAtEntryPending || !rateAtEntryRes?.current))}
+            className={cn("h-9 flex-1 text-sm sm:min-w-[9rem]", glassAccentSurface)}
+          >
+            {updateMutation.isPending ? "Сохранение…" : "Сохранить"}
+          </Button>
+        </div>
+      </form>
+    </InvestDeskModalShell>
   );
 }

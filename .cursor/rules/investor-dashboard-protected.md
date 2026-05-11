@@ -1,13 +1,26 @@
-ПРАВИЛО: Никогда не изменять дашборд инвестора без явного запроса пользователя.
+# Эталон дашборда инвестора — защищённые файлы (единственный полный список)
 
-Запрещено трогать файлы:
-- app/dashboard/page.tsx (InvestorPremiumDashboard)
-- components/dashboard/InvestorPremiumDashboard.tsx
-- components/dashboard/HistoryPeriodPopover.tsx
-- components/dashboard/DashboardOperationsHistory.tsx
-- components/user/UserAvatar.tsx
-- styles/thai-design-system.css (классы `.thai-investor-*` для экрана инвестора; общие токены `.thai-dashboard-*` для истории и шапки)
-- lib/open-week-forecast.ts
+Инвесторский дашборд (`/dashboard`, роль **INVESTOR**) — эталон. Любые правки в его UI/UX запрещены **без явного запроса пользователя** (фраза вроде **«разрешаю менять инвестора»**).
 
-При любой задаче, затрагивающей эти файлы — СПРОСИТЬ у пользователя разрешение.
+Полномочия роли SUPER_ADMIN и смежная логика описаны в `project-context.md` (§0.2–0.3); этот файл задаёт только **границу «что нельзя трогать без разрешения»** для экрана инвестора.
 
+## Запрещено менять без явного разрешения пользователя
+
+- `app/dashboard/page.tsx` (ветка `InvestorPremiumDashboard` и общая логика страницы, затрагивающая инвестора)
+- `components/dashboard/InvestorPremiumDashboard.tsx`
+- `components/dashboard/HistoryPeriodPopover.tsx`
+- `components/dashboard/DashboardOperationsHistory.tsx`
+- `components/user/UserAvatar.tsx`
+- `styles/thai-design-system.css` (классы `.thai-investor-*` для экрана инвестора; эталонные общие токены `.thai-dashboard-*` для истории и шапки)
+- `lib/open-week-forecast.ts`
+
+Если задача затрагивает эти файлы — **остановиться** и запросить разрешение у пользователя.
+
+## Исключение (разрешено пользователем)
+
+- **2026-05-08** пользователь дал явное разрешение фразой **«разрешаю менять инвестора»** для правок вокруг **аватара/ника в topbar** и связанных эталонных CSS-утилит (в пределах согласованного scope).
+
+## Связанные правила (без дублирования текста)
+
+- Навигация и тема: `.cursor/rules/dashboard-theme-nav.mdc` (в т.ч. отсылка к этому файлу для «не трогать шапку инвестора без запроса»).
+- Общий контекст проекта: `project-context.md` — §2 (OWNER отдельно), §3 (единый стиль календаря и topbar).

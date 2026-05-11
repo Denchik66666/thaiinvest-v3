@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
@@ -14,10 +14,8 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { InvestorsTable } from "@/components/investors/InvestorsTable";
-import { ManagePositionDeskModal } from "@/components/investors/ManagePositionDeskModal";
 import { apiClient } from "@/lib/api-client";
-import { investorDisplayHandle, normalizeHandleDisplay } from "@/lib/investor-display-handle";
-import { toast } from "@/lib/notify";
+import { normalizeHandleDisplay } from "@/lib/investor-display-handle";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
@@ -41,6 +39,7 @@ export type InvestorListRow = {
   body: number;
   rate: number;
   accrued: number;
+  lifetimeInterestPaid?: number;
   paid: number;
   due: number;
   entryDate: string;
@@ -54,16 +53,6 @@ export type InvestorListRow = {
 };
 
 type InvestorsApiResponse = { investors: InvestorListRow[] };
-
-/** Минимум полей для модалки пополнения из реестра (строка таблицы шире по типу, чем lean API). */
-type BodyTopUpRegistryTarget = {
-  id: number;
-  body: number;
-  name: string;
-  handle: string | null;
-  investorUser?: { id: number; username: string } | null;
-  linkedUser?: { id: number; username: string } | null;
-};
 
 function getCurrentWeekLabel() {
   const today = new Date();
@@ -121,7 +110,6 @@ function collectInvestorCalendarDots(investors: InvestorListRow[]): string[] {
 
 export default function InvestorsListPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user, loading: authLoading } = useAuth();
 
   const [network, setNetwork] = useState<Network>("all");
@@ -133,11 +121,6 @@ export default function InvestorsListPage() {
   const [sort, setSort] = useState<
     "body_desc" | "accrued_desc" | "due_desc" | "name_asc" | "activation_desc"
   >("due_desc");
-
-  const [bodyTopupOpen, setBodyTopupOpen] = useState(false);
-  const [bodyTopupTarget, setBodyTopupTarget] = useState<BodyTopUpRegistryTarget | null>(null);
-  const [bodyTopupAmount, setBodyTopupAmount] = useState("");
-  const [bodyTopupComment, setBodyTopupComment] = useState("");
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isOwner = user?.role === "OWNER";
@@ -174,48 +157,6 @@ export default function InvestorsListPage() {
       ),
     enabled: !!user && isSuperAdmin && data?.investors != null,
     staleTime: 10 * 60 * 1000,
-  });
-
-  const { data: ownerTopUpData } = useQuery({
-    queryKey: ["body-topup-requests"],
-    queryFn: () =>
-      apiClient.get<{ requests: { investorId: number; status: string }[] }>("/api/body-topup-requests"),
-    enabled: !!user && isOwner,
-    staleTime: 30_000,
-  });
-
-  const pendingBodyTopUpIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const r of ownerTopUpData?.requests ?? []) {
-      if (r.status === "pending_investor") ids.add(r.investorId);
-    }
-    return ids;
-  }, [ownerTopUpData?.requests]);
-
-  const bodyTopUpMutation = useMutation({
-    mutationFn: async () => {
-      if (!bodyTopupTarget) throw new Error("Выберите позицию");
-      const amount = Number(String(bodyTopupAmount).replace(/[^\d]/g, ""));
-      return apiClient.post("/api/body-topup-requests", {
-        investorId: bodyTopupTarget.id,
-        amount,
-        comment: bodyTopupComment.trim() || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Запрос на пополнение отправлен");
-      setBodyTopupOpen(false);
-      setBodyTopupTarget(null);
-      setBodyTopupAmount("");
-      setBodyTopupComment("");
-      queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["investors"] });
-      queryClient.invalidateQueries({ queryKey: ["reports-feed"] });
-    },
-    onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : "Не удалось создать запрос");
-    },
   });
 
   const filteredSorted = useMemo(() => {
@@ -533,55 +474,9 @@ export default function InvestorsListPage() {
               investors={filteredSorted}
               onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
               showNetwork={isSuperAdmin}
-              onRequestBodyTopUp={
-                isOwner
-                  ? (inv) => {
-                      setBodyTopupTarget({
-                        id: inv.id,
-                        body: inv.body,
-                        name: inv.name,
-                        handle: inv.handle,
-                        investorUser: inv.investorUser,
-                        linkedUser: inv.linkedUser,
-                      });
-                      setBodyTopupAmount("");
-                      setBodyTopupComment("");
-                      setBodyTopupOpen(true);
-                    }
-                  : undefined
-              }
-              bodyTopUpPendingIds={isOwner ? pendingBodyTopUpIds : undefined}
             />
           </div>
         )}
-
-        {isOwner ? (
-          <ManagePositionDeskModal
-            mode="body_topup"
-            open={bodyTopupOpen}
-            onClose={() => {
-              if (!bodyTopUpMutation.isPending) {
-                setBodyTopupOpen(false);
-                setBodyTopupTarget(null);
-              }
-            }}
-            positionLabel={
-              bodyTopupTarget ? (investorDisplayHandle(bodyTopupTarget) ?? bodyTopupTarget.name) : ""
-            }
-            currentBody={bodyTopupTarget?.body ?? 0}
-            amount={bodyTopupAmount}
-            setAmount={setBodyTopupAmount}
-            comment={bodyTopupComment}
-            setComment={setBodyTopupComment}
-            onSubmit={() => bodyTopUpMutation.mutate()}
-            loading={bodyTopUpMutation.isPending}
-            error={
-              bodyTopUpMutation.isError && bodyTopUpMutation.error instanceof Error
-                ? bodyTopUpMutation.error.message
-                : undefined
-            }
-          />
-        ) : null}
 
         <MobileBottomNav active="manage" />
       </div>

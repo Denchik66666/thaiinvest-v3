@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
-import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
+import { formatDbAccessErrorForClient, isTransientDbError, withDbRetry } from '@/lib/db-retry'
 import {
   readAuthMeServerCache,
   writeAuthMeServerCache,
@@ -67,6 +67,10 @@ export async function GET() {
     console.error('Auth check error:', error)
     if (isTransientDbError(error)) {
       return NextResponse.json({ error: 'Временная ошибка БД, повторите запрос' }, { status: 503 })
+    }
+    const hint = formatDbAccessErrorForClient(error)
+    if (hint) {
+      return NextResponse.json({ error: hint }, { status: 503 })
     }
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
   }

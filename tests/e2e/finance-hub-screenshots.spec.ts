@@ -12,7 +12,7 @@ async function newBrowserContextWithManagerSession(browser: Browser, baseURL: st
     ? [{ u: process.env.PLAYWRIGHT_LOGIN_USER, p: process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
         { u: "Sam", p: "admin123" },
-        { u: "Den", p: "den123" },
+        { u: "admin", p: "admin123" },
       ];
   for (const { u, p } of candidates) {
     const ctx = await browser.newContext({ baseURL });
@@ -31,7 +31,7 @@ async function newBrowserContextWithManagerSession(browser: Browser, baseURL: st
     if (role === "OWNER" || role === "SUPER_ADMIN") return ctx;
     await ctx.close();
   }
-  throw new Error("Нужен вход OWNER/SUPER_ADMIN (admin/Sam + пароль из seed).");
+  throw new Error("Нужен вход OWNER/SUPER_ADMIN (Sam/admin + пароль из seed).");
 }
 
 async function newBrowserContextWithInvestorSession(browser: Browser, baseURL: string) {

@@ -6,10 +6,15 @@ import { cookies } from 'next/headers'
 import { CreateInvestorSchema } from '@/lib/schemas'
 import { logAction } from '@/lib/audit'
 import { getNextMonday, getPreviousOrCurrentMonday, startOfDay } from '@/lib/weekly'
-import { getCurrentBusinessRate } from '@/lib/business-rate'
+import {
+  getCurrentBusinessRate,
+  getCurrentBusinessRateForCalendarYmd,
+  dateToUtcCalendarYmd,
+} from '@/lib/business-rate'
 import { hashPassword } from '@/lib/auth'
 import { getPrivateInvestorCreateContext } from '@/lib/private-investor-create-context'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
+import { moneyRound2 } from '@/lib/money-round'
 
 type CacheEntry = { expiresAt: number; payload: unknown }
 const CACHE_TTL_MS = 20_000
@@ -255,7 +260,12 @@ export async function GET(request: NextRequest) {
           }),
         ])
 
-        return { investors, completedAll, completedInterest, openPayments }
+        return {
+          investors,
+          completedAll,
+          completedInterest,
+          openPayments,
+        }
       })
 
       const { investors, completedAll, completedInterest, openPayments } = leanPayload
@@ -277,9 +287,9 @@ export async function GET(request: NextRequest) {
       for (const row of completedAll) {
         paidByInv.set(row.investorId, row._sum?.amount ?? 0)
       }
-      const interestPaidByInv = new Map<number, number>()
+      const lifetimeInterestPaidByInv = new Map<number, number>()
       for (const row of completedInterest) {
-        interestPaidByInv.set(row.investorId, row._sum?.amount ?? 0)
+        lifetimeInterestPaidByInv.set(row.investorId, row._sum?.amount ?? 0)
       }
       const paymentsByInv = new Map<number, typeof openPayments>()
       for (const p of openPayments) {
@@ -290,9 +300,10 @@ export async function GET(request: NextRequest) {
 
       const result = investors.map((inv) => {
         const paid = paidByInv.get(inv.id) ?? 0
-        const interestPaid = interestPaidByInv.get(inv.id) ?? 0
-        const due = Math.max(inv.accrued - interestPaid, 0)
+        const lifetimeInterestPaid = lifetimeInterestPaidByInv.get(inv.id) ?? 0
         const invPayments = paymentsByInv.get(inv.id) ?? []
+        const accruedRounded = moneyRound2(Math.max(inv.accrued, 0))
+        const due = accruedRounded
 
         const basePayload = {
           id: inv.id,
@@ -302,7 +313,8 @@ export async function GET(request: NextRequest) {
           phone: inv.phone,
           body: inv.body,
           rate: inv.rate,
-          accrued: inv.accrued,
+          accrued: accruedRounded,
+          lifetimeInterestPaid,
           paid,
           due,
           entryDate: inv.entryDate,
@@ -374,11 +386,12 @@ export async function GET(request: NextRequest) {
     const result = typedInvestors.map((inv) => {
       const completedPayments = inv.payments.filter((p) => p.status === 'completed')
       const paid = completedPayments.reduce((sum, p) => sum + p.amount, 0)
-      const interestPaid = completedPayments
+      const lifetimeInterestPaid = completedPayments
         .filter((p) => p.type === 'interest')
         .reduce((sum, p) => sum + p.amount, 0)
-      
-      const due = Math.max(inv.accrued - interestPaid, 0)
+
+      const accruedRounded = moneyRound2(Math.max(inv.accrued, 0))
+      const due = accruedRounded
 
       const basePayload = {
         id: inv.id,
@@ -388,7 +401,8 @@ export async function GET(request: NextRequest) {
         phone: inv.phone,
         body: inv.body,
         rate: inv.rate,
-        accrued: inv.accrued,
+        accrued: accruedRounded,
+        lifetimeInterestPaid,
         paid,
         due,
         entryDate: inv.entryDate,
@@ -492,7 +506,13 @@ export async function POST(request: NextRequest) {
        * Общая сеть: ставка карточки всегда = бизнес-ставка на дату входа (какая ставка сети на тот день — такой и процент у позиции).
        * OWNER и SUPER_ADMIN: поле rate из запроса не используется.
        */
-      const snap = await getCurrentBusinessRate(startOfDay(entry))
+      const entryYmd =
+        typeof entryDate === 'string'
+          ? (entryDate.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null)
+          : dateToUtcCalendarYmd(entry)
+      const snap = entryYmd
+        ? await getCurrentBusinessRateForCalendarYmd(entryYmd)
+        : await getCurrentBusinessRate(startOfDay(entry))
       if (!snap) {
         const d = entry.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
         return NextResponse.json(

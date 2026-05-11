@@ -19,7 +19,7 @@ export type InvestorPositionAvatarHeadingProps = {
   nickInteractiveHint?: boolean;
   /** Справа от ника в том же ряду (шеврон аккордеона и т.п.). */
   nickTrailing?: ReactNode;
-  /** Под ником: бейджи, подпись `@handle` и т.д. */
+  /** Под ником: бейджи, вторичная строка (handle и т.д.). */
   metaBelowNick?: ReactNode;
 };
 

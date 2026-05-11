@@ -118,6 +118,43 @@ function isPresetActive(period: HistoryPeriodValue, preset: PeriodPreset) {
   return period.kind === "preset" && period.preset === preset;
 }
 
+/** Тот же ряд чипов 7 / 30 / 90 / 365 / ∞, что в ленте «Финансы». */
+export function FinanceCalendarPresetChipRow({
+  isChipActive,
+  onPick,
+}: {
+  isChipActive: (id: PeriodPreset) => boolean;
+  onPick: (id: PeriodPreset) => void;
+}) {
+  return (
+    <div className="mb-2 px-0.5">
+      <div className="mt-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-full">
+          <div className="mx-auto flex w-max flex-nowrap gap-1 px-0.5">
+            {PRESETS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onPick(id)}
+                aria-label={`Период: ${label}`}
+                title={label}
+                className={cn(
+                  "min-w-[2.25rem] rounded-lg px-2 py-1 text-[11px] font-semibold tabular-nums transition",
+                  isChipActive(id)
+                    ? "bg-[color:var(--thai-color-accrued-bg)] text-[color:var(--thai-color-accrued)] shadow-[0_0_12px_-6px_color-mix(in_srgb,var(--thai-color-accrued)_55%,transparent)]"
+                    : "text-[color:var(--thai-color-accrued)] hover:bg-white/[0.06]"
+                )}
+              >
+                {presetChipText(id)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type HistoryPeriodPopoverProps = {
   value: HistoryPeriodValue;
   onChange: (next: HistoryPeriodValue) => void;
@@ -253,33 +290,7 @@ export function HistoryPeriodPopover({
         popoverRef={popoverRef}
         box={popover}
         ariaLabel="Период для истории операций"
-        topSlot={
-          <div className="mb-2 px-0.5">
-            <div className="mt-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex min-w-full">
-                <div className="mx-auto flex w-max flex-nowrap gap-1 px-0.5">
-                  {PRESETS.map(({ id, label }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => pickPreset(id)}
-                      aria-label={`Период: ${label}`}
-                      title={label}
-                      className={cn(
-                        "min-w-[2.25rem] rounded-lg px-2 py-1 text-[11px] font-semibold tabular-nums transition",
-                        isPresetActive(value, id)
-                          ? "bg-[color:var(--thai-color-accrued-bg)] text-[color:var(--thai-color-accrued)] shadow-[0_0_12px_-6px_color-mix(in_srgb,var(--thai-color-accrued)_55%,transparent)]"
-                          : "text-[color:var(--thai-color-accrued)] hover:bg-white/[0.06]"
-                      )}
-                    >
-                      {presetChipText(id)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        }
+        topSlot={<FinanceCalendarPresetChipRow isChipActive={(id) => isPresetActive(value, id)} onPick={pickPreset} />}
         calendar={
           <FinanceMonthCalendar
             viewMonth={viewDate}

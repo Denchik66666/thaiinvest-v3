@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency, cn } from "@/lib/utils";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { toast } from "@/lib/notify";
 import { paymentCorrectionProposalsQueryKey } from "@/lib/payment-correction-query";
 import type { CorrectionPayload } from "@/lib/payment-correction";
@@ -22,7 +23,13 @@ type ProposalRow = {
     type: string;
     status: string;
     amount: number;
-    investor: { id: number; name: string };
+    investor: {
+      id: number;
+      name: string;
+      handle?: string | null;
+      investorUser?: { username: string } | null;
+      linkedUser?: { username: string } | null;
+    };
   };
 };
 
@@ -63,7 +70,7 @@ function ProposalCard({
             Заявка №{row.paymentId} · {paymentTypeRu(row.payment.type)} · {formatCurrency(row.payment.amount)}
           </p>
           <p className="text-[10px] text-muted-foreground">
-            {row.payment.investor.name} · {payloadSummary(row.payload)}
+            {investorDisplayHandle(row.payment.investor) ?? row.payment.investor.name} · {payloadSummary(row.payload)}
           </p>
           {variant === "incoming" ? (
             <p className="text-[10px] text-foreground/90">

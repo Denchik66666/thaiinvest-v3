@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { generateToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
-import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
+import { formatDbAccessErrorForClient, isTransientDbError, withDbRetry } from '@/lib/db-retry'
 
 import { LoginSchema } from '@/lib/schemas'
 
@@ -69,6 +69,10 @@ export async function POST(request: NextRequest) {
     console.error('LOGIN ERROR:', error)
     if (isTransientDbError(error)) {
       return NextResponse.json({ error: 'Временная ошибка БД, повторите вход' }, { status: 503 })
+    }
+    const hint = formatDbAccessErrorForClient(error)
+    if (hint) {
+      return NextResponse.json({ error: hint }, { status: 503 })
     }
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }

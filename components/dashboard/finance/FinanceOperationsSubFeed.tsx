@@ -18,7 +18,11 @@ import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 import { Text } from "@/components/ui/Text";
 import { sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
-import { paymentAttentionBadgeLabel, paymentNeedsViewerAction } from "@/lib/finance-payment-attention";
+import {
+  paymentAttentionBadgeLabel,
+  paymentNeedsViewerAction,
+  topupNeedsViewerAction,
+} from "@/lib/finance-payment-attention";
 
 export type FinanceOpFilter = FinanceOperationsHistoryOpFilter;
 
@@ -31,7 +35,11 @@ function opMatchesFilter(item: FinanceOperationItem, f: FinanceOpFilter): boolea
   if (f === "accrual") return item.kind === "week_accrual";
   if (f === "topup") return item.kind === "topup";
   if (f === "payout") return item.kind === "payment" && item.status === "completed";
-  if (f === "request") return item.kind === "payment" && item.status !== "completed";
+  if (f === "request") {
+    if (item.kind === "payment" && item.status !== "completed") return true;
+    if (item.kind === "topup" && !item.initialFromCreation && item.status === "pending_investor") return true;
+    return false;
+  }
   return false;
 }
 
@@ -65,15 +73,28 @@ function paymentTypeLabel(type: string) {
 function paymentStatusShort(status: string) {
   const map: Record<string, string> = {
     completed: "Выполнено",
-    requested: "На рассмотрении",
+    requested: "На рассмотрении у владельца",
     pending: "В очереди",
-    approved_waiting_accept: "Ожидает решения",
+    /** Владелец одобрил; завершится после «Принять» инвестором — не зависание на стороне владельца. */
+    approved_waiting_accept: "Одобрено — ждём инвестора",
     rejected: "Отклонено",
     expired: "Истекло",
     disputed: "Спор",
     completed_at_creation: "При создании позиции",
+    pending_investor: "Ожидает решения инвестора",
+    accepted_by_investor: "Принято инвестором",
+    rejected_by_investor: "Отклонено инвестором",
+    cancelled_by_owner: "Отозвано владельцем",
   };
   return map[status] ?? status;
+}
+
+function formatTopUpHistorySubline(item: Extract<FinanceOperationItem, { kind: "topup" }>) {
+  if (item.initialFromCreation) {
+    return `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)}`;
+  }
+  const when = item.requestDate ?? item.createdAt;
+  return `${paymentStatusShort(item.status)} · ${formatDateTime(when)}`;
 }
 
 function formatDate(dateStr: string) {
@@ -218,6 +239,8 @@ export function FinanceOperationsSubFeed({
 
   return (
     <div
+      data-finance-sub-feed
+      data-finance-sub-feed-investor={filterInvestorId ?? ""}
       className={cn(
         "overflow-hidden rounded-b-xl rounded-t-none border border-t-0 border-primary/15 bg-gradient-to-b from-primary/[0.06] to-muted/5 dark:border-white/[0.08] dark:from-primary/[0.05]"
       )}
@@ -342,41 +365,79 @@ export function FinanceOperationsSubFeed({
               }
 
               if (item.kind === "topup") {
-                const subline = item.initialFromCreation
-                  ? `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)}`
-                  : `${paymentStatusShort(item.status)} · ${formatDateTime(item.sortAt)}`;
+                const subline = formatTopUpHistorySubline(item);
+                const needsTopUpAction = topupNeedsViewerAction(operationsHistoryScope, item);
+                const rowClickableTopUp =
+                  Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
+                const attentionTitleTopUp = needsTopUpAction
+                  ? rowClickableTopUp
+                    ? operationsHistoryScope === "investor"
+                      ? "Откройте строку: подтвердите или отклоните пополнение тела"
+                      : "Откройте строку: отзовите запрос или откройте карточку заявки"
+                    : operationsHistoryScope === "investor"
+                      ? "Финансы: откройте эту строку, чтобы подтвердить или отклонить пополнение"
+                      : "Финансы: откройте эту строку по запросу пополнения"
+                  : undefined;
+                const topUpPendingRequest =
+                  !item.initialFromCreation && item.status === "pending_investor";
                 return (
                   <div
                     key={item.id}
                     {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
+                    title={attentionTitleTopUp}
+                    data-finance-history-attention={needsTopUpAction ? "action" : undefined}
                     className={cn(
                       "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
-                      operationRowPointerCn(onOperationClick, item, operationRowPredicate)
+                      operationRowPointerCn(onOperationClick, item, operationRowPredicate),
+                      needsTopUpAction &&
+                        "border-l-[3px] border-l-amber-500/85 bg-amber-500/[0.07] dark:border-l-amber-400/80 dark:bg-amber-400/[0.09]"
                     )}
-                    style={{ background: "var(--thai-color-topup-bg)" }}
+                    style={
+                      needsTopUpAction ? undefined : { background: "var(--thai-color-topup-bg)" }
+                    }
                   >
                     <div
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background/50"
                       style={{
-                        borderColor: "color-mix(in srgb, var(--thai-color-topup) 45%, transparent)",
+                        borderColor: needsTopUpAction
+                          ? "color-mix(in srgb, rgb(245 158 11) 55%, transparent)"
+                          : "color-mix(in srgb, var(--thai-color-topup) 45%, transparent)",
                       }}
                       aria-hidden
                     >
-                      <PlusCircle className="h-4 w-4 shrink-0 text-[var(--thai-color-topup)]" strokeWidth={2} />
+                      <PlusCircle
+                        className="h-4 w-4 shrink-0 text-[var(--thai-color-topup)]"
+                        strokeWidth={2}
+                        style={
+                          needsTopUpAction
+                            ? { color: "rgb(245 158 11)", opacity: 0.92 }
+                            : undefined
+                        }
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] font-semibold text-foreground">
-                        {showMultiPositionLabels ? `Пополнение · ${item.positionName}` : "Пополнение тела"}
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[12px] font-semibold text-foreground">
+                          {showMultiPositionLabels ? `Пополнение · ${item.positionName}` : "Пополнение тела"}
+                        </span>
+                        {needsTopUpAction ? (
+                          <span className="inline-flex shrink-0 rounded border border-amber-500/45 bg-amber-500/14 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-950 dark:text-amber-100">
+                            {paymentAttentionBadgeLabel(operationsHistoryScope)}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="line-clamp-2 text-[10px] text-muted-foreground">{subline}</div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <span
+                    <div className="shrink-0 text-right leading-tight">
+                      <div
                         className="text-[12px] font-semibold tabular-nums"
                         style={{ color: "var(--thai-color-topup)", WebkitTextFillColor: "var(--thai-color-topup)" }}
                       >
                         +{formatAmount(item.amount)}
-                      </span>
+                      </div>
+                      {topUpPendingRequest ? (
+                        <div className="text-[9px] text-muted-foreground">заявка</div>
+                      ) : null}
                     </div>
                   </div>
                 );

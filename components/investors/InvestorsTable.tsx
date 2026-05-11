@@ -126,35 +126,20 @@ function RowDots({ inv }: { inv: InvestorTableRow }) {
   );
 }
 
-function bodyTopUpRowDisabled(inv: InvestorTableRow, pendingIds: ReadonlySet<number>) {
-  if (inv.isPrivate) return { disabled: true as const, title: "Пополнение только в общей сети" };
-  if (inv.status === "closed") return { disabled: true as const, title: "Позиция закрыта" };
-  if (!inv.investorUser && !inv.linkedUser) return { disabled: true as const, title: "Нужен кабинет или привязка для подтверждения" };
-  if (pendingIds.has(inv.id)) return { disabled: true as const, title: "Уже есть запрос на подтверждении" };
-  return { disabled: false as const, title: "Запросить пополнение тела" };
-}
-
 export function InvestorsTable({
   investors,
   onOpenInvestor,
   onResetCredentials,
   onDeleteInvestor,
-  onRequestBodyTopUp,
-  bodyTopUpPendingIds,
   showNetwork = true,
 }: {
   investors: InvestorTableRow[];
   onOpenInvestor?: (investorId: number) => void;
   onResetCredentials?: (investorId: number) => void;
   onDeleteInvestor?: (investorId: number) => void;
-  /** OWNER: открыть сценарий пополнения (модалка на странице-родителе). */
-  onRequestBodyTopUp?: (inv: InvestorTableRow) => void;
-  bodyTopUpPendingIds?: ReadonlySet<number>;
   showNetwork?: boolean;
 }) {
   const rowClickable = typeof onOpenInvestor === "function";
-  const pendingTopUp = bodyTopUpPendingIds ?? new Set<number>();
-  const showBodyTopUpCol = typeof onRequestBodyTopUp === "function";
 
   if (investors.length === 0) {
     return (
@@ -171,7 +156,7 @@ export function InvestorsTable({
     <div className="space-y-2 md:space-y-3">
       <div className="thai-glass desktop-table overflow-hidden rounded-2xl">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse text-left">
+          <table className="w-full min-w-[920px] border-collapse text-left">
             <thead>
               <tr className="border-b border-border/50 bg-muted/25">
                 <th
@@ -191,11 +176,6 @@ export function InvestorsTable({
                 <th className={cn(th, "w-[5%] text-right")} title="Сигналы">
                   ●
                 </th>
-                {showBodyTopUpCol ? (
-                  <th className={cn(th, "w-[8%] text-center")} title="Запрос пополнения тела (общая сеть)">
-                    Попол.
-                  </th>
-                ) : null}
                 {(onDeleteInvestor || onResetCredentials) && (
                   <th className={cn(th, "w-[12%] text-center")}>…</th>
                 )}
@@ -278,42 +258,11 @@ export function InvestorsTable({
                     <td
                       className={cn(
                         "px-2 py-2 align-middle",
-                        !showBodyTopUpCol && !(onDeleteInvestor || onResetCredentials) && "pr-3"
+                        !(onDeleteInvestor || onResetCredentials) && "pr-3"
                       )}
                     >
                       <RowDots inv={inv} />
                     </td>
-                    {showBodyTopUpCol && onRequestBodyTopUp ? (
-                      <td
-                        className={cn(
-                          "px-2 py-2 align-middle text-center",
-                          !(onDeleteInvestor || onResetCredentials) && "pr-3"
-                        )}
-                      >
-                        {(() => {
-                          const st = bodyTopUpRowDisabled(inv, pendingTopUp);
-                          return (
-                            <button
-                              type="button"
-                              className={cn(
-                                "rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition",
-                                st.disabled
-                                  ? "cursor-not-allowed border-border/40 text-muted-foreground/55"
-                                  : "border-[color:color-mix(in_srgb,var(--thai-color-topup)_42%,transparent)] text-[var(--thai-color-topup)] hover:bg-[var(--thai-color-topup-bg)]"
-                              )}
-                              disabled={st.disabled}
-                              title={st.title}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!st.disabled) onRequestBodyTopUp(inv);
-                              }}
-                            >
-                              +
-                            </button>
-                          );
-                        })()}
-                      </td>
-                    ) : null}
                     {(onDeleteInvestor || onResetCredentials) && (
                       <td className="px-2 py-2 pr-3 align-middle text-center">
                         <div className="flex flex-wrap items-center justify-center gap-1">
@@ -358,7 +307,6 @@ export function InvestorsTable({
           const primary = nick ?? inv.name;
           const showLegal = nick != null && inv.name.trim() !== nick.trim();
           const hot = inv.due > 0.005 || rowNeedsAttention(inv);
-          const topUpSt = showBodyTopUpCol ? bodyTopUpRowDisabled(inv, pendingTopUp) : null;
 
           return (
             <div
@@ -448,26 +396,6 @@ export function InvestorsTable({
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{inv.rate}%</span>
               </div>
               </button>
-              {showBodyTopUpCol && topUpSt && onRequestBodyTopUp ? (
-                <div className="flex items-center justify-end border-t border-border/35 px-3 py-2">
-                  <button
-                    type="button"
-                    disabled={topUpSt.disabled}
-                    title={topUpSt.title}
-                    onClick={() => {
-                      if (!topUpSt.disabled) onRequestBodyTopUp(inv);
-                    }}
-                    className={cn(
-                      "text-[11px] font-semibold uppercase tracking-wide transition",
-                      topUpSt.disabled
-                        ? "cursor-not-allowed text-muted-foreground/50"
-                        : "text-[var(--thai-color-topup)] hover:underline"
-                    )}
-                  >
-                    Пополнение тела
-                  </button>
-                </div>
-              ) : null}
             </div>
           );
         })}

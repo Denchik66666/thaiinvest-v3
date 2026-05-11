@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff } from "lucide-react";
-import { AUTH_ME_QUERY_KEY } from "@/hooks/useAuth";
+import { AUTH_ME_QUERY_KEY, type AuthUser } from "@/hooks/useAuth";
 import ThemeToggle from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/notify";
@@ -53,13 +53,14 @@ export default function LoginPage() {
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
+      const u = data.user as AuthUser | undefined;
+      if (u) {
+        queryClient.setQueryData(AUTH_ME_QUERY_KEY, u);
+        void queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
+      }
       router.replace("/dashboard");
-      window.setTimeout(() => {
-        if (window.location.pathname !== "/dashboard") {
-          window.location.href = "/dashboard";
-        }
-      }, 120);
     } catch {
       setError("Ошибка подключения к серверу");
       setLoading(false);

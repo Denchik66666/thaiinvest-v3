@@ -21,7 +21,7 @@ type Investor = {
   id: number;
   name: string;
   handle?: string | null;
-  linkedUser?: { id: number; username: string } | null;
+  linkedUser?: { id: number; username: string; avatarUrl?: string | null } | null;
   owner: { id: number; username: string; role: string };
   body: number;
   rate: number;
@@ -30,7 +30,7 @@ type Investor = {
   entryDate?: string | null;
   activationDate?: string | null;
   status: string;
-  investorUser?: { id: number; username: string } | null;
+  investorUser?: { id: number; username: string; avatarUrl?: string | null } | null;
   investorUserId?: number | null;
   /** Общая сеть: ставка карточки = бизнес-ставка на дату входа (редактирование процента с формы не отправляется). */
   isPrivate?: boolean;
@@ -154,14 +154,15 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <UserAvatar
-              name={investor.name}
+              name={investorDisplayHandle(investor) ?? investor.name}
               initialsFrom={investorDisplayHandle(investor) ?? undefined}
+              src={investor.linkedUser?.avatarUrl ?? investor.investorUser?.avatarUrl ?? undefined}
               size={48}
             />
             <div className="min-w-0">
               <Text className="text-base font-semibold text-foreground md:text-lg">{investor.name}</Text>
               <Text className="text-xs text-muted-foreground">
-                {investor.investorUser?.username || "Нет пользователя"}
+                {investorDisplayHandle(investor) ?? "Нет пользователя"}
               </Text>
             </div>
           </div>

@@ -31,7 +31,7 @@ async function ensureUser(
 async function main() {
   const password = "admin123";
 
-  // В проекте основной SUPER_ADMIN — пользователь Den (id=1). Отдельный "admin" не создаём.
+  // SUPER_ADMIN `admin` создаётся через `prisma/seed.ts` (SEED_ALLOW_CREATE=1); здесь не дублируем.
   await ensureUser("Sam", "OWNER", password);
 
   console.log("Пароль для всех пользователей:", password);

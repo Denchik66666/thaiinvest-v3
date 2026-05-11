@@ -14,7 +14,7 @@ function Test-DockerCompose {
 }
 
 if (Test-DockerCompose) {
-  Write-Host "[ok] Docker found - starting Postgres container (port 54321)..." -ForegroundColor Green
+  Write-Host "[ok] Docker found - starting Postgres container (host port 15432 -> 5432)..." -ForegroundColor Green
   docker compose -f docker-compose.dev-db.yml up -d
   if ($LASTEXITCODE -ne 0) {
     Write-Host "[!] docker compose failed. Start Docker Desktop and retry." -ForegroundColor Yellow

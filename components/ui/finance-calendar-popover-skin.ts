@@ -32,6 +32,21 @@ export function financeCalendarPanelFrame(box: { top: number; left: number; widt
   };
 }
 
+/** Плоская панель без градиентов и «стекла» — для `DatePicker` и узких форм. */
+export function financeCalendarPanelFramePlain(box: { top: number; left: number; width: number }): CSSProperties {
+  return {
+    position: "fixed",
+    top: box.top,
+    left: box.left,
+    width: box.width,
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border) / 0.45)",
+    borderRadius: 12,
+    boxShadow: "0 16px 40px -14px rgba(0,0,0,0.35)",
+    ...financeCalendarPanelAnimation,
+  };
+}
+
 /** Оценка высоты попапа у края вьюпорта — как в `HistoryPeriodPopover`. */
 export const FINANCE_CALENDAR_POPOVER_ESTIMATE_H_PX = 520;
 

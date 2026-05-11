@@ -3,11 +3,12 @@ import { cookies } from "next/headers";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
+import { findBodyTopUpsForInvestorDetail } from "@/lib/body-topup-request-date-compat";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
-import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween, startOfDay } from "@/lib/weekly";
-import { getCurrentBusinessRate } from "@/lib/business-rate";
+import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween } from "@/lib/weekly";
+import { getCurrentBusinessRateForCalendarYmd, dateToUtcCalendarYmd } from "@/lib/business-rate";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
 import { moneyRound2 } from "@/lib/money-round";
@@ -102,7 +103,8 @@ export async function GET(
         where: { id: investorId },
         include: {
           owner: { select: { id: true, username: true, role: true } },
-          investorUser: { select: { id: true, username: true } },
+          investorUser: { select: { id: true, username: true, avatarUrl: true } },
+          linkedUser: { select: { id: true, username: true, avatarUrl: true } },
           payments: { orderBy: { createdAt: "desc" } },
         },
       })
@@ -118,21 +120,7 @@ export async function GET(
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
 
-    const topUpRequests = await withDbRetry(() =>
-      prisma.bodyTopUpRequest.findMany({
-        where: { investorId },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-        select: {
-          id: true,
-          amount: true,
-          status: true,
-          comment: true,
-          createdAt: true,
-          decidedAt: true,
-        },
-      })
-    );
+    const topUpRequests = await withDbRetry(() => findBodyTopUpsForInvestorDetail(investorId));
 
     const actions = await withDbRetry(() =>
       prisma.auditLog.findMany({
@@ -150,9 +138,17 @@ export async function GET(
       })
     );
 
+    const completedPayments = investor.payments.filter((p) => p.status === "completed");
+    const lifetimeInterestPaid = moneyRound2(
+      completedPayments.filter((p) => p.type === "interest").reduce((s, p) => s + p.amount, 0)
+    );
+    /** Начислено: только `Investor.accrued` из БД (актуализируется `recalculateInvestorAccruedFromRateHistory`). */
+    const accruedRounded = moneyRound2(Math.max(investor.accrued, 0));
+    const due = accruedRounded;
+
     return NextResponse.json({
       success: true,
-      investor,
+      investor: { ...investor, accrued: accruedRounded, due, lifetimeInterestPaid },
       topUpRequests,
       actions: actions.map((a) => ({
         id: a.id,
@@ -465,7 +461,7 @@ export async function PUT(
         finalUpdateData.entryDate !== undefined
           ? new Date(finalUpdateData.entryDate as Date | string)
           : new Date(investor.entryDate);
-      const snap = await getCurrentBusinessRate(startOfDay(resolvedEntry));
+      const snap = await getCurrentBusinessRateForCalendarYmd(dateToUtcCalendarYmd(resolvedEntry));
       if (!snap) {
         const d = resolvedEntry.toLocaleDateString("ru-RU", {
           day: "2-digit",

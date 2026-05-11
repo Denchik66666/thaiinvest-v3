@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: thaiinvest
       POSTGRES_DB: thaiinvest
     ports:
-      - "54321:5432"
+      # 55432 на части сборок Windows попадает в зарезервированный диапазон Hyper-V — «forbidden by its access permissions»
+      - "15432:5432"
     volumes:
       - thaiinvest_dev_db:/var/lib/postgresql/data
     healthcheck:

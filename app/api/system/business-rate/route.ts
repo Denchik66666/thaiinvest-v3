@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
-import { getCurrentBusinessRate, upsertBusinessRate } from "@/lib/business-rate";
+import {
+  getCurrentBusinessRate,
+  getCurrentBusinessRateForCalendarYmd,
+  upsertBusinessRate,
+} from "@/lib/business-rate";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
 
@@ -22,10 +26,12 @@ export async function GET(request: NextRequest) {
     if (!decoded) return NextResponse.json({ error: "Неверный токен" }, { status: 401 });
 
     const atParam = request.nextUrl.searchParams.get("at");
-    const atParsed = atParam ? parseDate(atParam) : undefined;
-    const at = atParsed != null ? atParsed : new Date();
-
-    const current = await withDbRetry(() => getCurrentBusinessRate(at));
+    const atTrim = atParam?.trim() ?? "";
+    const current = await withDbRetry(() =>
+      /^\d{4}-\d{2}-\d{2}$/.test(atTrim)
+        ? getCurrentBusinessRateForCalendarYmd(atTrim)
+        : getCurrentBusinessRate(atTrim ? (parseDate(atTrim) ?? new Date()) : new Date())
+    );
     return NextResponse.json({ success: true, current });
   } catch (error) {
     console.error("GET BUSINESS RATE ERROR:", error);

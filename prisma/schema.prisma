@@ -106,6 +106,8 @@ model BodyTopUpRequest {
   amount       Float
   status       String   @default("pending_investor")
   comment      String?
+  /** Календарная дата заявки (выбор при создании); для UI и периодов. Факт создания строки — `createdAt`. */
+  requestDate  DateTime?
   createdById  Int
   createdBy    User     @relation("TopUpRequestCreator", fields: [createdById], references: [id])
   decidedById  Int?

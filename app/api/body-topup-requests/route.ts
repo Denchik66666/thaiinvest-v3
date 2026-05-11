@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+import {
+  bodyTopUpRequestUpdateReturnSelect,
+  createBodyTopUpRequestWithDateCompat,
+  findBodyTopUpRequestForPatch,
+  findBodyTopUpsForOwnerFeed,
+} from "@/lib/body-topup-request-date-compat";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
+import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 
 type TopUpAction = "investor_accept" | "investor_reject" | "owner_cancel";
@@ -35,25 +42,7 @@ export async function GET() {
           ? {}
           : { investor: { OR: [{ linkedUserId: decoded.userId }, { investorUserId: decoded.userId }], isPrivate: false } };
 
-    const requests = await withDbRetry(() => prisma.bodyTopUpRequest.findMany({
-      where,
-      include: {
-        investor: {
-          select: {
-            id: true,
-            name: true,
-            body: true,
-            ownerId: true,
-            linkedUserId: true,
-            investorUserId: true,
-            isPrivate: true,
-          },
-        },
-        createdBy: { select: { id: true, username: true, role: true } },
-        decidedBy: { select: { id: true, username: true, role: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }));
+    const requests = await withDbRetry(() => findBodyTopUpsForOwnerFeed(where));
 
     return NextResponse.json({ requests });
   } catch (error) {
@@ -90,6 +79,21 @@ export async function POST(request: NextRequest) {
     const comment = typeof body.comment === "string" ? body.comment.trim() : null;
     if (amount <= 0) return NextResponse.json({ error: "Сумма должна быть больше 0" }, { status: 400 });
 
+    let requestCalendarAt: Date | undefined;
+    if (body.requestDate !== undefined) {
+      if (typeof body.requestDate !== "string") {
+        return NextResponse.json({ error: "Некорректная дата заявки" }, { status: 400 });
+      }
+      const trimmed = body.requestDate.trim();
+      if (trimmed.length > 0) {
+        const parsed = parseCalendarDateOnlyYmd(trimmed);
+        if (!parsed) {
+          return NextResponse.json({ error: "Дата заявки: ожидается YYYY-MM-DD" }, { status: 400 });
+        }
+        requestCalendarAt = parsed;
+      }
+    }
+
     const investor = await withDbRetry(() => prisma.investor.findFirst({
       where: { id: investorId, ownerId: decoded.userId, isPrivate: false },
     }));
@@ -105,29 +109,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "У инвестора уже есть активный запрос на пополнение" }, { status: 409 });
     }
 
-    const topUpRequest = await withDbRetry(() => prisma.bodyTopUpRequest.create({
-      data: {
-        investorId: investor.id,
-        amount,
-        status: "pending_investor",
-        comment,
-        createdById: decoded.userId,
-      },
-      include: {
-        investor: {
-          select: {
-            id: true,
-            name: true,
-            body: true,
-            ownerId: true,
-            linkedUserId: true,
-            investorUserId: true,
-            isPrivate: true,
-          },
+    const topUpRequest = await withDbRetry(() =>
+      createBodyTopUpRequestWithDateCompat(
+        {
+          investorId: investor.id,
+          amount,
+          status: "pending_investor",
+          comment,
+          createdById: decoded.userId,
         },
-        createdBy: { select: { id: true, username: true, role: true } },
-      },
-    }));
+        requestCalendarAt
+      )
+    );
 
     try {
       await withDbRetry(() => logAction({
@@ -172,17 +165,16 @@ export async function PATCH(request: NextRequest) {
     if (!action) return NextResponse.json({ error: "Некорректное действие" }, { status: 400 });
     const comment = typeof body.comment === "string" ? body.comment.trim() : undefined;
 
-    const existing = await withDbRetry(() => prisma.bodyTopUpRequest.findUnique({
-      where: { id: requestId },
-      include: { investor: true },
-    }));
+    const existing = await withDbRetry(() => findBodyTopUpRequestForPatch(requestId));
     if (!existing) return NextResponse.json({ error: "Запрос не найден" }, { status: 404 });
     if (existing.status !== "pending_investor") {
       return NextResponse.json({ error: "Запрос уже обработан" }, { status: 400 });
     }
 
     if (action === "owner_cancel") {
-      if (decoded.role !== "OWNER" || existing.investor.ownerId !== decoded.userId) {
+      const isOwner = decoded.role === "OWNER" && existing.investor.ownerId === decoded.userId;
+      const isSuperAdmin = decoded.role === "SUPER_ADMIN";
+      if (!isOwner && !isSuperAdmin) {
         return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
       }
 
@@ -194,6 +186,7 @@ export async function PATCH(request: NextRequest) {
           decidedById: decoded.userId,
           decidedAt: new Date(),
         },
+        select: bodyTopUpRequestUpdateReturnSelect,
       }));
 
       try {
@@ -211,10 +204,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, request: updated });
     }
 
-    // Как в GET: решение принимает владелец инвестиционного аккаунта или привязанный к общей позиции пользователь.
+    // Как в GET: инвестор по привязке; SUPER_ADMIN — как в сценариях выплат (единая линия решений).
     const canInvestorDecide =
       existing.investor.investorUserId === decoded.userId ||
-      (!existing.investor.isPrivate && existing.investor.linkedUserId === decoded.userId);
+      (!existing.investor.isPrivate && existing.investor.linkedUserId === decoded.userId) ||
+      decoded.role === "SUPER_ADMIN";
     if (!canInvestorDecide) {
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
@@ -228,6 +222,7 @@ export async function PATCH(request: NextRequest) {
           decidedById: decoded.userId,
           decidedAt: new Date(),
         },
+        select: bodyTopUpRequestUpdateReturnSelect,
       }));
 
       try {
@@ -262,6 +257,7 @@ export async function PATCH(request: NextRequest) {
           decidedById: decoded.userId,
           decidedAt: new Date(),
         },
+        select: bodyTopUpRequestUpdateReturnSelect,
       });
 
       return { updatedInvestor, updatedRequest };

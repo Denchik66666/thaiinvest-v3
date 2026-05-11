@@ -1,23 +1,25 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Визуальная проверка /dashboard/manage для OWNER (Sam) и SUPER_ADMIN (Den после переименования admin).
- * Скриншоты: test-results/manage-smoke-{Sam|Den}.png
+ * Визуальная проверка /dashboard/manage для OWNER (Sam) и SUPER_ADMIN (логин по умолчанию `admin` после seed).
+ * Скриншоты: test-results/manage-smoke-{Sam|Admin}.png
  */
-/** Sam: `admin123`. Den: в проекте — `admin123`; иначе seed `den123` или `PLAYWRIGHT_SUPERADMIN_PASSWORD`. */
+/** Sam: `admin123`. SUPER_ADMIN: `admin` / `admin123` из seed; переопределение — `PLAYWRIGHT_SUPERADMIN_*`. */
 const samCase = {
   label: "Sam" as const,
   username: "Sam",
   passwords: [process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123"],
 };
-const denUsername = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
-const denPasswords = [
+const superAdminUsername = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+const superAdminPasswords = [
   process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD,
   process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123",
-  "den123",
 ].filter((p, i, a): p is string => Boolean(p) && a.indexOf(p) === i);
 
-for (const { label, username, passwords } of [samCase, { label: "Den" as const, username: denUsername, passwords: denPasswords }]) {
+for (const { label, username, passwords } of [
+  samCase,
+  { label: "Admin" as const, username: superAdminUsername, passwords: superAdminPasswords },
+]) {
   test(`manage page smoke (${label})`, async ({ page, context }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -36,7 +38,7 @@ for (const { label, username, passwords } of [samCase, { label: "Den" as const, 
     await expect(page.getByRole("heading", { name: "Управление" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Ставка сети", { exact: false })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Создать инвестора" })).toBeVisible({ timeout: 15_000 });
-    if (label === "Den") {
+    if (label === "Admin") {
       await expect(page.getByText("Сеть платформы", { exact: false })).toBeVisible();
       await expect(page.getByText("Owner", { exact: true })).toBeVisible();
     }

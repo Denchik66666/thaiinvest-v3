@@ -21,6 +21,34 @@ function flattenDbErrorText(error: unknown): string {
   return chunks.join("\n");
 }
 
+/** Краткое сообщение для UI при типичных сбоях подключения к БД (не секреты). */
+export function formatDbAccessErrorForClient(error: unknown): string | null {
+  const text = flattenDbErrorText(error);
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "";
+
+  if (code === "EACCES" || /\bEACCES\b/i.test(text)) {
+    return "База данных недоступна (отказ в доступе). Запустите PostgreSQL, проверьте DATABASE_URL в .env.local; при Docker — том с данными и права.";
+  }
+  if (
+    /\bECONNREFUSED\b/i.test(text) ||
+    code === "P1001" ||
+    text.includes("Can't reach database") ||
+    text.includes("не удалось подключиться")
+  ) {
+    return "Не удаётся подключиться к базе данных. Убедитесь, что PostgreSQL запущен и хост/порт в DATABASE_URL верны.";
+  }
+  if (text.includes("DATABASE_URL is required") || text.includes("Unsupported DATABASE_URL")) {
+    return "Не задан или неверный DATABASE_URL. Скопируйте строку подключения в .env.local (см. README).";
+  }
+  if (/\bENOTFOUND\b/i.test(text) || text.includes("getaddrinfo")) {
+    return "Хост базы данных не найден (DNS). Проверьте DATABASE_URL.";
+  }
+  return null;
+}
+
 export function isTransientDbError(error: unknown): boolean {
   const text = flattenDbErrorText(error);
   return (

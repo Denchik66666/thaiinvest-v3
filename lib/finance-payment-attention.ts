@@ -7,6 +7,19 @@ export function paymentNeedsViewerAction(scope: FinanceOperationsHistoryScope, s
   return status === "requested" || status === "pending";
 }
 
+/**
+ * Пополнение тела по заявке: инвестор подтверждает / отклоняет; владелец видит ту же «заявку» и может отозвать.
+ * В ленте — тот же бейдж и акцент, что у выплат в этом scope.
+ */
+export function topupNeedsViewerAction(
+  scope: FinanceOperationsHistoryScope,
+  item: { status: string; initialFromCreation?: boolean }
+): boolean {
+  if (item.initialFromCreation) return false;
+  if (item.status !== "pending_investor") return false;
+  return scope === "investor" || scope === "owner";
+}
+
 export function paymentAttentionBadgeLabel(scope: FinanceOperationsHistoryScope): string {
   return scope === "investor" ? "Ваш шаг" : "Решение";
 }

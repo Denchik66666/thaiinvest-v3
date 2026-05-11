@@ -28,7 +28,9 @@ export type OwnerNetworkInvestorRow = {
   id: number;
   name: string;
   handle?: string | null;
-  investorUser?: { username: string } | null;
+  investorUser?: { username: string; avatarUrl?: string | null } | null;
+  linkedUser?: { username: string; avatarUrl?: string | null } | null;
+  /** Устар.: аватар берём из `investorUser` / `linkedUser` как у аккаунта. */
   avatarUrl?: string | null;
   body: number;
   accrued: number;
@@ -225,6 +227,7 @@ function TopbarStyleInvestorIdentity({
       >
         <UserAvatar
           name={name}
+          initialsFrom={avatarInitialsSource ?? undefined}
           src={avatarUrl}
           size={avatarSize}
           variant="plain"
@@ -333,9 +336,9 @@ export function OwnerNetworkInvestorsCompact({
               >
                 <div className="flex min-w-0 items-start gap-2">
                   <TopbarStyleInvestorIdentity
-                    name={inv.name}
+                    name={investorDisplayHandle(inv) ?? inv.name}
                     avatarInitialsSource={investorDisplayHandle(inv)}
-                    avatarUrl={inv.avatarUrl}
+                    avatarUrl={inv.linkedUser?.avatarUrl ?? inv.investorUser?.avatarUrl ?? inv.avatarUrl ?? null}
                     positionsActive={positionsActive}
                     onOpenProfile={() => onOpenInvestor(inv.id)}
                   />

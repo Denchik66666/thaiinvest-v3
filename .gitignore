@@ -32,8 +32,16 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# Секреты не в git. Шаблон переменных — .env.example (он НЕ игнорируется).
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel CLI — не коммитить (секреты окружения)
+.env.vercel
+.env.vercel.*
 
 # vercel
 .vercel

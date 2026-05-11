@@ -3,10 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
+import { moneyRound2 } from '@/lib/money-round'
 
 type DashboardPaymentRow = {
   amount: number
   type: string
+  status: string
+  createdAt: Date
 }
 type DashboardInvestorRow = {
   id: number
@@ -14,6 +17,7 @@ type DashboardInvestorRow = {
   body: number
   rate: number
   accrued: number
+  activationDate: Date
   status: string
   isPrivate: boolean
   payments: DashboardPaymentRow[]
@@ -56,19 +60,23 @@ export async function GET() {
 
     const typedInvestors = investors as DashboardInvestorRow[]
     const result = typedInvestors.map((investor) => {
-      const paid = investor.payments.reduce((sum, payment) => sum + payment.amount, 0)
-      const interestPaid = investor.payments
+      const completed = investor.payments.filter((p) => p.status === 'completed')
+      const paid = completed.reduce((sum, payment) => sum + payment.amount, 0)
+      const lifetimeInterestPaid = completed
         .filter((payment) => payment.type === 'interest')
         .reduce((sum, payment) => sum + payment.amount, 0)
+
+      const accruedRounded = moneyRound2(Math.max(investor.accrued, 0))
 
       return {
         id: investor.id,
         name: investor.name,
         body: investor.body,
         rate: investor.rate,
-        accrued: investor.accrued,
+        accrued: accruedRounded,
+        lifetimeInterestPaid: moneyRound2(lifetimeInterestPaid),
         paid,
-        due: Math.max(investor.accrued - interestPaid, 0),
+        due: accruedRounded,
         status: investor.status,
         isPrivate: investor.isPrivate,
       }

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { toast } from "@/lib/notify";
 
 export type OwnerBodyTopUpRequestRow = {
@@ -15,8 +16,17 @@ export type OwnerBodyTopUpRequestRow = {
   amount: number;
   status: string;
   comment?: string | null;
+  /** Календарная дата заявки (выбор владельца); если null — показываем `createdAt`. */
+  requestDate?: string | null;
   createdAt: string;
-  investor: { id: number; name: string; body: number };
+  investor: {
+    id: number;
+    name: string;
+    body: number;
+    handle?: string | null;
+    investorUser?: { username: string; avatarUrl?: string | null } | null;
+    linkedUser?: { username: string; avatarUrl?: string | null } | null;
+  };
   createdBy: { id: number; username: string; role: string };
 };
 
@@ -118,7 +128,11 @@ export function OwnerBodyTopupAwaitingQueue({
       </div>
 
       <ul className="space-y-2">
-        {preview.map((item) => (
+        {preview.map((item) => {
+          const nick = investorDisplayHandle(item.investor);
+          const primary = nick ?? item.investor.name;
+          const showLegal = nick != null && item.investor.name.trim() !== nick.trim();
+          return (
           <li
             key={item.id}
             className="rounded-xl px-2.5 py-2 dark:bg-white/[0.04]"
@@ -126,13 +140,16 @@ export function OwnerBodyTopupAwaitingQueue({
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <Text className="truncate font-semibold leading-tight">{item.investor.name}</Text>
+                <Text className="truncate font-semibold leading-tight">{primary}</Text>
+                {showLegal ? (
+                  <Text className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.investor.name}</Text>
+                ) : null}
                 <Text className="mt-0.5 text-[11px]" style={{ color: "var(--thai-color-topup)" }}>
                   +{formatCurrency(item.amount)} · сейчас тело {formatCurrency(item.investor.body)}
                 </Text>
                 <Text className="mt-0.5 text-[10px] text-muted-foreground">{formatTopUpStatus(item.status)}</Text>
                 <Text className="mt-0.5 text-[10px] tabular-nums text-muted-foreground/90">
-                  От {item.createdBy.username} · {formatShortWhen(item.createdAt)}
+                  От {item.createdBy.username} · {formatShortWhen(item.requestDate ?? item.createdAt)}
                 </Text>
                 {item.comment ? (
                   <Text className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">«{item.comment}»</Text>
@@ -154,7 +171,8 @@ export function OwnerBodyTopupAwaitingQueue({
               </Button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {hidden > 0 ? (

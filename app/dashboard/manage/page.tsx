@@ -16,7 +16,7 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
 import { SuperAdminNetworkOverviewCard } from "@/components/dashboard/SuperAdminNetworkOverviewCard";
-import { CreateInvestorModal } from "@/components/investors/CreateInvestorModal";
+import { ManagePositionDeskModal } from "@/components/investors/ManagePositionDeskModal";
 import {
   InvestorCredentialsReveal,
   type InvestorCredentials,
@@ -76,13 +76,20 @@ type SystemReadinessResponse = {
   missing: string[];
   missingBlocking?: string[];
   missingOptional?: string[];
+  snapshot?: {
+    ownerUser: { id: number; username: string } | null;
+    superAdminBaseInvestor: { id: number; body: number; rate: number } | null;
+  };
 };
 
 /** Lean-снимок для счётчиков OWNER (совпадает с главным дашбордом). */
 type ManageLeanInvestor = {
   id: number;
   ownerId?: number;
-  owner: { username: string };
+  owner: { username: string; role?: string };
+  linkedUserId?: number | null;
+  isPrivate?: boolean;
+  body?: number;
   payments?: { status: string }[];
 };
 
@@ -114,6 +121,10 @@ const manageGhostLink =
 const manageGhostLinkPrimary =
   "text-[10px] font-semibold uppercase tracking-[0.1em] text-primary/90 underline-offset-2 transition hover:text-primary hover:underline disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
 
+/** Компактная кнопка в полосе «Система» (не блок с текстом). */
+const manageMicroButton =
+  "inline-flex h-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/[0.12] px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary transition hover:bg-primary/[0.18] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
 const roleStripShell =
   "rounded-xl border border-foreground/[0.06] border-l-2 border-l-primary/45 bg-foreground/[0.02] px-2.5 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.02]";
 
@@ -125,9 +136,18 @@ export default function DashboardManagePage() {
   const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
   const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
 
-  const [showModal, setShowModal] = useState(false);
+  const [deskModal, setDeskModal] = useState<null | "create" | "link_self">(null);
   const [showReadinessDetails, setShowReadinessDetails] = useState(false);
   const [credentialsDialog, setCredentialsDialog] = useState<InvestorCredentials | null>(null);
+  const [becomeOwnerForm, setBecomeOwnerForm] = useState({
+    name: "",
+    handle: "",
+    phone: "",
+    body: "",
+    rate: "",
+    entryDate: new Date().toISOString().split("T")[0],
+    allowMultiple: false,
+  });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -140,13 +160,18 @@ export default function DashboardManagePage() {
   });
 
   const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
+  const formatAmountInput = (value: string) => {
+    const amount = parseAmountInput(value);
+    if (!amount) return "";
+    return `${amount.toLocaleString("ru-RU")} ฿`;
+  };
   const { data: privateCreateCtxData, isLoading: loadingPrivateCreateCtx } = useQuery({
     queryKey: ["investors-private-create-context"],
     queryFn: () =>
       apiClient.get<{ success: boolean; context: PrivateInvestorCreateContext }>(
         "/api/investors/private-create-context"
       ),
-    enabled: !!user && user.role === "SUPER_ADMIN" && showModal,
+    enabled: !!user && user.role === "SUPER_ADMIN" && deskModal === "create",
   });
 
   const { data: readinessData, isLoading: loadingReadiness } = useQuery({
@@ -186,6 +211,18 @@ export default function DashboardManagePage() {
     staleTime: 120_000,
   });
 
+  const { data: superAdminCommonData } = useQuery({
+    queryKey: investorsDashboardListQueryKey(user?.role),
+    queryFn: () =>
+      apiClient.get<{ investors: ManageLeanInvestor[] }>(
+        `/api/investors?network=${investorsDashboardNetworkParam(user!.role)}&lean=1`
+      ),
+    enabled: !!user && user.role === "SUPER_ADMIN",
+    placeholderData: keepPreviousData,
+    refetchInterval: 45_000,
+    refetchOnWindowFocus: true,
+  });
+
   const businessNext = useMemo(() => {
     const rates = businessRateHistoryData?.rates;
     if (!rates?.length) return null;
@@ -218,7 +255,7 @@ export default function DashboardManagePage() {
     },
     onSuccess: (result) => {
       toast.success("Инвестор создан");
-      setShowModal(false);
+      setDeskModal(null);
       setFormData({
         name: "",
         handle: "",
@@ -234,6 +271,34 @@ export default function DashboardManagePage() {
     },
     onError: (error: unknown) => {
       console.error("Create investor error:", error);
+    },
+  });
+
+  const becomeOwnerInvestorMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post("/api/investors/become-semen-investor", {
+        name: becomeOwnerForm.name.trim(),
+        handle: becomeOwnerForm.handle.trim() || undefined,
+        phone: becomeOwnerForm.phone.trim() || undefined,
+        body: parseAmountInput(becomeOwnerForm.body),
+        rate: Number(becomeOwnerForm.rate),
+        entryDate: becomeOwnerForm.entryDate,
+        allowMultiple: becomeOwnerForm.allowMultiple,
+      }),
+    onSuccess: () => {
+      toast.success("Позиция в общей сети владельца создана");
+      setDeskModal(null);
+      setBecomeOwnerForm({
+        name: "",
+        handle: "",
+        phone: "",
+        body: "",
+        rate: "",
+        entryDate: new Date().toISOString().split("T")[0],
+        allowMultiple: false,
+      });
+      queryClient.invalidateQueries({ queryKey: ["investors"] });
+      queryClient.invalidateQueries({ queryKey: ["system-readiness"] });
     },
   });
 
@@ -296,6 +361,12 @@ export default function DashboardManagePage() {
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isOwner = user?.role === "OWNER";
   const systemReady = !isSuperAdmin || readinessData?.ready !== false;
+  const linkedCommonAsSelf = useMemo(() => {
+    if (!user?.id) return [];
+    const list = superAdminCommonData?.investors ?? [];
+    return list.filter((inv) => inv.linkedUserId === user.id && inv.isPrivate === false);
+  }, [user?.id, superAdminCommonData?.investors]);
+  const ownerUsername = readinessData?.snapshot?.ownerUser?.username ?? null;
   const missingBlockingChecks = readinessData?.missingBlocking ?? readinessData?.missing ?? [];
   const missingOptionalChecks = readinessData?.missingOptional ?? [];
 
@@ -347,6 +418,16 @@ export default function DashboardManagePage() {
     router.push("/dashboard");
   };
 
+  const openBecomeOwnerModal = (opts: { allowMultiple: boolean }) => {
+    const today = new Date().toISOString().split("T")[0];
+    setBecomeOwnerForm((prev) => ({
+      ...prev,
+      allowMultiple: opts.allowMultiple,
+      entryDate: today,
+    }));
+    setDeskModal("link_self");
+  };
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace("/login");
@@ -383,6 +464,11 @@ export default function DashboardManagePage() {
   if (!user) return null;
 
   const createDisabled = createMutation.isPending || !systemReady;
+  const becomeOwnerRateOk = Number(becomeOwnerForm.rate) > 0;
+  /** Открыть модалку: ставка подставляется уже внутри по дате входа — не блокировать кнопку «Привязать». */
+  const becomeOwnerOpenDisabled =
+    becomeOwnerInvestorMutation.isPending || !systemReady || loadingReadiness;
+  const becomeOwnerSubmitDisabled = becomeOwnerOpenDisabled || !becomeOwnerRateOk;
 
   return (
     <Container>
@@ -532,7 +618,11 @@ export default function DashboardManagePage() {
             <button
               type="button"
               disabled={createDisabled}
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                const today = new Date().toISOString().split("T")[0];
+                setFormData((prev) => ({ ...prev, entryDate: today }));
+                setDeskModal("create");
+              }}
               className={manageGhostLinkPrimary}
             >
               Создать инвестора
@@ -580,8 +670,8 @@ export default function DashboardManagePage() {
               contentClassName="px-2.5 py-2"
             >
               <div className="rounded-xl border border-foreground/[0.05] bg-background/30 p-2.5 dark:border-white/[0.06] dark:bg-black/20">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <span
                       className={cn(
                         "inline-block h-2 w-2 shrink-0 rounded-full",
@@ -593,6 +683,52 @@ export default function DashboardManagePage() {
                     >
                       {systemReady ? "Учёт доступен" : "Учёт заблокирован"}
                     </Text>
+                    {linkedCommonAsSelf.length === 0 ? (
+                      <button
+                        type="button"
+                        className={manageMicroButton}
+                        disabled={becomeOwnerOpenDisabled}
+                        title={
+                          ownerUsername
+                            ? `Позиция в общей сети ${ownerUsername} с привязкой вашего аккаунта`
+                            : "Позиция в общей сети владельца с привязкой вашего аккаунта"
+                        }
+                        onClick={() => openBecomeOwnerModal({ allowMultiple: false })}
+                      >
+                        Привязать
+                      </button>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-muted-foreground/40" aria-hidden>
+                          ·
+                        </span>
+                        <span
+                          className="text-[10px] font-semibold tabular-nums text-muted-foreground"
+                          title="Ваша карточка в общей сети владельца"
+                        >
+                          №{linkedCommonAsSelf[0].id}
+                          {linkedCommonAsSelf[0]?.body != null
+                            ? ` · ${linkedCommonAsSelf[0].body!.toLocaleString("ru-RU")} ฿`
+                            : ""}
+                        </span>
+                        <button
+                          type="button"
+                          className={manageMicroButton}
+                          disabled={becomeOwnerOpenDisabled}
+                          title="Вторая карточка у того же владельца"
+                          onClick={() => openBecomeOwnerModal({ allowMultiple: true })}
+                        >
+                          Ещё вклад
+                        </button>
+                        <button
+                          type="button"
+                          className={manageGhostLink}
+                          onClick={() => router.push(`/dashboard/finance?investor=${linkedCommonAsSelf[0].id}`)}
+                        >
+                          Финансы
+                        </button>
+                      </>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -634,9 +770,10 @@ export default function DashboardManagePage() {
           onDismiss={() => setCredentialsDialog(null)}
         />
 
-        <CreateInvestorModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
+        <ManagePositionDeskModal
+          mode="create_investor"
+          open={deskModal === "create"}
+          onClose={() => setDeskModal(null)}
           onSubmit={() => createMutation.mutate(formData)}
           formData={formData}
           setFormData={setFormData}
@@ -652,6 +789,26 @@ export default function DashboardManagePage() {
               : createMutation.error instanceof Error
                 ? createMutation.error.message
                 : undefined
+          }
+        />
+
+        <ManagePositionDeskModal
+          mode="link_self"
+          open={deskModal === "link_self"}
+          onClose={() => !becomeOwnerInvestorMutation.isPending && setDeskModal(null)}
+          actorUsername={user.username}
+          ownerUsername={ownerUsername}
+          form={becomeOwnerForm}
+          setForm={setBecomeOwnerForm}
+          onSubmit={() => becomeOwnerInvestorMutation.mutate()}
+          loading={becomeOwnerInvestorMutation.isPending}
+          systemReady={systemReady}
+          userRole={user.role}
+          submitDisabled={becomeOwnerSubmitDisabled}
+          error={
+            becomeOwnerInvestorMutation.error instanceof Error
+              ? becomeOwnerInvestorMutation.error.message
+              : undefined
           }
         />
 

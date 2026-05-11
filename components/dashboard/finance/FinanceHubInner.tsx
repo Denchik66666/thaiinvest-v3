@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,12 +16,14 @@ import { ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Container } from "@/components/ui/Container";
+import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import {
+  INVESTORS_LIST_QUERY_ROOT,
   investorsDashboardListQueryKey,
   investorsDashboardNetworkParam,
   type SuperAdminInvestorsNetwork,
@@ -41,6 +51,7 @@ type LeanInvestor = {
   body: number;
   accrued: number;
   paid?: number;
+  entryDate?: string | null;
   status: string;
   isPrivate?: boolean;
   linkedUserId?: number | null;
@@ -91,16 +102,14 @@ function serverHtmlDark() {
   return false;
 }
 
-export function FinanceHubInner() {
+function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
-  const { user, loading: authLoading } = useAuth();
   const [detailItem, setDetailItem] = useState<FinanceOperationItem | null>(null);
   const [bodyTopUpOpen, setBodyTopUpOpen] = useState(false);
   const [networkExpanded, setNetworkExpanded] = useState(false);
-  /** Владелец с одной позицией: лента по умолчанию «открыта» без ?investor= — без этого флага повторный клик не сворачивал (URL пустой ≠ «открыто» в onToggleInvestor). */
-  const [ownerSingleInvestorFeedCollapsed, setOwnerSingleInvestorFeedCollapsed] = useState(false);
+  /** Владелец с одной позицией: лента под карточкой по умолчанию свёрнута; раскрытие только по клику (состояние живёт на странице до обновления). */
+  const [ownerSingleInvestorFeedCollapsed, setOwnerSingleInvestorFeedCollapsed] = useState(true);
 
   const saFinanceNetwork: SuperAdminInvestorsNetwork = useMemo(() => {
     if (user?.role !== "SUPER_ADMIN") return "common";
@@ -124,6 +133,7 @@ export function FinanceHubInner() {
 
   const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
   const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
+  const queryClient = useQueryClient();
 
   const { data: investorsData } = useQuery({
     queryKey: investorsDashboardListQueryKey(
@@ -159,22 +169,6 @@ export function FinanceHubInner() {
     }
     return investors.filter((inv) => inv.investorUserId === user.id);
   }, [investorsData, user]);
-
-  const { data: ownerTopUpData } = useQuery({
-    queryKey: ["body-topup-requests"],
-    queryFn: () =>
-      apiClient.get<{ requests: { investorId: number; status: string }[] }>("/api/body-topup-requests"),
-    enabled: !!user && user.role === "OWNER" && myInvestors.length > 0,
-    staleTime: 30_000,
-  });
-
-  const pendingBodyTopUpIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const r of ownerTopUpData?.requests ?? []) {
-      if (r.status === "pending_investor") ids.add(r.investorId);
-    }
-    return ids;
-  }, [ownerTopUpData?.requests]);
 
   const rawInvestorParam = searchParams.get("investor");
   const investorIdFromUrl = useMemo(() => {
@@ -238,6 +232,27 @@ export function FinanceHubInner() {
   ]);
 
   const effectiveFilterInvestorId = accordionExpanded.kind === "investor" ? accordionExpanded.id : null;
+
+  const hasOwnerCommonTopUpTargets = useMemo(
+    () => user.role === "OWNER" && myInvestors.some((inv) => !inv.isPrivate),
+    [user.role, myInvestors]
+  );
+
+  const { data: ownerBodyTopUpListData } = useQuery({
+    queryKey: ["body-topup-requests"] as const,
+    queryFn: () =>
+      apiClient.get<{ requests: { investorId: number; status: string }[] }>("/api/body-topup-requests"),
+    enabled: hasOwnerCommonTopUpTargets,
+    staleTime: 30_000,
+  });
+
+  const pendingBodyTopUpIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of ownerBodyTopUpListData?.requests ?? []) {
+      if (r.status === "pending_investor") ids.add(r.investorId);
+    }
+    return ids;
+  }, [ownerBodyTopUpListData?.requests]);
 
   const networkTotals = useMemo(
     () => ({
@@ -423,31 +438,6 @@ export function FinanceHubInner() {
 
   /** Жест «назад» с края экрана (iOS Safari) опирается на тот же стек history, что и router.back(). */
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace("/login");
-  }, [authLoading, user, router]);
-
-  useEffect(() => {
-    document.documentElement.classList.add("thai-finance-touch-scroll");
-    return () => document.documentElement.classList.remove("thai-finance-touch-scroll");
-  }, []);
-
-  if (authLoading || !user) {
-    return (
-      <Container>
-        <div
-          className="thai-dashboard-root flex min-h-screen items-center justify-center py-16"
-          style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
-        >
-          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6" style={glassCard}>
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <Text className="text-foreground">Загрузка…</Text>
-          </div>
-        </div>
-      </Container>
-    );
-  }
-
   return (
     <Container>
       <div
@@ -517,21 +507,6 @@ export function FinanceHubInner() {
               ))}
             </div>
           ) : null}
-          {user.role === "OWNER" && myInvestors.length > 0 ? (
-            <div className="mt-2 flex justify-center border-t border-border/20 pt-2 dark:border-white/[0.06]">
-              <button
-                type="button"
-                onClick={() => setBodyTopUpOpen(true)}
-                className={cn(
-                  "text-[11px] font-semibold uppercase tracking-wide outline-none transition",
-                  "text-[var(--thai-color-topup)] hover:underline",
-                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                )}
-              >
-                Пополнение тела
-              </button>
-            </div>
-          ) : null}
         </div>
 
         <section className="flex flex-col overflow-visible rounded-xl border border-border/25 p-2 sm:p-3 md:rounded-2xl md:p-4" style={glassCard}>
@@ -541,9 +516,7 @@ export function FinanceHubInner() {
             embeddedCollapsible={
               showInvestorFilter && (user.role === "OWNER" || user.role === "SUPER_ADMIN")
             }
-            embeddedInitiallyExpanded={
-              effectiveFilterInvestorId != null || (user.role === "OWNER" && myInvestors.length === 1)
-            }
+            embeddedInitiallyExpanded={effectiveFilterInvestorId != null}
             financeProminentFilters
             financePageScroll
             enabled={movementsEnabled}
@@ -555,6 +528,20 @@ export function FinanceHubInner() {
             financeSuppressBottomFeed={showInvestorFilter}
             financeSuperAdminNetwork={user.role === "SUPER_ADMIN" ? saFinanceNetwork : null}
             onOperationClick={(item) => setDetailItem(item)}
+            financeFeedHeaderSlot={
+              hasOwnerCommonTopUpTargets ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 shrink-0 whitespace-nowrap rounded-full border border-border/45 bg-background/40 px-2.5 py-0 text-[10px] font-semibold uppercase leading-none tracking-wide text-muted-foreground hover:border-border/65 hover:bg-muted/20 hover:text-foreground dark:border-white/[0.08] dark:bg-transparent dark:hover:bg-white/[0.05]"
+                  title="Запросить пополнение тела в общей сети (инвестор подтверждает)"
+                  onClick={() => setBodyTopUpOpen(true)}
+                >
+                  Пополнение
+                </Button>
+              ) : null
+            }
           />
         </section>
 
@@ -570,7 +557,7 @@ export function FinanceHubInner() {
         }}
       />
 
-      {user.role === "OWNER" ? (
+      {hasOwnerCommonTopUpTargets ? (
         <FinanceBodyTopUpModal
           open={bodyTopUpOpen}
           onClose={() => setBodyTopUpOpen(false)}
@@ -579,6 +566,7 @@ export function FinanceHubInner() {
             name: inv.name,
             handle: inv.handle ?? null,
             body: inv.body ?? 0,
+            entryDate: inv.entryDate != null ? String(inv.entryDate) : null,
             status: inv.status ?? "",
             isPrivate: inv.isPrivate,
             investorUser: inv.investorUser ?? null,
@@ -589,14 +577,100 @@ export function FinanceHubInner() {
           hintInvestorId={effectiveFilterInvestorId}
           pendingTopUpIds={pendingBodyTopUpIds}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] });
-            queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] });
-            queryClient.invalidateQueries({ queryKey: ["investors"] });
-            queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
-            queryClient.invalidateQueries({ queryKey: ["reports-feed"] });
+            void queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] });
+            void queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] });
+            void queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] });
+            void queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] });
+            void queryClient.invalidateQueries({ queryKey: ["reports-feed"] });
           }}
         />
       ) : null}
+
     </Container>
+  );
+}
+
+/** Пока `useSearchParams` не готов — тот же каркас страницы без второго полноэкранного спиннера. */
+function FinanceHubSuspensePlaceholder({
+  isDark,
+  glassCard,
+}: {
+  isDark: boolean;
+  glassCard: CSSProperties;
+}) {
+  return (
+    <Container>
+      <div
+        className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28"
+        style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+      >
+        <div
+          className={cn(
+            "sticky top-0 z-30 -mx-1 mb-2 rounded-2xl px-2 py-2.5",
+            "border border-white/[0.18] bg-white/[0.42] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/[0.32]",
+            "shadow-[0_8px_32px_-12px_rgba(0,0,0,0.14),inset_0_1px_0_0_rgba(255,255,255,0.55)]",
+            "dark:border-white/[0.09] dark:bg-[#0d0d14]/32 dark:supports-[backdrop-filter]:bg-[#0d0d14]/22",
+            "dark:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.08)]"
+          )}
+        >
+          <div className="grid grid-cols-[minmax(2.75rem,auto)_1fr_minmax(2.75rem,auto)] items-center gap-1">
+            <div className="h-10 w-10 rounded-xl bg-muted/25" aria-hidden />
+            <div className="min-w-0 px-1 text-center">
+              <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground md:text-lg">
+                Финансы
+              </h1>
+            </div>
+            <div className="flex justify-end pr-0.5">
+              <div className="h-10 w-10 rounded-full bg-muted/25" aria-hidden />
+            </div>
+          </div>
+        </div>
+
+        <section className="flex flex-col overflow-visible rounded-xl border border-border/25 p-2 sm:p-3 md:rounded-2xl md:p-4" style={glassCard}>
+          <div className="min-h-[42vh] animate-pulse rounded-lg bg-muted/12" aria-hidden />
+        </section>
+
+        <MobileBottomNav active="finance" />
+      </div>
+    </Container>
+  );
+}
+
+export function FinanceHubInner() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
+  const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
+
+  useEffect(() => {
+    if (!authLoading && !user) router.replace("/login");
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    document.documentElement.classList.add("thai-finance-touch-scroll");
+    return () => document.documentElement.classList.remove("thai-finance-touch-scroll");
+  }, [user]);
+
+  if (authLoading || !user) {
+    return (
+      <Container>
+        <div
+          className="thai-dashboard-root flex min-h-screen items-center justify-center py-16"
+          style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+        >
+          <div className="thai-glass flex flex-col items-center gap-3 rounded-2xl px-8 py-6" style={glassCard}>
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <Text className="text-foreground">Загрузка…</Text>
+          </div>
+        </div>
+      </Container>
+    );
+  }
+
+  return (
+    <Suspense fallback={<FinanceHubSuspensePlaceholder isDark={isDark} glassCard={glassCard} />}>
+      <FinanceHubFinanceBody user={user} />
+    </Suspense>
   );
 }

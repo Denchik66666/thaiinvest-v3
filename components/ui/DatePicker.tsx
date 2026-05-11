@@ -92,6 +92,12 @@ export type DatePickerProps = {
    * Только с `inline`.
    */
   financeFeedToolbar?: boolean;
+  /** Классы к тексту выбранной даты в дефолтном триггере (вместо `text-foreground`). */
+  triggerValueClassName?: string;
+  /** Классы к иконке календаря в `variant="default"` (вместо muted/foreground). */
+  calendarIconClassName?: string;
+  /** Подсказка у кнопки-триггера в режиме `financeFeedToolbar` (иначе «Дата входа»). */
+  triggerTitle?: string;
 };
 
 /** Триггер: только иконка, без фона и обводки (наведение — смена цвета). */
@@ -115,6 +121,9 @@ export function DatePicker({
   popoverGlass = true,
   financePresetChips = false,
   financeFeedToolbar = false,
+  triggerValueClassName,
+  calendarIconClassName,
+  triggerTitle,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -309,7 +318,8 @@ export function DatePicker({
       <CalendarDays
         className={cn(
           "h-4 w-4 shrink-0 transition duration-200",
-          open ? "text-foreground" : "text-muted-foreground"
+          !calendarIconClassName && (open ? "text-foreground" : "text-muted-foreground"),
+          calendarIconClassName
         )}
         strokeWidth={2}
         aria-hidden
@@ -328,20 +338,25 @@ export function DatePicker({
           aria-expanded={open}
           aria-haspopup="dialog"
           aria-label={`Дата входа: ${displayDate}`}
-          title="Дата входа"
+          title={triggerTitle ?? "Дата входа"}
           disabled={disabled}
           onClick={() => !disabled && setOpen((v) => !v)}
           className="inline-flex items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 outline-none transition-colors hover:opacity-95 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
         >
           <CalendarDays
-            className="h-[15px] w-[15px] shrink-0 text-primary/95 dark:text-primary/90"
+            className={cn(
+              "h-[15px] w-[15px] shrink-0",
+              calendarIconClassName ?? "text-primary/95 dark:text-primary/90"
+            )}
             strokeWidth={2.35}
             aria-hidden
           />
           <span
             className={cn(
               "min-w-0 text-xs font-medium tabular-nums sm:text-[13px]",
-              value && parseYmd(value) ? "text-muted-foreground" : "text-muted-foreground/75"
+              value && parseYmd(value)
+                ? (triggerValueClassName ?? "text-muted-foreground")
+                : "text-muted-foreground/75"
             )}
           >
             {displayDate}
@@ -349,7 +364,11 @@ export function DatePicker({
           <ChevronDown
             className={cn(
               "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
-              open && "rotate-180 text-primary/90"
+              open && "rotate-180",
+              open &&
+                (triggerValueClassName
+                  ? cn(triggerValueClassName, "opacity-90")
+                  : "text-primary/90")
             )}
             strokeWidth={2}
             aria-hidden
@@ -424,7 +443,9 @@ export function DatePicker({
         onClick={() => !disabled && setOpen((v) => !v)}
         className={cn(
           "min-w-0 flex-1 truncate text-left text-[11px] font-medium tabular-nums tracking-tight outline-none",
-          value && parseYmd(value) ? "text-foreground" : "text-muted-foreground",
+          value && parseYmd(value)
+            ? (triggerValueClassName ?? "text-foreground")
+            : "text-muted-foreground",
           inline && "max-w-[5.5rem]",
           disabled && "pointer-events-none opacity-50"
         )}

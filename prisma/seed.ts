@@ -10,20 +10,20 @@ import type { Role } from "@prisma/client";
  * Seed (локальная разработка) — НЕ должен плодить пользователей при смене ника.
  *
  * Вместо upsert'ов по фиксированным usernames:
- * - SUPER_ADMIN: создаём Den только если нет ни одного SUPER_ADMIN
+ * - SUPER_ADMIN: создаём `admin` только если нет ни одного SUPER_ADMIN
  * - OWNER: создаём Sam только если нет ни одного OWNER
  * - INVESTOR: создаём Sega_55RUS только если нет ни одного INVESTOR
  *
  * Пароли для создаваемых seed'ом пользователей:
- * - Den (SUPER_ADMIN): den123
+ * - admin (SUPER_ADMIN): admin123
  * - Sam (OWNER): admin123
  * - Sega_55RUS (INVESTOR): qwerty123
  */
 
 const PW = {
+  admin: "admin123",
   Sam: "admin123",
   Sega_55RUS: "qwerty123",
-  Den: "den123",
 } as const;
 
 function allowCreate(): boolean {
@@ -58,7 +58,7 @@ async function ensureRole(role: Role, fallbackUsername: string, fallbackPassword
 
 async function main() {
   const { prisma } = await import("../lib/prisma");
-  const superAdmin = await ensureRole("SUPER_ADMIN", "Den", PW.Den);
+  const superAdmin = await ensureRole("SUPER_ADMIN", "admin", PW.admin);
   const owner = await ensureRole("OWNER", "Sam", PW.Sam);
   const investorUser = await ensureRole("INVESTOR", "Sega_55RUS", PW.Sega_55RUS);
 
