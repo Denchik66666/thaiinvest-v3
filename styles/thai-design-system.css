@@ -106,7 +106,8 @@
  */
 .thai-dashboard-premium-gold-amount,
 .thai-investor-premium-gold-amount,
-.thai-investor-forecast-strip__amount {
+.thai-investor-forecast-strip__amount,
+.thai-owner-forecast-strip__amount {
   font-weight: 650;
   letter-spacing: 0.02em;
   color: hsl(34 42% 30%);
@@ -118,7 +119,8 @@
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
   .thai-dashboard-premium-gold-amount,
   .thai-investor-premium-gold-amount,
-  .thai-investor-forecast-strip__amount {
+  .thai-investor-forecast-strip__amount,
+  .thai-owner-forecast-strip__amount {
     background: linear-gradient(
       105deg,
       hsl(32 38% 26%) 0%,
@@ -134,7 +136,8 @@
 
 .dark .thai-dashboard-premium-gold-amount,
 .dark .thai-investor-premium-gold-amount,
-.dark .thai-investor-forecast-strip__amount {
+.dark .thai-investor-forecast-strip__amount,
+.dark .thai-owner-forecast-strip__amount {
   color: hsl(43 28% 72%);
   -webkit-text-fill-color: hsl(43 28% 72%);
   text-shadow: none;
@@ -144,7 +147,8 @@
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
   .dark .thai-dashboard-premium-gold-amount,
   .dark .thai-investor-premium-gold-amount,
-  .dark .thai-investor-forecast-strip__amount {
+  .dark .thai-investor-forecast-strip__amount,
+  .dark .thai-owner-forecast-strip__amount {
     background: linear-gradient(
       105deg,
       hsl(38 26% 52%) 0%,
@@ -162,7 +166,8 @@
 
 .theme-linear.dark .thai-dashboard-premium-gold-amount,
 .theme-linear.dark .thai-investor-premium-gold-amount,
-.theme-linear.dark .thai-investor-forecast-strip__amount {
+.theme-linear.dark .thai-investor-forecast-strip__amount,
+.theme-linear.dark .thai-owner-forecast-strip__amount {
   color: hsl(43 28% 72%);
   -webkit-text-fill-color: hsl(43 28% 72%);
   text-shadow: none;
@@ -172,7 +177,8 @@
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
   .theme-linear.dark .thai-dashboard-premium-gold-amount,
   .theme-linear.dark .thai-investor-premium-gold-amount,
-  .theme-linear.dark .thai-investor-forecast-strip__amount {
+  .theme-linear.dark .thai-investor-forecast-strip__amount,
+  .theme-linear.dark .thai-owner-forecast-strip__amount {
     background: linear-gradient(
       105deg,
       hsl(38 26% 52%) 0%,

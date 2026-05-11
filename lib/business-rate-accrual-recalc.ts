@@ -6,9 +6,9 @@ import { withDbRetry } from "@/lib/db-retry";
  * Пересчитывает `Investor.accrued` по полной истории `RateHistory`
  * (копия логики POST `/api/system/business-rate` после любого изменения истории).
  *
- * `accrued` — только **законченные** недельные циклы (до начала текущей понедельничной недели),
- * плюс вычет подтверждённых выплат процентов/тела/закрытия, попавших в **текущую** открытую неделю.
- * Доля начисления за незавершённую неделю в поле не входит (прогноз — в UI ленты/hero).
+ * Начисление в `accrued` — только по **закрытым** неделям; текущая открытая неделя
+ * не добавляет процент. Выплаты текущей недели по-прежнему уменьшают остаток.
+ * Итог округляется до целого бата.
  */
 export async function recalculateInvestorAccruedFromRateHistory(): Promise<void> {
   const now = new Date();
@@ -137,6 +137,8 @@ export async function recalculateInvestorAccruedFromRateHistory(): Promise<void>
         body = 0;
       }
     }
+
+    accrued = Math.round(accrued);
 
     if (Math.abs((inv.accrued ?? 0) - accrued) > eps) {
       await withDbRetry(() => prisma.investor.update({ where: { id: inv.id }, data: { accrued } }));

@@ -18,6 +18,8 @@ import {
   OwnerNetworkInvestorsCompact,
   type OwnerNetworkInvestorRow,
 } from "@/components/dashboard/OwnerNetworkInvestorsCompact";
+import type { InvestorForecastStrip } from "@/components/dashboard/InvestorPremiumDashboard";
+
 function buildWeekRangeLabel(daySpan: number): string {
   const monday = getPreviousOrCurrentMonday(new Date());
   const sunday = new Date(monday);
@@ -32,6 +34,8 @@ export type OwnerPremiumDashboardProps = {
   glassCard: CSSProperties;
   headline: string;
   nextPayoutLabel: string;
+  /** Прогноз за текущую неделю по всем инвесторам владельца (целые баты). */
+  forecastStrip: InvestorForecastStrip | null;
   stats: { capital: number; accrued: number; paid: number; due: number };
   investors: OwnerNetworkInvestorRow[];
   pendingPayments: OwnerPendingPaymentRow[];
@@ -46,6 +50,7 @@ export function OwnerPremiumDashboard({
   glassCard,
   headline,
   nextPayoutLabel,
+  forecastStrip,
   stats,
   investors,
   pendingPayments,
@@ -136,6 +141,14 @@ export function OwnerPremiumDashboard({
                   </div>
                 </div>
               </div>
+
+              {forecastStrip ? (
+                <p className={cn("thai-owner-forecast-strip thai-owner-forecast-strip--quiet tabular-nums")} role="status">
+                  Ожидается{" "}
+                  <span className="thai-owner-forecast-strip__amount">{forecastStrip.amountPlusBaht}</span> к{" "}
+                  {forecastStrip.payoutDate}
+                </p>
+              ) : null}
 
               <p className={cn("thai-owner-forecast-strip thai-owner-forecast-strip--quiet tabular-nums")} role="status">
                 {headline}

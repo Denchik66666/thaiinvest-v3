@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -11,7 +11,7 @@ import { formatCurrency, cn } from "@/lib/utils";
 import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
-import { sumExpectedFullOpenWeekAccrualGross } from "@/lib/open-week-forecast";
+import { sumExpectedFullOpenWeekAccrualRounded } from "@/lib/open-week-forecast";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
@@ -30,7 +30,7 @@ import {
   pickLatestWithdrawalRequest,
 } from "@/components/dashboard/investor-withdrawal-request-status";
 import { DashboardOperationsHistory } from "@/components/dashboard/DashboardOperationsHistory";
-import { InvestorPremiumDashboard } from "@/components/dashboard/InvestorPremiumDashboard";
+import { InvestorPremiumDashboard, type InvestorForecastStrip } from "@/components/dashboard/InvestorPremiumDashboard";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
 import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
@@ -45,6 +45,7 @@ type InvestorRow = {
   body: number;
   rate: number;
   accrued: number;
+  lifetimeInterestPaid?: number;
   paid: number;
   due: number;
   status: string;
@@ -204,17 +205,16 @@ export default function DashboardPage() {
     refetchOnWindowFocus: user?.role === "OWNER",
   });
 
-  const openWeekMondayIso =
-    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
-      ? getPreviousOrCurrentMonday(new Date()).toISOString()
-      : "";
+  const openWeekMondayIso = getPreviousOrCurrentMonday(new Date()).toISOString();
+  const needsWeeklyForecastRate =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN" || user?.role === "OWNER";
   const { data: investorBusinessRate } = useQuery({
     queryKey: ["system", "business-rate", openWeekMondayIso] as const,
     queryFn: () =>
       apiClient.get<{ success: boolean; current: { rate: number } | null }>(
         `/api/system/business-rate?at=${encodeURIComponent(openWeekMondayIso)}`
       ),
-    enabled: !!user && (user.role === "INVESTOR" || user.role === "SUPER_ADMIN"),
+    enabled: !!user && needsWeeklyForecastRate,
     staleTime: 60_000,
   });
 
@@ -242,12 +242,14 @@ export default function DashboardPage() {
     );
   }, [myInvestors]);
 
-  const investorForecastFullWeek =
-    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
-      ? sumExpectedFullOpenWeekAccrualGross(
-          myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
-          investorBusinessRate?.current?.rate ?? null
-        )
+  const forecastPositions = useMemo(
+    () => myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
+    [myInvestors]
+  );
+
+  const weeklyForecastSumBahtRounded =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN" || user?.role === "OWNER"
+      ? sumExpectedFullOpenWeekAccrualRounded(forecastPositions, investorBusinessRate?.current?.rate ?? null)
       : null;
 
   const bestDueInvestor = useMemo(() => {
@@ -267,24 +269,31 @@ export default function DashboardPage() {
   const isOwner = user?.role === "OWNER";
   const isInvestor = user?.role === "INVESTOR";
 
-  const investorForecastStrip = useMemo(() => {
-    if (
-      (!isInvestor && !isSuperAdmin) ||
-      myInvestors.length === 0 ||
-      investorForecastFullWeek == null ||
-      investorForecastFullWeek < 0.005
-    ) {
-      return null;
-    }
-    const amt = new Intl.NumberFormat("ru-RU", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(investorForecastFullWeek);
-    return {
-      amountPlusBaht: `+${amt} ฿`,
-      payoutDate: currentWeek.nextPayout,
-    };
-  }, [isInvestor, isSuperAdmin, myInvestors.length, investorForecastFullWeek, currentWeek.nextPayout]);
+  const buildForecastStrip = useCallback(
+    (sum: number | null): InvestorForecastStrip | null => {
+      if (sum == null || myInvestors.length === 0 || sum < 1) return null;
+      const amt = new Intl.NumberFormat("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(sum);
+      return {
+        amountPlusBaht: `+${amt} ฿`,
+        payoutDate: currentWeek.nextPayout,
+      };
+    },
+    [myInvestors.length, currentWeek.nextPayout]
+  );
+
+  const investorForecastStrip = useMemo(
+    () =>
+      isInvestor || isSuperAdmin ? buildForecastStrip(weeklyForecastSumBahtRounded) : null,
+    [isInvestor, isSuperAdmin, buildForecastStrip, weeklyForecastSumBahtRounded]
+  );
+
+  const ownerForecastStrip = useMemo(
+    () => (isOwner ? buildForecastStrip(weeklyForecastSumBahtRounded) : null),
+    [isOwner, buildForecastStrip, weeklyForecastSumBahtRounded]
+  );
 
   const latestInvestorWithdrawalMeta = useMemo(() => {
     if ((!isInvestor && !isSuperAdmin) || investorsQueryError) return null;
@@ -502,6 +511,7 @@ export default function DashboardPage() {
             glassCard={glassCard}
             headline={headlineLine1}
             nextPayoutLabel={currentWeek.nextPayout}
+            forecastStrip={ownerForecastStrip}
             stats={stats}
             investors={myInvestors}
             pendingPayments={ownerPendingPayments}
@@ -584,7 +594,7 @@ export default function DashboardPage() {
                         {withdrawForm.type === "interest"
                           ? formatCurrency(
                               Math.max(
-                                selectedInvestorCard.accrued -
+                                selectedInvestorCard.due -
                                   (selectedInvestorCard.payments ?? [])
                                     .filter((p) => p.type === "interest" && ["requested", "approved_waiting_accept"].includes(p.status))
                                     .reduce((sum, p) => sum + p.amount, 0),
