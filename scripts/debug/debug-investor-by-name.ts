@@ -1,6 +1,6 @@
 /**
  * Поиск инвестора по фрагменту имени: даты, тело, заявки на пополнение, аудит создания.
- * npx tsx scripts/debug-investor-by-name.ts Михайлович
+ * npx tsx scripts/debug/debug-investor-by-name.ts Михайлович
  */
 import { prisma } from "@/lib/prisma";
 

@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../../lib/prisma";
 
 const candidates = ["admin123", "18121985", "12345678", "password", "qwerty123"];
 

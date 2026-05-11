@@ -6,13 +6,13 @@ dotenv.config({ path: path.join(process.cwd(), ".env.local"), override: true });
 import bcrypt from "bcryptjs";
 
 const expected: Record<string, string> = {
-  Den: "den123",
+  admin: "admin123",
   Sam: "admin123",
   Sega_55RUS: "qwerty123",
 };
 
 async function main() {
-  const { prisma } = await import("../lib/prisma");
+  const { prisma } = await import("../../lib/prisma");
   const users = await prisma.user.findMany({
     where: { isArchived: false },
     select: { id: true, username: true, role: true, password: true },
@@ -33,7 +33,7 @@ main()
   })
   .finally(async () => {
     try {
-      const { prisma } = await import("../lib/prisma");
+      const { prisma } = await import("../../lib/prisma");
       await prisma.$disconnect();
     } catch {
       // ignore
