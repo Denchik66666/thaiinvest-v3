@@ -1,6 +1,6 @@
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
 
-/** Доля текущей открытой недели (как в `lib/business-rate-accrual-recalc.ts`). */
+/** Доля текущей открытой недели (дни с понедельника / 7) — шкала недели на дашборде. */
 export function openWeekDayProgress(now = new Date()) {
   const weekStart = getPreviousOrCurrentMonday(now);
   const weekMonSod = startOfDay(weekStart);
@@ -10,45 +10,6 @@ export function openWeekDayProgress(now = new Date()) {
   if (daySpan < 1) daySpan = 1;
   if (daySpan > 7) daySpan = 7;
   return { weekStart, daySpan, frac: daySpan / 7 };
-}
-
-/**
- * Грязное прогнозное начисление за текущую открытую неделю (до вычета выплат за неделю),
- * по той же схеме, что и пересчёт: body × (applied/4)% × (день/7).
- */
-export function sumExpectedOpenWeekAccrualGross(
-  positions: { body: number; isPrivate: boolean }[],
-  networkWeeklyPercent: number | null,
-  now = new Date()
-): number | null {
-  if (networkWeeklyPercent == null || !Number.isFinite(networkWeeklyPercent)) return null;
-  const { frac } = openWeekDayProgress(now);
-  let sum = 0;
-  for (const p of positions) {
-    const body = p.body || 0;
-    if (body <= 0) continue;
-    const applied = p.isPrivate ? networkWeeklyPercent / 2 : networkWeeklyPercent;
-    const weeklyRatePercent = applied / 4;
-    sum += body * (weeklyRatePercent / 100) * frac;
-  }
-  return sum;
-}
-
-/** Полное начисление за текущую открытую неделю (к понедельнику закрытия), без доли «день/7». */
-export function sumExpectedFullOpenWeekAccrualGross(
-  positions: { body: number; isPrivate: boolean }[],
-  networkWeeklyPercent: number | null
-): number | null {
-  if (networkWeeklyPercent == null || !Number.isFinite(networkWeeklyPercent)) return null;
-  let sum = 0;
-  for (const p of positions) {
-    const body = p.body || 0;
-    if (body <= 0) continue;
-    const applied = p.isPrivate ? networkWeeklyPercent / 2 : networkWeeklyPercent;
-    const weeklyRatePercent = applied / 4;
-    sum += body * (weeklyRatePercent / 100);
-  }
-  return sum;
 }
 
 /** Ожидаемые проценты за полную текущую неделю по позиции: `body × (ставка/4)%`, округление до целого бата. */
