@@ -1,11 +1,11 @@
-# THAIINVEST v3.1.0
+# THAIINVEST v3.1.1
 
 Private investment operations platform with role-based access, weekly accrual logic, and approval workflow for payouts.
 
 ## Current Release
 
 - Product line: `v3.x`
-- Current technical version: `3.1.0`
+- Current technical version: `3.1.1`
 - Status: `build` and `lint` are green
 
 ## Core Stack
@@ -46,6 +46,8 @@ Create `.env` from `.env.example`:
 cp .env.example .env
 ```
 
+**Локальный Docker и облако (Supabase) не должны «путаться»:** на машине разработчика одноимённые переменные из **`.env.local`** перекрывают **`.env`**. Держите в `.env.local` только локальный Postgres (порт хоста **`15432`** в `docker-compose.dev-db.yml`), а строки Supabase — в `.env` или только в Vercel. На продакшене в деплой обычно не попадает `.env.local`; там задаются переменные в панели хостинга.
+
 Required variables:
 
 | Variable | Required | Purpose |
@@ -72,6 +74,19 @@ npm run db:migrate:deploy
 Palette and light/dark mode are stored under `app-theme` and `app-dark-mode` and applied to `<html>`. Shared logic lives in `lib/app-theme.ts` so `/login` and dashboard `ThemeToggle` stay in sync.
 
 ## Local Run
+
+### Stable order (локально, чтобы не «терялись связи»)
+
+0. **Шаблон переменных:** в репозитории лежит `.env.example` — от него отталкиваться; секреты не коммитить.
+1. **Зависимости:** `npm install`
+2. **База в Docker (если нужен локальный Postgres, а не облако):** Docker Desktop запущен → `npm run db:dev:up` → при первом запуске `npm run db:dev:bootstrap` → при необходимости `npm run db:migrate:dev` / `npm run db:seed`
+3. **Переменные:** в **`.env.local`** прописать `DATABASE_URL` и `DIRECT_URL` на `localhost:15432` (см. `.env.example`, вариант A) — они **перекрывают** одноимённые ключи из `.env`
+4. **Сайт:** `npm run dev` — **после любого изменения `.env` или `.env.local` перезапустить** эту команду
+5. Открыть `http://localhost:3000/login`
+
+На **Vercel** в продакшене задаются переменные в панели проекта; файл `.env.local` в деплой обычно не попадает.
+
+### Default quick path (English)
 
 1. Install dependencies:
 
