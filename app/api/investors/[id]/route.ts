@@ -7,13 +7,21 @@ import { findBodyTopUpsForInvestorDetail } from "@/lib/body-topup-request-date-c
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
-import { getNextMonday, getPreviousOrCurrentMonday, countFullWeeksBetween } from "@/lib/weekly";
+import { getNextMonday } from "@/lib/weekly";
 import { getCurrentBusinessRateForCalendarYmd, dateToUtcCalendarYmd } from "@/lib/business-rate";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
 import { moneyRound2 } from "@/lib/money-round";
+import {
+  computeInvestorAccruedEndFromLedger,
+  computeInvestorPaidCompletedTotal,
+  toWeeklyLedgerPayments,
+} from "@/lib/investor-accrued-ledger";
 
-type InvestorTxClient = Pick<PrismaClient, "bodyTopUpRequest" | "payment" | "accrual" | "investor" | "user">;
+type InvestorTxClient = Pick<
+  PrismaClient,
+  "bodyTopUpRequest" | "payment" | "accrual" | "investor" | "user" | "rateHistory"
+>;
 
 function randomPassword(length = 10): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -57,12 +65,6 @@ function normalizeInvestorPutPayload(raw: Record<string, unknown>) {
       if (Number.isFinite(n)) raw[key] = n;
     }
   }
-}
-
-// Функция расчета процентов (как в создании)
-function calculateAccrued(body: number, rate: number, weeks: number): number {
-  const weeklyRate = (rate / 100) / 4     // упрощенно: месячная ÷ 4
-  return body * weeklyRate * weeks
 }
 
 async function generateUniqueInvestorUsername(baseName: string) {
@@ -142,7 +144,7 @@ export async function GET(
     const lifetimeInterestPaid = moneyRound2(
       completedPayments.filter((p) => p.type === "interest").reduce((s, p) => s + p.amount, 0)
     );
-    /** Начислено: только `Investor.accrued` из БД (актуализируется `recalculateInvestorAccruedFromRateHistory`). */
+    /** Начислено: `Investor.accrued` из БД; пересчёт — `computeInvestorAccruedEndFromLedger` / `recalculateInvestorAccruedFromRateHistory`. */
     const accruedRounded = moneyRound2(Math.max(investor.accrued, 0));
     const due = accruedRounded;
 
@@ -509,18 +511,52 @@ export async function PUT(
         data: finalUpdateData,
       });
 
-      // Если нужно пересчитать начисленные проценты (не затираем ручное «начислено» SUPER_ADMIN)
+      // Пересчёт accrued/paid только через леджер (см. `lib/investor-accrued-ledger.ts`)
       if (shouldRecalculateAccrued && updated.status === "active" && !manualAccruedOverride) {
-        const currentWeekMonday = getPreviousOrCurrentMonday(today);
-        const weeks = countFullWeeksBetween(updated.activationDate, currentWeekMonday);
+        const [invFull, topRows, rateHistory] = await Promise.all([
+          tx.investor.findUnique({
+            where: { id: investorId },
+            include: {
+              payments: {
+                where: { status: "completed" },
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          }),
+          tx.bodyTopUpRequest.findMany({
+            where: { investorId },
+            select: {
+              amount: true,
+              status: true,
+              requestDate: true,
+              decidedAt: true,
+              createdAt: true,
+            },
+          }),
+          tx.rateHistory.findMany({
+            orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+            select: { effectiveDate: true, newRate: true },
+          }),
+        ]);
 
-        if (weeks > 0) {
-          const newAccrued = calculateAccrued(updated.body, updated.rate, weeks);
+        if (invFull) {
+          const newAccrued = computeInvestorAccruedEndFromLedger({
+            activationDate: invFull.activationDate,
+            body: invFull.body,
+            rate: invFull.rate,
+            isPrivate: invFull.isPrivate,
+            payments: toWeeklyLedgerPayments(invFull.payments),
+            bodyTopUpRows: topRows,
+            rateHistory,
+            now: new Date(),
+          });
+          const newPaid = computeInvestorPaidCompletedTotal(invFull.payments);
           await tx.investor.update({
             where: { id: investorId },
-            data: { accrued: moneyRound2(newAccrued) },
+            data: { accrued: moneyRound2(newAccrued), paid: newPaid },
           });
           updated.accrued = moneyRound2(newAccrued);
+          updated.paid = newPaid;
         }
       }
 

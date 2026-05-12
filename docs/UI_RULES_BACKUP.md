@@ -43,7 +43,7 @@
 | Ник в шапке | `styles/thai-design-system.css` — `.thai-dashboard-nick-matte-gold`; разметка — `app/dashboard/page.tsx` |
 | Шкала недели | `styles/thai-design-system.css` — `.thai-investor-thermo-fill` (+ остальные `.thai-investor-thermo-*` без смены на золото) |
 | Hero инвестора | `components/dashboard/InvestorPremiumDashboard.tsx`, `app/dashboard/page.tsx` |
-| История | `components/dashboard/InvestorOperationsHistory.tsx`, `components/dashboard/HistoryPeriodPopover.tsx` |
+| История | `components/dashboard/DashboardOperationsHistory.tsx`, `components/dashboard/HistoryPeriodPopover.tsx` |
 | API ленты | `GET /api/investors/operations-history` |
 | Инициалы | `lib/utils.ts` — `initialsTwoLetters`; `components/user/UserAvatar.tsx` |
 | Профиль / аватар | `app/dashboard/profile/page.tsx` |

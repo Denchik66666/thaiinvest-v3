@@ -51,8 +51,27 @@ export function financeCalendarPanelFramePlain(box: { top: number; left: number;
 export const FINANCE_CALENDAR_POPOVER_ESTIMATE_H_PX = 520;
 
 /**
- * Расчёт позиции панели периода в ленте «Финансы» (`HistoryPeriodPopover`) — эталон, не менять поведение.
- * `DatePicker` при необходимости считает позицию отдельно, не здесь.
+ * Ширина попапа календаря по правилам ленты «Финансы» (`HistoryPeriodPopover`):
+ * `min(380, max(300, ширина_якоря + 120))`.
+ */
+export function financeCalendarPopoverWidthFromAnchorWidth(anchorWidthPx: number): number {
+  return Math.min(380, Math.max(300, anchorWidthPx + 120));
+}
+
+/**
+ * Эквивалент ширины компактного триггера периода в тулбаре ленты «Финансы».
+ * Для встроенной сетки месяца без DOM-якоря (напр. план ставки в «Управлении»).
+ */
+export const FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX = 168;
+
+/** Ширина сетки календаря как у эталонного якоря тулбара «Финансы» (см. константу выше). */
+export function financeCalendarReferenceToolbarContentWidthPx(): number {
+  return financeCalendarPopoverWidthFromAnchorWidth(FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX);
+}
+
+/**
+ * Расчёт позиции панели периода в ленте «Финансы» (`HistoryPeriodPopover`) — эталон.
+ * `DatePicker` с `popoverGlass` использует ту же функцию.
  */
 export function computeFinanceCalendarPopoverPosition(anchorRect: DOMRect): { top: number; left: number; width: number } {
   if (typeof window === "undefined") {
@@ -60,7 +79,7 @@ export function computeFinanceCalendarPopoverPosition(anchorRect: DOMRect): { to
   }
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const desiredWidth = Math.min(380, Math.max(300, anchorRect.width + 120));
+  const desiredWidth = financeCalendarPopoverWidthFromAnchorWidth(anchorRect.width);
   const left = Math.max(10, Math.min(anchorRect.left, vw - desiredWidth - 10));
   let top = anchorRect.bottom + 10;
   if (top + FINANCE_CALENDAR_POPOVER_ESTIMATE_H_PX > vh - 10) {
@@ -72,8 +91,7 @@ export function computeFinanceCalendarPopoverPosition(anchorRect: DOMRect): { to
 const DATE_PICKER_POPOVER_NARROW_VIEWPORT_MAX = 640;
 
 /**
- * Позиция попапа `DatePicker` / ставка: на узком экране панель шире и по центру якоря.
- * Не используется в `HistoryPeriodPopover` (эталон финансов).
+ * Позиция попапа `DatePicker` без стекла (`popoverGlass={false}`): узкий вьюпорт — панель на всю доступную ширину и по центру якоря.
  */
 export function computeDatePickerCalendarPopoverPosition(anchorRect: DOMRect): { top: number; left: number; width: number } {
   if (typeof window === "undefined") {

@@ -7,7 +7,7 @@
 | Эталон | Файл(ы) |
 |--------|---------|
 | Главная INVESTOR (премиум‑герой, неделя, история) | `app/dashboard/page.tsx`, `components/dashboard/InvestorPremiumDashboard.tsx`, встроенная история через `components/dashboard/DashboardOperationsHistory.tsx` |
-| Недельная шкала (полоска прогресса + маркер) | `components/dashboard/WeekCycleStrip.tsx` |
+| Недельная шкала (полоска прогресса + маркер) | Внутри **`InvestorPremiumDashboard`** + классы **`.thai-investor-thermo-*`** в **`styles/thai-design-system.css`** (отдельного `WeekCycleStrip` нет) |
 | Главная OWNER (премиум‑герой, сеть, очереди) | `app/dashboard/page.tsx`, `components/dashboard/OwnerPremiumDashboard.tsx`, `components/dashboard/OwnerNetworkInvestorsCompact.tsx`, `components/dashboard/OwnerRequestsAndConfirmations.tsx`, `components/dashboard/OwnerPendingPaymentsQueue.tsx`, `components/dashboard/OwnerBodyTopupAwaitingQueue.tsx` |
 | Главная SUPER_ADMIN (glass overview; карточка сети без `compact`) | `app/dashboard/page.tsx`, `components/dashboard/SuperAdminNetworkOverviewCard.tsx` |
 | Общая шапка дашборда | `components/dashboard/DashboardTopbar.tsx` |
@@ -32,7 +32,7 @@
 |--------|---------|
 | Страница «Управление» | `app/dashboard/manage/page.tsx` |
 | Ставка бизнеса + журнал + календарь плана | `components/manage/BusinessRateControlCenter.tsx` (сетка месяца — **`FinanceMonthCalendar`**, без отдельного дубля компонента календаря) |
-| Модалка создания инвестора | `components/investors/CreateInvestorModal.tsx` |
+| Создание / деск инвестора (Manage) | `components/investors/ManagePositionDeskModal.tsx`, вызов с **`app/dashboard/manage/page.tsx`** |
 | Одноразовый показ логина/пароля после создания | `components/investors/InvestorCredentialsReveal.tsx` |
 
 ### `/dashboard/manage` — редизайн (зафиксировано 2026-05-09)
@@ -47,7 +47,7 @@
 **План переработки Manage (8 этапов):**
 
 1. **Списки и выбор** — тот же визуальный язык, что в Финансах (аккордеон **`FinanceInvestorAccordionCards`**, чипы в одной строке с периодом), без отдельных «своих» выпадающих списков там, где нужен общий премиум-контур (обсуждение: списки как у инвесторов и всей сети в Финансах).  
-   **Сделано (2026-05-09):** в **`BusinessRateControlCenter`** строка «Период» + фильтры журнала (Все / Факт / План) — одна горизонтальная полоса с прокруткой и **`Button` outline / rounded-full**, как при **`financeProminentFilters`** в **`DashboardOperationsHistory`**; в **`CreateInvestorModal`** переключатель общая/личная сеть для SUPER_ADMIN — в стиле чипов сети на **`/dashboard/finance`** (`FinanceHubInner`).
+   **Сделано (2026-05-09):** в **`BusinessRateControlCenter`** строка «Период» + фильтры журнала (Все / Факт / План) — одна горизонтальная полоса с прокруткой и **`Button` outline / rounded-full**, как при **`financeProminentFilters`** в **`DashboardOperationsHistory`**; в **`ManagePositionDeskModal`** переключатель общая/личная сеть для SUPER_ADMIN — в стиле чипов сети на **`/dashboard/finance`** (`FinanceHubInner`).
 2. **`app/dashboard/manage/page.tsx`** — порядок блоков, полосы OWNER/SUPER_ADMIN, убрать лишний шум, компактные ghost-ссылки вместо двух полноразмерных кнопок, где хватает одной строки (**`.cursor/rules/dashboard-theme-nav.mdc`**).  
    **Сделано (2026-05-09):** порядок внутри стеклянной секции: предупреждение готовности (только SA при блокировке) → **полоса роли** (OWNER: счётчики запросов + ghost «Главная / Реестр / Финансы»; SUPER_ADMIN: статус учёта + те же ссылки) → **`BusinessRateControlCenter`** → **одна строка ghost-ссылок** (Создать инвестора · Реестр · Финансы · Профиль) вместо сетки из четырёх плиток «Быстрый доступ» → **`SuperAdminNetworkOverviewCard`** → блок **«Система»**; внутри «Системы» кнопка **«Чеклист»** заменена на текстовую ghost-ссылку; дублирующий нижний OWNER-блок запросов убран (сведён в полосу).
 3. **`BusinessRateControlCenter`** — VIP-компакт в духе Финансов: метки **10–11px uppercase**, суммы **`tabular-nums`**, одна полоса ключевых KPI (ставка · с даты · «Далее»); журнал и «Календарь · план» — вторичные (меньше `py`, компактные шевроны, ниже `max-h` списка журнала).  

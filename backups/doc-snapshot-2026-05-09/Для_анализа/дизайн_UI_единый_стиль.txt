@@ -1,0 +1,30 @@
+THAIINVEST v3 — единый визуальный стиль (памятка для ИИ / разработки)
+
+ИСТОЧНИК ПРАВДЫ
+- styles/thai-design-system.css (импорт из app/globals.css)
+- Правила в комментарии в начале thai-design-system.css: не плодить свои градиенты в обход .thai-*
+
+ОБОЛОЧКА СТРАНИЦ
+- Полноэкранные экраны дашборда: корень <div className="thai-dashboard-root ..."> внутри Container
+- Логин: thai-login-shell (уже в разметке)
+- Верхняя полоска: DASHBOARD_STICKY_BAR_CLASS из lib/dashboard-sticky-bar.ts
+- Нижняя моб. навигация: MobileBottomNav (стекло .thai-glass)
+
+ПОВЕРХНОСТИ
+- Карточки/секции по умолчанию: компонент Card = .thai-glass + rounded-2xl
+- Сворачиваемые блоки: CollapsibleSection = .thai-glass
+- Опасные/админ-блоки: .thai-panel-admin
+- Приглушённые формы/журнал: .thai-panel-muted
+- Плитки KPI: .thai-stat-tile (+ часто .thai-glass border)
+- Кликабельные строки списка: .thai-row-interactive
+- Модалки: .thai-modal-overlay
+
+ТЕМА
+- ThemeToggle и LoginThailandThemeToggle используют lib/app-theme (theme-linear + dark)
+
+ПОСЛЕДНИЕ ВЫРОВНЕННЫЕ МАРШРУТЫ (дашборд)
+- /dashboard, /dashboard/investors, /dashboard/investors/[id], /dashboard/manage, /dashboard/profile
+- /dashboard/finance, /dashboard/chat, /dashboard/reports
+- /login
+
+Если новый экран — повторить шаблон: thai-dashboard-root + sticky + контент на .thai-glass + MobileBottomNav при необходимости.

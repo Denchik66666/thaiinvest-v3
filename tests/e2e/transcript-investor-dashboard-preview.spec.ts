@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-/** Инвестор из seed — главная как в транскрипте чата (WeekCycleStrip + плитки + amber CTA). */
+/** Инвестор из seed — главная как в транскрипте чата (герой + шкала недели + плитки + amber CTA). */
 const loginUser = process.env.PLAYWRIGHT_INVESTOR_USER ?? "Sega_55RUS";
 const loginPassword = process.env.PLAYWRIGHT_INVESTOR_PASSWORD ?? "qwerty123";
 

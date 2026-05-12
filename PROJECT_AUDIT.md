@@ -14,7 +14,7 @@
 |--------|------------|--------------|
 | Фреймворк | **Next.js 16.2.1** (App Router) | `package.json`, `app/` |
 | UI | **React 19.2.4** | — |
-| Стили | **Tailwind CSS v4** + `globals.css` + дизайн-система | `app/globals.css`, `styles/thai-design-system.css`, `styles/animations.css` |
+| Стили | **Tailwind CSS v4** + `globals.css` + дизайн-система | `app/globals.css`, `styles/thai-design-system.css` |
 | Шрифты | **next/font** — Geist Sans / Geist Mono | `app/layout.tsx` |
 | БД | **Prisma 7.7** + **PostgreSQL** (`@prisma/adapter-pg`, `pg`) | `prisma/schema.prisma`, `lib/prisma.ts`, `prisma.config.ts` |
 | Валидация | **Zod 4** | `lib/schemas.ts`, часть API |
@@ -41,12 +41,12 @@
 | **`app/page.tsx`** | Редирект на `/login`. |
 | **`app/login/`** | Страница входа (клиентский компонент). |
 | **`app/dashboard/`** | Все экраны кабинета после авторизации (без вложенного `layout.tsx` — общая оболочка внутри страниц). |
-| **`app/api/`** | REST API: auth, investors, payments, chat, system, reports, body-topup, dashboard, admin. |
+| **`app/api/`** | REST API: auth, investors, payments, payments/context, payments/[paymentId], payment-correction-proposals, chat, system, reports, body-topup (+ context и по id), dashboard, admin. |
 | **`components/`** | Переиспользуемые UI: `ui/`, навигация, инвесторы, профиль, уведомления, тема. |
 | **`components/theme/AppThemeSync.tsx`** | Клиент: подписка на `lib/app-theme`, применение классов к `<html>`. |
 | **`hooks/`** | `useAuth` и прочие хуки. |
 | **`lib/`** | Prisma, auth, аудит, бизнес-ставка, недели, чат, сброс БД, retry к БД, тема, схемы. |
-| **`styles/`** | `thai-design-system.css` (токены `.thai-*`, фон логина/дашборда), `animations.css`. |
+| **`styles/`** | `thai-design-system.css` (токены `.thai-*`, фон логина/дашборда). Отдельный `animations.css` удалён из репозитория (см. `CHANGELOG.md`). |
 | **`prisma/`** | `schema.prisma`, `migrations/`, `seed.ts`. |
 | **`scripts/`** | Утилиты: проверка БД, e2e-сценарии, отладка логина/сброса, чат; при необходимости вспомогательные скрипты (например извлечение текста для превью). |
 | **`tests/e2e/`** | Playwright-спеки. |
@@ -89,13 +89,15 @@
 | Префикс / файл | Назначение |
 |----------------|------------|
 | `app/api/auth/login`, `logout`, `me`, `account`, `avatar` | Аутентификация и профиль |
-| `app/api/investors/*` | CRUD и операции по инвесторам, недельный ledger, контекст приватной сети, become-semen |
+| `app/api/investors/*` | CRUD и операции по инвесторам, недельный ledger, **operations-history**, **operations-summary**, контекст приватной сети, become-semen |
 | `app/api/payments/route.ts` | Заявки и решения по выплатам |
+| `app/api/payments/context`, `app/api/payments/[paymentId]` | Контекст заявки (таймлайн); удаление записи (**SUPER_ADMIN**) |
+| `app/api/payment-correction-proposals/*` | Запросы и решения по правкам выплат |
 | `app/api/chat/*` | Каталог, контекст, сообщения, read, admin-test-send |
 | `app/api/system/*` | Бизнес-ставка, история, readiness |
 | `app/api/dashboard/investors` | Агрегированные данные для главной дашборда |
 | `app/api/reports/feed` | Лента для отчётов |
-| `app/api/body-topup-requests` | Запросы пополнения тела |
+| `app/api/body-topup-requests`, `.../context`, `.../[requestId]` | Запросы пополнения тела и контекст по id |
 | `app/api/admin/database-reset/*` | Статус / пароль / выполнение сброса БД (SUPER_ADMIN) |
 
 ---
@@ -124,6 +126,9 @@
 | **`GET /api/body-topup-requests`** | Фильтр по роли: OWNER — свои общие позиции; SUPER_ADMIN — все; иначе — связанные с пользователем инвесторы |
 | **`/api/investors/[id]`** PATCH/DELETE чувствительные операции | **OWNER** или **SUPER_ADMIN** с проверками владения / приватной сети |
 | **`/api/investors/route` GET/POST** | Разветвление **`where`** и действий по **OWNER** / **SUPER_ADMIN** / **INVESTOR** |
+| **`GET /api/investors/operations-history`**, **`GET /api/investors/operations-summary`** | **INVESTOR**, **OWNER**, **SUPER_ADMIN** (см. параметры сети и `investorId` в коде; иначе **403**) |
+| **`GET`/`POST` `/api/payment-correction-proposals`**, **`PATCH` `/api/payment-correction-proposals/[id]`** | Создание правки — **SUPER_ADMIN**; список — любой JWT; решения — по assignee и роли в коде |
+| **`GET` `/api/payments/context`**, **`DELETE` `/api/payments/[paymentId]`** | Контекст заявки — **OWNER** / **INVESTOR** / **SUPER_ADMIN**; удаление записи заявки — **SUPER_ADMIN** |
 | **`/api/payments` POST** | Матрица прав: запрос от «стороны инвестора», approve/reject от OWNER/SUPER_ADMIN, force_* только **SUPER_ADMIN** |
 | **`/api/reports/feed`** | Объём данных зависит от **role** |
 | **`/api/dashboard/investors`** | Фильтр списка: OWNER — свои общие; INVESTOR — свой `investorUserId`; SUPER_ADMIN — полный список (как `network=all` в списке инвесторов) |
@@ -148,7 +153,6 @@
 |------|------|
 | **`app/globals.css`** | `@import "tailwindcss"`, `@source` для сканирования `app/`, `components/`, `hooks/`, `lib/`; базовые токены `:root`, классы тем **`.theme-linear`**, **`.theme-vercel`**, **`.theme-shadcn`**, **`.dark`**. |
 | **`styles/thai-design-system.css`** | Токены «стекла» и градиентов (`.thai-glass`, `.thai-dashboard-root`, `.thai-login-shell`, метрики и т.д.). |
-| **`styles/animations.css`** | Анимации (подключается при необходимости из глобальных стилей / страниц). |
 
 ### 6.2 Как работает тема
 
@@ -194,7 +198,7 @@
 - **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; **`canChatWithPeer`** для **`GET/POST /api/chat/messages`** и **`PATCH /api/chat/read`**.  
 - **`POST /api/auth/avatar`:** реализована загрузка **JPG/PNG** до **2 МБ**, запись в **`public/uploads/avatars/{userId}.(jpg|png)`**, обновление **`User.avatarUrl`**, ответ **200** с **`avatarUrl`** (не заглушка **503**).  
 - **Единая тема:** удалён отдельный переключатель логина; **`ThemeToggle`** + **`AppThemeSync`** + **`lib/app-theme`**; логин на Tailwind для полей/кнопки; часть специфичных CSS логина убрана из `thai-design-system.css`.  
-- **Инвесторский дашборд (UX/UI):** **`InvestorPremiumDashboard`** — компактный герой, «тихая» полоса прогноза, плотная строка «Доступно к выводу», кнопка вывода **`thai-investor-glass-btn--dense`**; **`InvestorOperationsHistory`** — период и чипы фильтра в одной строке, исправлено обрезание чипов (**`z-index` / отступы**), на узких экранах метрики в сетке; **`HistoryPeriodPopover`** — режим **`compact`** для триггера.  
+- **Инвесторский дашборд (UX/UI):** **`InvestorPremiumDashboard`** — компактный герой, «тихая» полоса прогноза, шкала недели (`.thai-investor-thermo-*`), плотная строка «Доступно к выводу», кнопка вывода **`thai-investor-glass-btn--dense`**; **`DashboardOperationsHistory`** — период и чипы фильтра в одной строке, исправлено обрезание чипов (**`z-index` / отступы**), на узких экранах метрики в сетке; **`HistoryPeriodPopover`** — режим **`compact`** для триггера.  
 - **Шапка инвестора:** матовый янтарно-золотой ник (**`thai-dashboard-nick-matte-gold`**); **`UserAvatar`** — две буквы инициалов, масштаб шрифта от размера; экспорт **`initialsTwoLetters`** из **`lib/utils.ts`**.  
 - **E2E / скриншоты:** спеки сравнения owner vs investor (desktop / mobile / **S25+ 412×915**), папки под датой в **`screenshots/compare/`**; обновлены ожидания в превью-транскрипте под актуальный текст героя.  
 - **Справка по UI:** в репозитории есть **`docs/UI_RULES_BACKUP.md`** (референс правил интерфейса).  
@@ -230,7 +234,7 @@
 
 ## 10. Краткий итог
 
-Проект — **монолит Next.js (App Router)** с **Prisma + PostgreSQL**, **JWT в cookie**, кабинетом **`/dashboard/*`** и набором **REST API**. Структура каталогов **согласована** с ролями и доменом (инвесторы, платежи, чат, отчёты, сброс БД). Документ отражает **фактическое** состояние на **2026-05-05**; для следующего аудита имеет смысл снова прогнать **`npm run lint`**, **`npx tsc --noEmit`**, **`npm run build`** и при необходимости **`npm run test:e2e`**.
+Проект — **монолит Next.js (App Router)** с **Prisma + PostgreSQL**, **JWT в cookie**, кабинетом **`/dashboard/*`** и набором **REST API**. Структура каталогов **согласована** с ролями и доменом (инвесторы, платежи, чат, отчёты, сброс БД). Документ отражает **фактическое** состояние на **2026-05-09**; для следующего аудита имеет смысл снова прогнать **`npm run lint`**, **`npx tsc --noEmit`**, **`npm run build`** и при необходимости **`npm run test:e2e`**.
 
 ---
 

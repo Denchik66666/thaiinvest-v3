@@ -8,21 +8,22 @@ import { createPortal } from "react-dom";
 import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { computeFinanceCalendarPopoverPosition } from "@/components/ui/finance-calendar-popover-skin";
+import {
+  computeFinanceCalendarPopoverPosition,
+  FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX,
+} from "@/components/ui/finance-calendar-popover-skin";
 import { FinanceMonthCalendar } from "@/components/ui/FinanceMonthCalendar";
 import { FinanceCalendarPopoverPanel } from "@/components/ui/FinanceCalendarPopoverPanel";
+import {
+  periodStartMs,
+  sortAtInHistoryPeriod,
+  operationPeriodAnchorIso,
+  type HistoryPeriodValue,
+  type PeriodPreset,
+} from "@/lib/history-period";
 
-export type PeriodPreset = "7d" | "30d" | "90d" | "365d" | "all";
-
-export type HistoryPeriodValue =
-  | { kind: "preset"; preset: PeriodPreset }
-  | { kind: "range"; fromYmd: string; toYmd: string };
-
-export function periodStartMs(p: PeriodPreset): number | null {
-  if (p === "all") return null;
-  const days = p === "7d" ? 7 : p === "30d" ? 30 : p === "90d" ? 90 : 365;
-  return Date.now() - days * 86400000;
-}
+export type { HistoryPeriodValue, PeriodPreset };
+export { periodStartMs, sortAtInHistoryPeriod, operationPeriodAnchorIso };
 
 export function parseYmd(value: string): Date | null {
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -54,24 +55,6 @@ function isSameDay(a: Date, b: Date) {
 
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function endOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
-}
-
-/** Фильтр по `sortAt` ISO (клиент). */
-export function sortAtInHistoryPeriod(sortAtIso: string, period: HistoryPeriodValue): boolean {
-  const t = new Date(sortAtIso).getTime();
-  if (period.kind === "preset") {
-    const start = periodStartMs(period.preset);
-    if (start == null) return true;
-    return t >= start;
-  }
-  const fromD = parseYmd(period.fromYmd);
-  const toD = parseYmd(period.toYmd);
-  if (!fromD || !toD) return true;
-  return t >= startOfDay(fromD) && t <= endOfDay(toD);
 }
 
 const PRESETS: { id: PeriodPreset; label: string }[] = [
@@ -318,7 +301,18 @@ export function HistoryPeriodPopover({
     ) : null;
 
   return (
-    <div ref={anchorRef} className={cn("relative inline-flex", className)}>
+    <div
+      ref={anchorRef}
+      className={cn("relative inline-flex", className)}
+      style={
+        triggerVariant === "toolbar"
+          ? {
+              minWidth: FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX,
+              maxWidth: FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX,
+            }
+          : undefined
+      }
+    >
       <button
         type="button"
         aria-expanded={open}

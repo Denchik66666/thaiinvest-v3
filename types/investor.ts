@@ -2,11 +2,12 @@ export type Investor = {
   id: number;
   name: string;
   body: number;
-  /** Остаток начисленных процентов из БД (`Investor.accrued`): только закрытые недели, целые баты; выплаты текущей недели уменьшают остаток. Обновляет `recalculateInvestorAccruedFromRateHistory`. */
+  /** Остаток начисленных процентов (`Investor.accrued`): только закрытые недели, целые баты; выплаты текущей недели уменьшают остаток. Источник расчёта — `computeInvestorAccruedEndFromLedger` / `buildWeeklyLedgerRows` (`lib/investor-accrued-ledger.ts`). */
   accrued: number;
+  /** Сумма завершённых выплат по позиции (`Investor.paid`): все типы `Payment` со статусом `completed`; синхронизируется при массовом и PATCH‑пересчёте `accrued` через `computeInvestorPaidCompletedTotal`. */
+  paid: number;
   /** Сумма завершённых выплат процентов (для «накопительно начислено» = accrued + lifetimeInterestPaid). */
   lifetimeInterestPaid?: number;
-  paid: number;
   due: number;
   rate: number;
   status: string;

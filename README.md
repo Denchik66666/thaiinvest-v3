@@ -19,8 +19,9 @@ Private investment operations platform with role-based access, weekly accrual lo
 
 ## Access Model
 
-- `OWNER` - business owner (Semen)
-- `SUPER_ADMIN` - operational control and force-actions
+- `INVESTOR` - investment positions, requests, finance hub
+- `OWNER` - business owner (Semen); operational network and approvals
+- `SUPER_ADMIN` - platform operator: all networks, corrections, database reset
 
 ## Main Screens
 
@@ -34,7 +35,8 @@ Private investment operations platform with role-based access, weekly accrual lo
 - `/api/auth/login`, `/api/auth/me`, `/api/auth/account`, `/api/auth/logout`
 - `/api/investors`
 - `/api/investors/[id]/weekly-ledger`
-- `/api/payments`
+- `/api/investors/operations-history`, `/api/investors/operations-summary`
+- `/api/payments`, `/api/payments/context`
 - `/api/system/business-rate`
 - `/api/system/readiness`
 

@@ -82,7 +82,6 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
 
   const isOwner = user?.role === "OWNER" || user?.role === "SUPER_ADMIN";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
-  const canEdit = isOwner || investor?.investorUserId === user?.id;
 
   const dateHighlights = useMemo(() => {
     if (!investor) return [];
@@ -166,7 +165,7 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
               </Text>
             </div>
           </div>
-          {canEdit && variant === "manage" ? (
+          {isOwner && variant === "manage" ? (
             <div className="flex shrink-0 items-start">
               <Button
                 variant="outline"
@@ -182,7 +181,7 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
           ) : null}
         </div>
 
-        {isEditing && canEdit ? (
+        {isEditing && isOwner ? (
           <div className="space-y-4 rounded-xl border border-border/50 bg-muted/15 p-4 backdrop-blur-sm">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
@@ -314,7 +313,7 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
           </div>
         </div>
 
-        {isEditing && canEdit ? (
+        {isEditing && isOwner ? (
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => updateMutation.mutate(editForm)} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Сохранение..." : "Сохранить"}

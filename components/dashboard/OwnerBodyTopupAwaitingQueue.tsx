@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
+import { UserAvatar } from "@/components/user/UserAvatar";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
@@ -30,8 +31,8 @@ export type OwnerBodyTopUpRequestRow = {
   createdBy: { id: number; username: string; role: string };
 };
 
-function formatTopUpStatus(status: string) {
-  if (status === "pending_investor") return "Ожидает решения инвестора";
+function formatTopUpStatus(status: string, investorLabel: string) {
+  if (status === "pending_investor") return `Ожидает подтверждения · ${investorLabel}`;
   if (status === "accepted_by_investor") return "Принят";
   if (status === "rejected_by_investor") return "Отклонён инвестором";
   if (status === "cancelled_by_owner") return "Отменён владельцем";
@@ -132,14 +133,32 @@ export function OwnerBodyTopupAwaitingQueue({
           const nick = investorDisplayHandle(item.investor);
           const primary = nick ?? item.investor.name;
           const showLegal = nick != null && item.investor.name.trim() !== nick.trim();
+          const avatarSrc =
+            item.investor.linkedUser?.avatarUrl ?? item.investor.investorUser?.avatarUrl ?? undefined;
+          const initialsFrom =
+            item.investor.linkedUser?.username?.trim() ||
+            item.investor.investorUser?.username?.trim() ||
+            item.investor.name;
           return (
           <li
             key={item.id}
-            className="rounded-xl px-2.5 py-2 dark:bg-white/[0.04]"
+            className="rounded-xl border-l-[3px] border-l-amber-500/75 px-2.5 py-2 dark:border-l-amber-400/70 dark:bg-white/[0.04]"
             style={{ background: "color-mix(in srgb, var(--thai-color-topup-bg) 55%, transparent)" }}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 gap-2">
+                <span className="shrink-0" aria-hidden>
+                  <UserAvatar
+                    name={primary}
+                    initialsFrom={initialsFrom}
+                    src={avatarSrc}
+                    size={30}
+                    variant="plain"
+                    hasPositions={item.investor.body > 0}
+                    className="!ring-0 [&_img]:object-cover"
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
                 <Text className="truncate font-semibold leading-tight">{primary}</Text>
                 {showLegal ? (
                   <Text className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.investor.name}</Text>
@@ -147,13 +166,16 @@ export function OwnerBodyTopupAwaitingQueue({
                 <Text className="mt-0.5 text-[11px]" style={{ color: "var(--thai-color-topup)" }}>
                   +{formatCurrency(item.amount)} · сейчас тело {formatCurrency(item.investor.body)}
                 </Text>
-                <Text className="mt-0.5 text-[10px] text-muted-foreground">{formatTopUpStatus(item.status)}</Text>
+                <Text className="mt-0.5 font-medium text-orange-950/95 dark:text-orange-50/90">
+                  {formatTopUpStatus(item.status, primary)}
+                </Text>
                 <Text className="mt-0.5 text-[10px] tabular-nums text-muted-foreground/90">
                   От {item.createdBy.username} · {formatShortWhen(item.requestDate ?? item.createdAt)}
                 </Text>
                 {item.comment ? (
                   <Text className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">«{item.comment}»</Text>
                 ) : null}
+                </div>
               </div>
               <Button
                 type="button"

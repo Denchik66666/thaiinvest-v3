@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -12,6 +12,7 @@ import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
 import { getPreviousOrCurrentMonday } from "@/lib/weekly";
 import { sumExpectedFullOpenWeekAccrualRounded } from "@/lib/open-week-forecast";
+import { parseDeskAmountDigits, deskAmountBackspaceInSuffix, useDeskAmountCursorRestore } from "@/lib/desk-amount-input";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
 import { Text } from "@/components/ui/Text";
@@ -164,6 +165,13 @@ export default function DashboardPage() {
     amount: "",
     comment: "",
   });
+  const withdrawAmountCursor = useDeskAmountCursorRestore(withdrawForm.amount);
+  const onWithdrawAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const hit = deskAmountBackspaceInSuffix(e, withdrawForm.amount);
+    if (!hit) return;
+    withdrawAmountCursor.armCursor(hit.cursor);
+    setWithdrawForm((prev) => ({ ...prev, amount: hit.nextFormatted }));
+  };
   const [pageVisible, setPageVisible] = useState(true);
   const [barScrolled, setBarScrolled] = useState(false);
   const notifyPrefs = useSyncExternalStore(
@@ -173,13 +181,6 @@ export default function DashboardPage() {
   );
   const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
   const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
-
-  const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
-  const formatAmountInput = (value: string) => {
-    const amount = parseAmountInput(value);
-    if (!amount) return "";
-    return `${amount.toLocaleString("ru-RU")} ฿`;
-  };
 
   const investorsQueryKey = investorsDashboardListQueryKey(user?.role);
 
@@ -405,7 +406,7 @@ export default function DashboardPage() {
         action: "request",
         investorId: Number(withdrawForm.investorId),
         type: withdrawForm.type,
-        amount: withdrawForm.type === "close" ? undefined : parseAmountInput(withdrawForm.amount),
+        amount: withdrawForm.type === "close" ? undefined : parseDeskAmountDigits(withdrawForm.amount),
         comment: withdrawForm.comment.trim() || undefined,
       }),
     onSuccess: () => {
@@ -498,10 +499,19 @@ export default function DashboardPage() {
                 glassCard={glassCard}
                 showMultiPositionLabels={myInvestors.length > 1}
                 superAdminLinkedCommonHome={isSuperAdmin}
+                splitPendingActionQueue
                 operationRowPredicate={(item) => item.kind === "payment"}
                 onOperationClick={(item) => {
-                  if (item.kind !== "payment") return;
-                  router.push(`/dashboard/finance?investor=${item.investorId}&payment=${item.paymentId}`);
+                  if (item.kind === "payment") {
+                    router.push(`/dashboard/finance?investor=${item.investorId}&payment=${item.paymentId}`);
+                    return;
+                  }
+                  if (item.kind === "topup") {
+                    const q = new URLSearchParams();
+                    q.set("investor", String(item.investorId));
+                    q.set("topup", String(item.requestId));
+                    router.push(`/dashboard/finance?${q.toString()}`);
+                  }
                 }}
               />
             }
@@ -577,8 +587,15 @@ export default function DashboardPage() {
                     <Input
                       required
                       type="text"
+                      ref={withdrawAmountCursor.inputRef}
                       value={withdrawForm.amount}
-                      onChange={(e) => setWithdrawForm((prev) => ({ ...prev, amount: formatAmountInput(e.target.value) }))}
+                      onChange={(e) =>
+                        setWithdrawForm((prev) => ({
+                          ...prev,
+                          amount: withdrawAmountCursor.captureFromChangeEvent(e),
+                        }))
+                      }
+                      onKeyDown={onWithdrawAmountKeyDown}
                       placeholder="2 500 ฿"
                     />
                     <Text className="text-[11px] text-muted-foreground">

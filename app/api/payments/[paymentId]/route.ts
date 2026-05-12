@@ -10,6 +10,7 @@ import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { moneyRound2 } from "@/lib/money-round";
+import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
 
 export async function DELETE(_request: NextRequest, context: { params: Promise<{ paymentId: string }> }) {
   try {
@@ -97,6 +98,8 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
         oldValue: JSON.stringify(auditPayload),
       });
     }
+
+    clearOperationsHistoryServerCache();
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

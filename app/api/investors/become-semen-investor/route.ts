@@ -5,8 +5,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
-import { countFullWeeksBetween, getNextMonday, getPreviousOrCurrentMonday } from "@/lib/weekly";
+import { getNextMonday } from "@/lib/weekly";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { computeInvestorAccruedEndFromLedger, toWeeklyLedgerPayments } from "@/lib/investor-accrued-ledger";
 
 const BecomeSemenInvestorSchema = z.object({
   name: z.string().min(2, "Имя должно содержать минимум 2 символа"),
@@ -17,11 +18,6 @@ const BecomeSemenInvestorSchema = z.object({
   entryDate: z.string().min(1, "Дата входа обязательна"),
   allowMultiple: z.boolean().optional().default(false),
 });
-
-function calculateAccrued(body: number, rate: number, weeks: number): number {
-  const weeklyRate = (rate / 100) / 4;
-  return body * weeklyRate * weeks;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,9 +43,11 @@ export async function POST(request: NextRequest) {
     if (!owner) return NextResponse.json({ error: "OWNER не найден" }, { status: 400 });
 
     if (!allowMultiple) {
-      const existing = await withDbRetry(() => prisma.investor.count({
-        where: { linkedUserId: decoded.userId, isPrivate: false, ownerId: owner.id },
-      }));
+      const existing = await withDbRetry(() =>
+        prisma.investor.count({
+          where: { linkedUserId: decoded.userId, isPrivate: false, ownerId: owner.id },
+        })
+      );
       if (existing > 0) {
         return NextResponse.json(
           { error: "У тебя уже есть привязанный инвестор у Семёна. Для второго передай allowMultiple=true." },
@@ -65,38 +63,56 @@ export async function POST(request: NextRequest) {
     const activationDate = getNextMonday(entry);
     const status = activationDate <= today ? "active" : "awaiting_activation";
 
+    const rateHistory = await withDbRetry(() =>
+      prisma.rateHistory.findMany({
+        orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+        select: { effectiveDate: true, newRate: true },
+      })
+    );
+
     let accrued = 0;
     if (status === "active") {
-      const currentWeekMonday = getPreviousOrCurrentMonday(today);
-      const weeks = countFullWeeksBetween(activationDate, currentWeekMonday);
-      if (weeks > 0) accrued = calculateAccrued(body, rate, weeks);
-    }
-
-    const investor = await withDbRetry(() => prisma.investor.create({
-      data: {
-        ownerId: owner.id,
-        linkedUserId: decoded.userId,
-        name,
-        handle: handleTrim || null,
-        phone: phoneTrim || null,
+      accrued = computeInvestorAccruedEndFromLedger({
+        activationDate,
         body,
         rate,
-        accrued,
-        entryDate: entry,
-        activationDate,
-        status,
         isPrivate: false,
-      },
-    }));
+        payments: toWeeklyLedgerPayments([]),
+        bodyTopUpRows: [],
+        rateHistory,
+        now: today,
+      });
+    }
+
+    const investor = await withDbRetry(() =>
+      prisma.investor.create({
+        data: {
+          ownerId: owner.id,
+          linkedUserId: decoded.userId,
+          name,
+          handle: handleTrim || null,
+          phone: phoneTrim || null,
+          body,
+          rate,
+          accrued,
+          entryDate: entry,
+          activationDate,
+          status,
+          isPrivate: false,
+        },
+      })
+    );
 
     try {
-      await withDbRetry(() => logAction({
-        userId: decoded.userId,
-        action: "BECOME_SEMEN_INVESTOR",
-        entityType: "Investor",
-        entityId: investor.id,
-        newValue: JSON.stringify(investor),
-      }));
+      await withDbRetry(() =>
+        logAction({
+          userId: decoded.userId,
+          action: "BECOME_SEMEN_INVESTOR",
+          entityType: "Investor",
+          entityId: investor.id,
+          newValue: JSON.stringify(investor),
+        })
+      );
     } catch (auditError) {
       console.error("Become Semen investor audit error:", auditError);
     }

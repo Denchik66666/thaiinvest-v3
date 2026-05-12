@@ -8,6 +8,7 @@ import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { applyApprovedCorrectionPayload, type CorrectionPayload } from "@/lib/payment-correction";
 import { getPaymentCorrectionProposalDelegate } from "@/lib/payment-correction-proposal-delegate";
 import { isPrismaMissingTableForModel } from "@/lib/prisma-known-errors";
+import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -79,6 +80,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         entityId: proposal.paymentId,
         newValue: JSON.stringify({ proposalId: proposal.id }),
       });
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true });
     }
 
@@ -116,6 +118,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         newValue: JSON.stringify({ proposalId: proposal.id, paymentId: updatedPayment.id }),
       });
 
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updatedPayment });
     } catch (err) {
       if (err instanceof Error && err.message === "STALE") {

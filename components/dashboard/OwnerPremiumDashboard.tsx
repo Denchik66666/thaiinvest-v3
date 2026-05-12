@@ -216,6 +216,7 @@ export function OwnerPremiumDashboard({
               glassCard={glassCard}
               showMultiPositionLabels={investors.length > 1}
               operationsHistoryScope="owner"
+              splitPendingActionQueue
               operationRowPredicate={(item) => item.kind === "payment"}
               onOperationClick={(item) => {
                 if (item.kind !== "payment") return;

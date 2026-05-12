@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { moneyRound2 } from "@/lib/money-round";
+import { utcNoonNextMondayAfterCalendarDayContaining } from "@/lib/body-topup-effective-monday";
 
 type TimelineRow = {
   at: string;
@@ -124,6 +125,25 @@ export async function GET(request: NextRequest) {
     const accrued = moneyRound2(inv.accrued);
     const reqAmt = moneyRound2(row.amount);
 
+    const addresseeLabel =
+      (typeof inv.handle === "string" && inv.handle.trim().length > 0
+        ? inv.handle.trim()
+        : null) ??
+      inv.investorUser?.username ??
+      inv.linkedUser?.username ??
+      inv.name;
+
+    /** Как в ленте: якорь дня заявки — `requestDate`, иначе момент создания (не «сегодня», иначе пн не сходится с датой в заявке). */
+    const previewMondayAnchor = row.requestDate ?? row.createdAt;
+    const previewEffectiveMondayIso =
+      row.status === "pending_investor"
+        ? utcNoonNextMondayAfterCalendarDayContaining(previewMondayAnchor).toISOString()
+        : null;
+    const effectiveMondayAfterAcceptIso =
+      row.status === "accepted_by_investor" && row.decidedAt
+        ? utcNoonNextMondayAfterCalendarDayContaining(row.decidedAt).toISOString()
+        : null;
+
     return NextResponse.json({
       request: {
         id: row.id,
@@ -138,6 +158,9 @@ export async function GET(request: NextRequest) {
         body,
         accrued,
         status: inv.status,
+        /** Ставка позиции на момент просмотра (как в карточке инвестора / недельной сети). */
+        rate: inv.rate,
+        isPrivate: inv.isPrivate,
       },
       limits: {
         /** Как «Доступно» у выплаты: текущее тело позиции до зачисления. */
@@ -148,6 +171,13 @@ export async function GET(request: NextRequest) {
         hasPendingClose: false,
       },
       timeline,
+      bodyTopUpChain: {
+        creatorUsername: row.createdBy.username,
+        addresseeLabel,
+        investorLegalName: inv.name,
+        previewEffectiveMondayIso,
+        effectiveMondayAfterAcceptIso,
+      },
     });
   } catch (error) {
     console.error("BODY_TOPUP_CONTEXT_ERROR:", error);

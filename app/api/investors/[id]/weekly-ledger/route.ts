@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
-import { buildWeeklyLedgerRows } from "@/lib/weekly-ledger-rows";
+import { buildWeeklyLedgerRows, ledgerAcceptedTopUpsFromPrismaRows } from "@/lib/weekly-ledger-rows";
 
 export async function GET(
   _request: NextRequest,
@@ -56,6 +56,13 @@ export async function GET(
       })
     );
 
+    const acceptedTopUps = await withDbRetry(() =>
+      prisma.bodyTopUpRequest.findMany({
+        where: { investorId, status: "accepted_by_investor" },
+        select: { amount: true, status: true, requestDate: true, decidedAt: true, createdAt: true },
+      })
+    );
+
     const rows = buildWeeklyLedgerRows(
       {
         activationDate: investor.activationDate,
@@ -63,6 +70,7 @@ export async function GET(
         rate: investor.rate,
         isPrivate: investor.isPrivate,
         payments: investor.payments,
+        acceptedBodyTopUps: ledgerAcceptedTopUpsFromPrismaRows(acceptedTopUps),
       },
       rateHistory,
       new Date()
@@ -85,7 +93,7 @@ export async function GET(
         totalInterestPaid: rows.reduce((sum, row) => sum + row.interestPaid, 0),
         totalBodyPaid: rows.reduce((sum, row) => sum + row.bodyPaid, 0),
       },
-      note: "Расчет недельный, по закрытым неделям, на текущей модели данных без событий увеличения тела.",
+      note: "Недели с понедельника `activationDate`; начисление = тело на начало недели × (ставка сети / 4)% — тело снижается выплатами «тело»; при принятых пополнениях тело увеличивается с первой недели, содержащей дату заявки (`requestDate` / `decidedAt`). Текущая открытая неделя без добавления начисления в строку (только выплаты внутри недели).",
       rows,
     });
   } catch (error) {

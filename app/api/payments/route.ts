@@ -9,6 +9,7 @@ import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
 import { moneyRound2 } from "@/lib/money-round";
 import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
+import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -234,6 +235,7 @@ export async function POST(request: NextRequest) {
         console.error("PAYMENT REQUEST AUDIT ERROR:", auditError);
       }
 
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment });
     }
 
@@ -316,6 +318,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT OWNER DECISION AUDIT ERROR:", auditError);
       }
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -350,6 +353,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT DISPUTE AUDIT ERROR:", auditError);
       }
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -372,6 +376,7 @@ export async function POST(request: NextRequest) {
       }
       if (isExpired) {
         await withDbRetry(() => prisma.payment.update({ where: { id: payment.id }, data: { status: "expired" } }));
+        clearOperationsHistoryServerCache();
         return NextResponse.json(
           { error: "Срок подтверждения истек. Требуется принудительное решение SUPER_ADMIN." },
           { status: 400 }
@@ -427,6 +432,7 @@ export async function POST(request: NextRequest) {
         console.error("PAYMENT ACCEPT AUDIT ERROR:", auditError);
       }
       scheduleBusinessRateRecalc();
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -457,6 +463,7 @@ export async function POST(request: NextRequest) {
         } catch (auditError) {
           console.error("PAYMENT FORCE REJECT AUDIT ERROR:", auditError);
         }
+        clearOperationsHistoryServerCache();
         return NextResponse.json({ success: true, payment: updated });
       }
 
@@ -506,6 +513,7 @@ export async function POST(request: NextRequest) {
         console.error("PAYMENT FORCE APPROVE AUDIT ERROR:", auditError);
       }
       scheduleBusinessRateRecalc();
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 

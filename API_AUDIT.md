@@ -1,6 +1,6 @@
-# API_AUDIT — все HTTP-роуты ThaiInvest
+# API_AUDIT — HTTP-роуты ThaiInvest
 
-**Дата:** 2026-05-05 (актуализация: `POST /api/auth/avatar` — полная загрузка файла; инвесторский дашборд / e2e-скриншоты в `PROJECT_AUDIT.md`)  
+**Дата:** 2026-05-09 (сверка с деревом `app/api/**/route.ts`)  
 **Базовый URL (локально):** `http://localhost:3000`  
 **Префикс API:** `/api/`
 
@@ -19,143 +19,130 @@
 
 ## Сводная таблица по файлам
 
-Путь к файлу относительно корня репозитория: `app/api/.../route.ts`.
+Путь к файлу: `app/api/.../route.ts`.
 
 ### Auth
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **POST** | `/api/auth/login` | Вход: проверка логина/пароля, выдача JWT в cookie | Публично (до входа) | Учётные данные в `app/api/auth/login/route.ts` (`bcrypt`, `prisma.user`); роли в токене кладутся из записи пользователя. |
-| **POST** | `/api/auth/logout` | Удаление cookie `token` | Публично | Нет `verifyToken`; `app/api/auth/logout/route.ts`. |
-| **GET** | `/api/auth/me` | Текущий пользователь (id, username, role, isSystemOwner) | Любая роль при валидном JWT | `verifyToken` + загрузка `User` по `decoded.userId`; явного запрета по роли нет — `app/api/auth/me/route.ts`. |
-| **PATCH** | `/api/auth/account` | Смена своего username / пароля | Любая роль при валидном JWT | `verifyToken`; обновление только `decoded.userId` — `app/api/auth/account/route.ts`. |
-| **POST** | `/api/auth/avatar` | Загрузка аватара: **multipart/form-data**, поле **`file`**; только **image/jpeg** и **image/png**, максимум **2 МБ** | Любая роль при валидном JWT | **`verifyToken`**; **400** если нет файла / неверный тип / слишком большой файл; **401** без токена или с невалидным JWT; при успехе — запись в **`public/uploads/avatars/{userId}.jpg|png`**, обновление **`User.avatarUrl`**, **`withDbRetry`**, ответ **200** `{ success, avatarUrl }` — `app/api/auth/avatar/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **POST** | `/api/auth/login` | Вход, JWT в cookie | Публично | `app/api/auth/login/route.ts` |
+| **POST** | `/api/auth/logout` | Сброс cookie | Публично | `app/api/auth/logout/route.ts` |
+| **GET** | `/api/auth/me` | Текущий пользователь | Любая роль при валидном JWT | `app/api/auth/me/route.ts` |
+| **PATCH** | `/api/auth/account` | Смена username / пароля | Своя учётка | `app/api/auth/account/route.ts` |
+| **POST** | `/api/auth/avatar` | Загрузка аватара (JPEG/PNG, до 2 МБ) | Любая роль при валидном JWT | `app/api/auth/avatar/route.ts` |
 
 ### Dashboard
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/dashboard/investors` | Свод по инвесторам + платежи для главной дашборда | **OWNER** — только свои общие (`ownerId`, `isPrivate: false`); **INVESTOR** — позиция с `investorUserId`; **SUPER_ADMIN** — все | `verifyToken`; `whereClause` по `decoded.role` — `app/api/dashboard/investors/route.ts`. |
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/dashboard/investors` | Свод для главной дашборда | **OWNER** — свои общие; **INVESTOR** — своя позиция; **SUPER_ADMIN** — полный список | `app/api/dashboard/investors/route.ts` |
 
----
+### Investors
 
-### Investors (список и создание)
-
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/investors` | Список инвесторов (`?network=`, `?lean=1`) | **OWNER** — свои общие; **SUPER_ADMIN** — фильтр `network` common/private/all; **INVESTOR** — `investorUserId` | `verifyToken` + построение `whereClause` — `app/api/investors/route.ts`. |
-| **POST** | `/api/investors` | Создание инвестора (+ пользователь INVESTOR) | **INVESTOR** — **403**; **OWNER** и **SUPER_ADMIN** — разрешено; для **SUPER_ADMIN** + приватная сеть — лимиты через `getPrivateInvestorCreateContext` | `verifyToken`; `decoded.role === 'INVESTOR'`; логика личной сети — `app/api/investors/route.ts`. |
-
----
-
-### Investor по id
-
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/investors/[id]` | Карточка инвестора, top-up, аудит | **OWNER** — только свой неприватный; **INVESTOR** — только если `investorUserId` или `linkedUserId`; **SUPER_ADMIN** — без доп. 403 в этом блоке | `verifyToken`; строки с `decoded.role` и полями инвестора — `app/api/investors/[id]/route.ts`. |
-| **DELETE** | `/api/investors/[id]` | Удаление инвестора и архивация учётки инвестора | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/investors/[id]/route.ts`. |
-| **PATCH** | `/api/investors/[id]` | Выдача / сброс учётных данных инвестора (пароль) | **OWNER** или **SUPER_ADMIN**; **OWNER** — только если `investor.ownerId === decoded.userId` | `verifyToken`; роль; затем `ownerId` для OWNER — `app/api/investors/[id]/route.ts`. |
-| **PUT** | `/api/investors/[id]` | Редактирование полей инвестора (имя, тело, ставка, даты и т.д.) | **OWNER** или **SUPER_ADMIN**; **OWNER** — только свой инвестор | `verifyToken`; роль; `investor.ownerId` — `app/api/investors/[id]/route.ts`. |
-
----
-
-### Investor — вспомогательные
-
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/investors/[id]/weekly-ledger` | Недельная «бухгалтерия» по инвестору | **OWNER** — свой неприватный; **INVESTOR** — привязка к позиции; **SUPER_ADMIN** — без доп. ограничения в этом фрагменте | `verifyToken`; блоки `OWNER` / `INVESTOR` — `app/api/investors/[id]/weekly-ledger/route.ts`. |
-| **GET** | `/api/investors/operations-history` | Объединённая лента операций для главной дашборда (`items`: недели, платежи, пополнения и т.д.) | Только **INVESTOR** (`investorUserId`) и **OWNER** (`ownerId` по общим позициям); **SUPER_ADMIN** и прочие — **403** | `verifyToken`; `decoded.role` не `INVESTOR`/`OWNER` — **403**; выборка `prisma.investor.findMany` по `investorsWhere` — `app/api/investors/operations-history/route.ts`. На клиенте кеш React Query разведён по ключу с суффиксом области (`investor` \| `owner`). |
-| **GET** | `/api/investors/private-create-context` | Контекст лимитов для создания приватного инвестора | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/investors/private-create-context/route.ts`. |
-| **POST** | `/api/investors/become-semen-investor` | Спец-сценарий создания позиции (семя) | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/investors/become-semen-investor/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/investors` | Список (`?network=`, `?lean=1`) | **OWNER** / **SUPER_ADMIN** / **INVESTOR** (см. `where` в коде) | `app/api/investors/route.ts` |
+| **POST** | `/api/investors` | Создание инвестора | **INVESTOR** — **403**; **OWNER**, **SUPER_ADMIN** | `app/api/investors/route.ts` |
+| **GET** | `/api/investors/[id]` | Карточка инвестора | **OWNER** / **INVESTOR** (привязка) / **SUPER_ADMIN** | `app/api/investors/[id]/route.ts` |
+| **DELETE** | `/api/investors/[id]` | Удаление позиции | Только **SUPER_ADMIN** | то же |
+| **PATCH** | `/api/investors/[id]` | Выдача / сброс пароля инвестора | **OWNER** или **SUPER_ADMIN** | то же |
+| **PUT** | `/api/investors/[id]` | Редактирование полей позиции | **OWNER** или **SUPER_ADMIN** | то же |
+| **GET** | `/api/investors/[id]/weekly-ledger` | Недельная бухгалтерия | **OWNER** / **INVESTOR** / **SUPER_ADMIN** (с проверками владения) | `app/api/investors/[id]/weekly-ledger/route.ts` |
+| **GET** | `/api/investors/operations-history` | Лента операций (главная / встраиваемая история) | **INVESTOR**, **OWNER**, **SUPER_ADMIN** (ветвления по сети и `investorId`; иначе **403**) | `app/api/investors/operations-history/route.ts` |
+| **GET** | `/api/investors/operations-summary` | Свод по операциям за период | Как у **operations-history** (те же три роли, **403** для прочих) | `app/api/investors/operations-summary/route.ts` |
+| **GET** | `/api/investors/private-create-context` | Лимиты создания в личной сети | Только **SUPER_ADMIN** | `app/api/investors/private-create-context/route.ts` |
+| **POST** | `/api/investors/become-semen-investor` | Спец-сценарий «семя» | Только **SUPER_ADMIN** | `app/api/investors/become-semen-investor/route.ts` |
 
 ### Payments
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **POST** | `/api/payments` | Единый endpoint: `action` в теле (request, owner_approve, owner_reject, investor_accept, investor_dispute, force_approve, force_reject) | Зависит от `action`: **request** — только «сторона инвестора» (матрица SUPER_ADMIN + привязка / INVESTOR + `investorUserId`); **owner_*** — **OWNER** (свой инвестор) или **SUPER_ADMIN**; **investor_*** — проверка привязки к инвестору; **force_*** — только **SUPER_ADMIN** | `verifyToken`; ветвление по `parsed.action` и ролям — `app/api/payments/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **POST** | `/api/payments` | Действия по заявкам (`action` в теле) | Матрица по `action` и роли (см. код) | `app/api/payments/route.ts` |
+| **GET** | `/api/payments/context` | Контекст заявки, таймлайн, лимиты одобрения | **OWNER** (свои), **INVESTOR** (своя позиция), **SUPER_ADMIN** | `app/api/payments/context/route.ts` |
+| **DELETE** | `/api/payments/[paymentId]` | Удаление записи заявки (операционно) | Только **SUPER_ADMIN** | `app/api/payments/[paymentId]/route.ts` |
 
 ### Body top-up
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/body-topup-requests` | Список запросов пополнения | **OWNER** — по своим общим; **SUPER_ADMIN** — все; иначе — по инвесторам с `linkedUserId` / `investorUserId` | `verifyToken`; тернарный `where` по роли — `app/api/body-topup-requests/route.ts`. |
-| **POST** | `/api/body-topup-requests` | Создание запроса пополнения | Только **OWNER** (и инвестор в сети OWNER) | `verifyToken`; `decoded.role !== "OWNER"`; проверка `investor.ownerId` — `app/api/body-topup-requests/route.ts`. |
-| **PATCH** | `/api/body-topup-requests` | accept / reject / owner_cancel | **owner_cancel** — **OWNER** и владелец инвестора; accept/reject — «инвестор» по полям инвестора или **OWNER** отмена | `verifyToken`; ветки по `action` и `existing.investor` — `app/api/body-topup-requests/route.ts`. |
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/body-topup-requests` | Список запросов | **OWNER** / **SUPER_ADMIN** / связанные **INVESTOR** | `app/api/body-topup-requests/route.ts` |
+| **POST** | `/api/body-topup-requests` | Создание запроса | **OWNER** (и позиция в его сети) | то же |
+| **PATCH** | `/api/body-topup-requests` | accept / reject / owner_cancel | По веткам `action` | то же |
+| **GET** | `/api/body-topup-requests/context` | Контекст и таймлайн по `requestId` | **OWNER** / **INVESTOR** / **SUPER_ADMIN** (проверки владения в коде) | `app/api/body-topup-requests/context/route.ts` |
+| **PATCH** | `/api/body-topup-requests/[requestId]` | Обновление заявки | По правилам файла | `app/api/body-topup-requests/[requestId]/route.ts` |
+| **DELETE** | `/api/body-topup-requests/[requestId]` | Удаление (если разрешено) | По правилам файла | то же |
 
----
+### Payment correction proposals
+
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/payment-correction-proposals` | Входящие/исходящие заявки на правку | Любой JWT; **outgoing** заполняется только для **SUPER_ADMIN** | `app/api/payment-correction-proposals/route.ts` |
+| **POST** | `/api/payment-correction-proposals` | Создать запрос правки | Только **SUPER_ADMIN** | то же |
+| **PATCH** | `/api/payment-correction-proposals/[id]` | Решение по заявке | Логика в файле (assignee / роли) | `app/api/payment-correction-proposals/[id]/route.ts` |
 
 ### Chat
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/chat/directory` | Список пользователей для выбора собеседника | Любой валидный JWT; выборка **разная по роли** (из `prisma.user` по `decoded.userId`) | `verifyToken`; затем `me.role` **SUPER_ADMIN** / **OWNER** / **INVESTOR** — `app/api/chat/directory/route.ts`. |
-| **GET** | `/api/chat/context` | Непрочитанные, партнёры, defaultPeer | Любой валидный JWT; логика defaultPeer от **роли пользователя из БД** | `verifyToken`; `user.role` из БД — `app/api/chat/context/route.ts`. |
-| **GET** | `/api/chat/messages` | История сообщений с `peerId` | Любой валидный JWT **и** разрешённая пара с `peerId` | `verifyToken`; **`canChatWithPeer`** (`lib/chat-peer-permission.ts`) — `app/api/chat/messages/route.ts`. |
-| **POST** | `/api/chat/messages` | Отправка сообщения | То же: **`canChatWithPeer`** после проверки существования получателя | `verifyToken`; `lib/chat-peer-permission.ts` — `app/api/chat/messages/route.ts`. |
-| **PATCH** | `/api/chat/read` | Пометить входящие от `peerId` прочитанными | Любой валидный JWT **и** разрешённая пара с `peerId` | `verifyToken`; **`canChatWithPeer`** (`lib/chat-peer-permission.ts`); иначе **403** — как в **`/api/chat/messages`** — `app/api/chat/read/route.ts`. |
-| **POST** | `/api/chat/admin-test-send` | Тестовая отправка от имени другого пользователя | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/chat/admin-test-send/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/chat/directory` | Список для выбора собеседника | Валидный JWT | `app/api/chat/directory/route.ts` |
+| **GET** | `/api/chat/context` | Непрочитанные, партнёры | Валидный JWT | `app/api/chat/context/route.ts` |
+| **GET** | `/api/chat/messages` | История с `peerId` | JWT + **`canChatWithPeer`** | `app/api/chat/messages/route.ts` |
+| **POST** | `/api/chat/messages` | Отправка | JWT + **`canChatWithPeer`** | то же |
+| **PATCH** | `/api/chat/read` | Прочитано | JWT + **`canChatWithPeer`** | `app/api/chat/read/route.ts` |
+| **POST** | `/api/chat/admin-test-send` | Тестовая отправка | Только **SUPER_ADMIN** | `app/api/chat/admin-test-send/route.ts` |
 
 ### Reports
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/reports/feed` | Лента: история ставок, аудит, body top-ups | **rateHistory** — **OWNER** и **SUPER_ADMIN**; **auditLog** — полный для **SUPER_ADMIN**, по своим инвесторам для **OWNER**; **bodyTopUps** — три ветки по роли; **INVESTOR** — урезанный набор (без глобального аудита/ставок как у админа) | `verifyToken`; `role ===` ветвления — `app/api/reports/feed/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/reports/feed` | Лента отчётов | Зависит от роли (см. код) | `app/api/reports/feed/route.ts` |
 
 ### System
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/system/readiness` | Готовность к учёту: блокирующие пункты (OWNER, SUPER_ADMIN в БД), опционально базовый инвестор SUPER_ADMIN в общей сети. Ответ: `ready`, `missing` / `missingBlocking`, `missingOptional`, `snapshot`, `recommendations` | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/system/readiness/route.ts`. |
-| **GET** | `/api/system/business-rate` | Текущая бизнес-ставка | Любая роль при валидном JWT | `verifyToken` без ролевого 403 — `app/api/system/business-rate/route.ts`. |
-| **POST** | `/api/system/business-rate` | Создание записи в истории ставки (upsert логики домена) | **OWNER** или **SUPER_ADMIN** | `verifyToken`; `decoded.role` — `app/api/system/business-rate/route.ts`. |
-| **GET** | `/api/system/business-rate/history` | Список записей `RateHistory` | **OWNER** или **SUPER_ADMIN** | `verifyToken`; `decoded.role` — `app/api/system/business-rate/history/route.ts`. |
-| **PATCH** | `/api/system/business-rate/history/[id]` | Правка **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | `requireOwnerOrSuperAdmin()` — `app/api/system/business-rate/history/[id]/route.ts`. |
-| **DELETE** | `/api/system/business-rate/history/[id]` | Удаление **будущей** записи истории ставки | **OWNER** или **SUPER_ADMIN** | То же — `app/api/system/business-rate/history/[id]/route.ts`. |
-
----
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/system/readiness` | Чеклист готовности учёта | Только **SUPER_ADMIN** | `app/api/system/readiness/route.ts` |
+| **GET** | `/api/system/business-rate` | Текущая бизнес-ставка | Любой JWT | `app/api/system/business-rate/route.ts` |
+| **POST** | `/api/system/business-rate` | Запись в историю ставки | **OWNER** или **SUPER_ADMIN** | то же |
+| **GET** | `/api/system/business-rate/history` | Список `RateHistory` | **OWNER** или **SUPER_ADMIN** | `app/api/system/business-rate/history/route.ts` |
+| **PATCH** | `/api/system/business-rate/history/[id]` | Правка будущей записи | **OWNER** или **SUPER_ADMIN** | `app/api/system/business-rate/history/[id]/route.ts` |
+| **DELETE** | `/api/system/business-rate/history/[id]` | Удаление будущей записи | **OWNER** или **SUPER_ADMIN** | то же |
 
 ### Admin (database reset)
 
-| HTTP | Маршрут | Назначение | Роли / доступ | Где проверяются права |
-|------|---------|------------|---------------|------------------------|
-| **GET** | `/api/admin/database-reset/status` | Флаг настроенного пароля сброса, блокировка попыток | Только **SUPER_ADMIN** | `verifyToken`; `decoded.role !== "SUPER_ADMIN"` — `app/api/admin/database-reset/status/route.ts`. |
-| **POST** | `/api/admin/database-reset/password` | Сохранить пароль для процедуры сброса БД | Только **SUPER_ADMIN** | То же — `app/api/admin/database-reset/password/route.ts`. |
-| **POST** | `/api/admin/database-reset/execute` | Выполнить полный сброс БД (с фразой подтверждения и паролем) | Только **SUPER_ADMIN** | То же — `app/api/admin/database-reset/execute/route.ts`. |
+| HTTP | Маршрут | Назначение | Роли / доступ | Файл |
+|------|---------|------------|---------------|------|
+| **GET** | `/api/admin/database-reset/status` | Статус пароля сброса | **SUPER_ADMIN** | `app/api/admin/database-reset/status/route.ts` |
+| **POST** | `/api/admin/database-reset/password` | Сохранить пароль | **SUPER_ADMIN** | `app/api/admin/database-reset/password/route.ts` |
+| **POST** | `/api/admin/database-reset/execute` | Выполнить сброс БД | **SUPER_ADMIN** | `app/api/admin/database-reset/execute/route.ts` |
 
 ---
 
-## Число уникальных route-файлов
+## Число файлов и экспортов
 
-В каталоге `app/api` — **26 файлов** `route.ts` (один файл может экспортировать несколько методов GET/POST/PATCH/DELETE):
+- **Уникальных файлов** `app/api/**/route.ts`: **33** (подсчёт по дереву на диске).
+- **Экспортов** `GET` / `POST` / `PUT` / `PATCH` / `DELETE` суммарно: **45** (по одному на каждый объявленный handler в этих файлах).
 
-`auth/login`, `auth/logout`, `auth/me`, `auth/account`, `auth/avatar`,  
+Список путей (без дубликатов):
+
+`admin/database-reset/execute`, `admin/database-reset/password`, `admin/database-reset/status`,  
+`auth/account`, `auth/avatar`, `auth/login`, `auth/logout`, `auth/me`,  
+`body-topup-requests`, `body-topup-requests/context`, `body-topup-requests/[requestId]`,  
+`chat/admin-test-send`, `chat/context`, `chat/directory`, `chat/messages`, `chat/read`,  
 `dashboard/investors`,  
-`investors/route`, `investors/[id]/route`, `investors/[id]/weekly-ledger`, `investors/become-semen-investor`, `investors/private-create-context`,  
-`payments`, `body-topup-requests`,  
-`chat/directory`, `chat/context`, `chat/messages`, `chat/read`, `chat/admin-test-send`,  
+`investors`, `investors/[id]`, `investors/[id]/weekly-ledger`, `investors/become-semen-investor`, `investors/operations-history`, `investors/operations-summary`, `investors/private-create-context`,  
+`payment-correction-proposals`, `payment-correction-proposals/[id]`,  
+`payments`, `payments/context`, `payments/[paymentId]`,  
 `reports/feed`,  
-`system/readiness`, `system/business-rate`, `system/business-rate/history`, `system/business-rate/history/[id]`,  
-`admin/database-reset/status`, `admin/database-reset/password`, `admin/database-reset/execute`.
-
-**Итого HTTP-обработчиков:** **35** экспортов `GET` / `POST` / `PATCH` / `DELETE` по всем `route.ts` (см. строки в таблицах выше).
+`system/business-rate`, `system/business-rate/history`, `system/business-rate/history/[id]`, `system/readiness`.
 
 ---
 
-## Примечание по сетевому периметру
+## Сетевой периметр
 
-**`proxy.ts`** (корень проекта, рядом с `app/`): в Next.js **16+** это актуальная конвенция вместо устаревшего `middleware.ts` (оба файла одновременно **запрещены**). Для **`/dashboard/:path*`** проверяется cookie **`token`** через **`verifyToken`** (`lib/auth.ts`); без валидного токена — **редирект на `/login`**. `matcher` ограничен только дашбордом.
+**`proxy.ts`** (корень): для **`/dashboard/:path*`** проверяется cookie **`token`**; без валидного JWT — редирект на **`/login`**. Файла **`middleware.ts`** в проекте нет (конфликт с **`proxy.ts`** в Next 16).
 
-Защита **API** по-прежнему в **`verifyToken`** (и прочих проверках) внутри **`app/api/**/route.ts`**. Подробнее — `PROJECT_AUDIT.md`.
+Защита **API** — в **`verifyToken`** и проверках внутри каждого `route.ts`. Подробнее — **`PROJECT_AUDIT.md`**.
 
 ---
 

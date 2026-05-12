@@ -16,10 +16,20 @@ import type { OperationsHistoryResponse } from "@/types/operations-finance-api";
 import { FinanceInvestorSelectionTruncationNotice } from "@/components/dashboard/finance/FinanceInvestorSelectionTruncationNotice";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
-import { HistoryPeriodPopover, sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
+import { HistoryPeriodPopover, sortAtInHistoryPeriod, operationPeriodAnchorIso, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
+import { weekAccrualPeriodRowUi } from "@/lib/history-period";
 import { FinanceOperationsSubFeed } from "@/components/dashboard/finance/FinanceOperationsSubFeed";
+import { FinancePendingActionsQueue } from "@/components/dashboard/finance/FinancePendingActionsQueue";
+import {
+  financeOperationInActionQueue,
+  isTerminalFinanceOperation,
+  sortFinanceOpsBySortAtDesc,
+} from "@/lib/finance-operations-feed";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
 import {
+  bodyTopUpAttentionBadgeLabel,
+  bodyTopUpPendingStatusPhrase,
+  bodyTopUpRowNeedsPendingHighlight,
   paymentAttentionBadgeLabel,
   paymentNeedsViewerAction,
   topupNeedsViewerAction,
@@ -32,12 +42,13 @@ const PAGE_MORE = 40;
 /** Показать все строки истории без «Показать ещё» по умолчанию */
 const SHOW_ALL_HISTORY_CAP = Number.MAX_SAFE_INTEGER;
 
-function opMatchesFilter(item: FinanceOperationItem, f: OpFilter): boolean {
+function opMatchesFilter(item: FinanceOperationItem, f: OpFilter, splitPendingQueue: boolean): boolean {
   if (f === "all") return true;
   if (f === "accrual") return item.kind === "week_accrual";
   if (f === "topup") return item.kind === "topup";
   if (f === "payout") return item.kind === "payment" && item.status === "completed";
   if (f === "request") {
+    if (splitPendingQueue) return false;
     if (item.kind === "payment" && item.status !== "completed") return true;
     if (item.kind === "topup" && !item.initialFromCreation && item.status === "pending_investor") return true;
     return false;
@@ -82,7 +93,7 @@ function paymentStatusShort(status: string) {
     expired: "Истекло",
     disputed: "Спор",
     completed_at_creation: "При создании позиции",
-    pending_investor: "Ожидает решения инвестора",
+    pending_investor: "Ожидает подтверждения инвестора",
     accepted_by_investor: "Принято инвестором",
     rejected_by_investor: "Отклонено инвестором",
     cancelled_by_owner: "Отозвано владельцем",
@@ -90,12 +101,22 @@ function paymentStatusShort(status: string) {
   return map[status] ?? status;
 }
 
-function formatTopUpHistorySubline(item: Extract<FinanceOperationItem, { kind: "topup" }>) {
+function formatTopUpHistorySubline(
+  item: Extract<FinanceOperationItem, { kind: "topup" }>,
+  operationsHistoryScope: "investor" | "owner",
+  viewerBodyTopupAddresseeInvestorIds: ReadonlySet<number> | null
+) {
   if (item.initialFromCreation) {
-    return `${paymentStatusShort(item.status)} · вх. ${formatDate(item.entryDate ?? item.sortAt)}`;
+    const act = item.activationDate ? formatDate(item.activationDate) : formatDate(item.sortAt);
+    const entry = formatDate(item.entryDate ?? item.sortAt);
+    return `Начальное тело при открытии · активация ${act} · вх. ${entry}`;
   }
   const when = item.requestDate ?? item.createdAt;
-  return `${paymentStatusShort(item.status)} · ${formatDateTime(when)}`;
+  const st =
+    item.status === "pending_investor"
+      ? bodyTopUpPendingStatusPhrase(operationsHistoryScope, item.investorId, item.positionName, viewerBodyTopupAddresseeInvestorIds)
+      : paymentStatusShort(item.status);
+  return `${st} · ${formatDateTime(when)}`;
 }
 
 function formatDate(dateStr: string) {
@@ -116,7 +137,9 @@ function financeSelectionTotals(ops: FinanceOperationItem[]) {
   for (const op of ops) {
     if (op.kind === "week_accrual") growth += op.accrued;
     else if (op.kind === "topup") {
-      growth += op.amount;
+      const countsTowardGrowth =
+        Boolean(op.initialFromCreation) || op.status === "accepted_by_investor";
+      if (countsTowardGrowth) growth += op.amount;
       if (!op.initialFromCreation && op.status === "pending_investor") openRequests += 1;
     } else if (op.kind === "payment") {
       if (op.status === "completed") paidOut += op.amount;
@@ -232,6 +255,16 @@ export type DashboardOperationsHistoryProps = {
    * Не использовать на странице «Финансы».
    */
   superAdminLinkedCommonHome?: boolean;
+  /**
+   * Позиции, где текущий пользователь подтверждает пополнение тела (`investorUser` / `linkedUser`).
+   * Страница «Финансы» передаёт из lean-списка; без пропа — без фильтра адресата (как раньше).
+   */
+  viewerBodyTopupAddresseeInvestorIds?: ReadonlySet<number> | null;
+  /**
+   * Заявки в ожидании — отдельный блок «Требуют действия», в ленте только терминальные проводки.
+   * По умолчанию совпадает с «расширенным» режимом страницы «Финансы».
+   */
+  splitPendingActionQueue?: boolean;
   /** Если задан вместе с `onOperationClick`, интерактивны только подходящие строки (напр. только выплаты на главной). */
   operationRowPredicate?: (item: FinanceOperationItem) => boolean;
 };
@@ -285,9 +318,12 @@ export function DashboardOperationsHistory({
   financeSuppressBottomFeed = false,
   financeSuperAdminNetwork = null,
   superAdminLinkedCommonHome = false,
+  viewerBodyTopupAddresseeInvestorIds = null,
+  splitPendingActionQueue = financeProminentFilters,
   operationRowPredicate,
 }: DashboardOperationsHistoryProps) {
   const queryClient = useQueryClient();
+  const bodyTopupAddresseeIds = viewerBodyTopupAddresseeInvestorIds ?? null;
   const financeCardsLayout = Boolean(financeProminentFilters && financeInvestorCardsSlot);
   const [expanded, setExpanded] = useState(false);
   const [embeddedExpanded, setEmbeddedExpanded] = useState(embeddedInitiallyExpanded);
@@ -360,19 +396,40 @@ export function DashboardOperationsHistory({
   const allOps = useMemo(() => opsData?.items ?? [], [opsData?.items]);
 
   const periodFiltered = useMemo(
-    () => allOps.filter((op) => sortAtInHistoryPeriod(op.sortAt, periodValue)),
+    () => allOps.filter((op) => sortAtInHistoryPeriod(operationPeriodAnchorIso(op), periodValue)),
     [allOps, periodValue]
   );
 
+  const pendingQueueOps = useMemo(() => {
+    if (!splitPendingActionQueue) return [];
+    return sortFinanceOpsBySortAtDesc(
+      periodFiltered.filter((i) =>
+        financeOperationInActionQueue(i, operationsHistoryScope, bodyTopupAddresseeIds)
+      )
+    );
+  }, [splitPendingActionQueue, periodFiltered, operationsHistoryScope, bodyTopupAddresseeIds]);
+
+  const historyBaseOps = useMemo(() => {
+    if (!splitPendingActionQueue) return periodFiltered;
+    return periodFiltered.filter(isTerminalFinanceOperation);
+  }, [splitPendingActionQueue, periodFiltered]);
+
   const filteredOps = useMemo(
-    () => periodFiltered.filter((i) => opMatchesFilter(i, opFilter)),
-    [periodFiltered, opFilter]
+    () => historyBaseOps.filter((i) => opMatchesFilter(i, opFilter, splitPendingActionQueue)),
+    [historyBaseOps, opFilter, splitPendingActionQueue]
   );
 
-  const financeTotals = useMemo(
-    () => (financeProminentFilters ? financeSelectionTotals(filteredOps) : null),
-    [financeProminentFilters, filteredOps]
-  );
+  const financeTotals = useMemo(() => {
+    if (!financeProminentFilters) return null;
+    const base = financeSelectionTotals(filteredOps);
+    if (!splitPendingActionQueue) return base;
+    return { ...base, openRequests: pendingQueueOps.length };
+  }, [financeProminentFilters, filteredOps, splitPendingActionQueue, pendingQueueOps.length]);
+
+  useEffect(() => {
+    if (!splitPendingActionQueue) return;
+    if (opFilter === "request") setOpFilter("all");
+  }, [splitPendingActionQueue, opFilter]);
 
   const visibleOps = useMemo(
     () => (financePageScroll ? filteredOps : filteredOps.slice(0, visibleCap)),
@@ -406,25 +463,29 @@ export function DashboardOperationsHistory({
           ? `Показать ещё (${Math.min(filteredOps.length, PAGE_MORE) - PAGE_FIRST})`
           : `Показать все (+${filteredOps.length - visibleCap})`;
 
-  const opFilterPairs = financeProminentFilters
-    ? (
-        [
-          ["all", "Все"],
-          ["accrual", "Начисл."],
-          ["payout", "Выплаты"],
-          ["request", "Заявки"],
-          ["topup", "Пополн."],
-        ] as const
-      )
-    : (
-        [
-          ["all", "Все"],
-          ["accrual", "Начисления"],
-          ["payout", "Выплаты"],
-          ["request", "Заявки"],
-          ["topup", "Пополнения"],
-        ] as const
-      );
+  const opFilterPairs = useMemo(() => {
+    const full = financeProminentFilters
+      ? (
+          [
+            ["all", "Все"],
+            ["accrual", "Начисл."],
+            ["payout", "Выплаты"],
+            ["request", "Заявки"],
+            ["topup", "Пополн."],
+          ] as const
+        )
+      : (
+          [
+            ["all", "Все"],
+            ["accrual", "Начисления"],
+            ["payout", "Выплаты"],
+            ["request", "Заявки"],
+            ["topup", "Пополнения"],
+          ] as const
+        );
+    if (!splitPendingActionQueue) return full;
+    return full.filter(([id]) => id !== "request");
+  }, [financeProminentFilters, splitPendingActionQueue]);
 
   const historyHeader = embedded ? (
     embeddedCollapsible ? (
@@ -457,7 +518,9 @@ export function DashboardOperationsHistory({
           </div>
           {!embeddedExpanded && !isBusy ? (
             <Text className="mt-0.5 text-[11px] text-muted-foreground">
-              Начисления, выплаты и пополнения · развернуть при необходимости
+              {splitPendingActionQueue
+                ? "Завершённые проводки в ленте · открытые заявки — в блоке «Требуют действия» при развороте"
+                : "Начисления, выплаты и пополнения · развернуть при необходимости"}
             </Text>
           ) : null}
         </div>
@@ -544,9 +607,9 @@ export function DashboardOperationsHistory({
                       >
                         {filteredOps.length}
                       </span>
-                      {periodFiltered.length !== filteredOps.length ? (
+                      {historyBaseOps.length !== filteredOps.length ? (
                         <span className="text-[10px] tabular-nums text-muted-foreground" title="Все строки выбранного периода (до фильтра типа)">
-                          · {periodFiltered.length} по периоду
+                          · {historyBaseOps.length} по периоду
                         </span>
                       ) : allOps.length > filteredOps.length ? (
                         <span className="text-[10px] tabular-nums text-muted-foreground" title="Всего записей в ленте">
@@ -580,7 +643,11 @@ export function DashboardOperationsHistory({
                     {financeTotals.openRequests > 0 ? (
                       <span
                         className="inline-flex items-center rounded-md border border-amber-500/35 bg-amber-500/12 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-900 dark:text-amber-100"
-                        title="Активные заявки на выплату в выборке"
+                        title={
+                          splitPendingActionQueue
+                            ? "Открытые заявки (см. блок «Требуют действия» выше)"
+                            : "Активные заявки на выплату в выборке"
+                        }
                       >
                         {financeTotals.openRequests} заявк.
                       </span>
@@ -684,14 +751,32 @@ export function DashboardOperationsHistory({
                 </>
               )}
             </div>
+            {splitPendingActionQueue && pendingQueueOps.length > 0 ? (
+              <div className="mt-1 border-t border-border/12 pt-1 dark:border-white/[0.06]">
+                <FinancePendingActionsQueue
+                  items={pendingQueueOps}
+                  operationsHistoryScope={operationsHistoryScope}
+                  bodyTopupAddresseeIds={bodyTopupAddresseeIds}
+                  onItemClick={(it) => {
+                    if (onOperationClick) onOperationClick(it);
+                  }}
+                />
+              </div>
+            ) : null}
             {financeProminentFilters ? (
               <div className="mt-1.5 space-y-1.5 border-t border-border/15 pt-1.5">
                 <p className="text-[9px] leading-snug text-muted-foreground">
-                  {financeInvestorCardsSlot
-                    ? financeSuppressBottomFeed
-                      ? "Период и тип задают выборку. Карточка — лента под ней; метрики на карточке тоже задают тип."
-                      : "Сверху — период и тип операций. Карточка позиции — лента событий ниже. Суммы справа по текущей выборке."
-                    : "Суммы справа — только видимые строки. Нажмите строку ниже для подробностей."}
+                  {splitPendingActionQueue
+                    ? financeInvestorCardsSlot
+                      ? financeSuppressBottomFeed
+                        ? "Открытые заявки — блок «Требуют действия». Лента под карточкой — только завершённые проводки. Период и тип задают выборку."
+                        : "Открытые заявки — блок «Требуют действия». Ниже — завершённые проводки. Карточка сужает ленту до позиции."
+                      : "Открытые заявки — блок «Требуют действия». Ниже — завершённые проводки по периоду и типу."
+                    : financeInvestorCardsSlot
+                      ? financeSuppressBottomFeed
+                        ? "Период и тип задают выборку. Карточка — лента под ней; метрики на карточке тоже задают тип."
+                        : "Сверху — период и тип операций. Карточка позиции — лента событий ниже. Суммы справа по текущей выборке."
+                      : "Суммы справа — только видимые строки. Нажмите строку ниже для подробностей."}
                 </p>
                 {financeInvestorCardsSlot ? (
                   typeof financeInvestorCardsSlot === "function" ? (
@@ -708,6 +793,11 @@ export function DashboardOperationsHistory({
                           enabled={enabled}
                           onOperationClick={onOperationClick}
                           operationRowPredicate={operationRowPredicate}
+                          viewerBodyTopupAddresseeInvestorIds={bodyTopupAddresseeIds}
+                          splitPendingActionQueue={splitPendingActionQueue}
+                          suppressInlinePendingQueue={Boolean(
+                            financeSuppressBottomFeed && splitPendingActionQueue
+                          )}
                         />
                       ),
                       periodValue,
@@ -746,6 +836,13 @@ export function DashboardOperationsHistory({
             )}
           >
             <FinanceInvestorSelectionTruncationNotice investorSelection={opsData?.meta?.investorSelection} />
+            {splitPendingActionQueue ? (
+              <div className="border-b border-border/12 px-2 py-1 dark:border-white/[0.05]">
+                <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
+                  История · завершённые
+                </span>
+              </div>
+            ) : null}
             {isBusy ? (
               <div className="divide-y divide-border/15 overflow-hidden rounded-xl border-0 bg-background/15 dark:bg-background/12">
                 {[1, 2, 3].map((i) => (
@@ -773,6 +870,9 @@ export function DashboardOperationsHistory({
                     const isOpenWeek = isSameOpenWeekAsNow(item.weekStart);
                     const accrualPreviewGold =
                       item.accrued === 0 && (item.syntheticOpen || isOpenWeek);
+                    const wkUi = weekAccrualPeriodRowUi(item.weekStart, item.weekEnd, periodValue);
+                    const weekRowMuted =
+                      !item.syntheticOpen && (wkUi.clippedByPeriodEnd || wkUi.extendsBeyondBangkokToday);
                     return (
                       <div
                         key={item.id}
@@ -780,7 +880,8 @@ export function DashboardOperationsHistory({
                         className={cn(
                           "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
                           operationRowPointerCn(onOperationClick, item, operationRowPredicate),
-                          item.syntheticOpen ? "bg-muted/10" : undefined
+                          item.syntheticOpen ? "bg-muted/10" : undefined,
+                          weekRowMuted && "opacity-[0.82]"
                         )}
                         style={
                           item.syntheticOpen
@@ -808,7 +909,7 @@ export function DashboardOperationsHistory({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[12px] font-semibold tabular-nums text-foreground">
-                            Начисление · {formatDate(item.weekStart)} — {formatDate(item.weekEnd)}
+                            Начисление · {wkUi.captionFrom} — {wkUi.captionTo}
                           </div>
                           <div className="truncate text-[10px] leading-snug text-muted-foreground">
                             {rateLabel ? <>Сеть {rateLabel}</> : <>Ставка —</>}
@@ -859,8 +960,9 @@ export function DashboardOperationsHistory({
                   }
 
                   if (item.kind === "topup") {
-                    const subline = formatTopUpHistorySubline(item);
-                    const needsTopUpAction = topupNeedsViewerAction(operationsHistoryScope, item);
+                    const subline = formatTopUpHistorySubline(item, operationsHistoryScope, bodyTopupAddresseeIds);
+                    const topupHighlight = bodyTopUpRowNeedsPendingHighlight(item);
+                    const needsTopUpAction = topupNeedsViewerAction(operationsHistoryScope, item, bodyTopupAddresseeIds);
                     const rowClickableTopUp =
                       Boolean(onOperationClick) && (!operationRowPredicate || operationRowPredicate(item));
                     const attentionTitleTopUp = needsTopUpAction
@@ -871,7 +973,11 @@ export function DashboardOperationsHistory({
                         : operationsHistoryScope === "investor"
                           ? "Финансы: откройте эту строку, чтобы подтвердить или отклонить пополнение"
                           : "Финансы: откройте эту строку по запросу пополнения"
-                      : undefined;
+                      : topupHighlight && operationsHistoryScope === "investor"
+                        ? "Ожидается решение инвестора по этой позиции (не ваш шаг)"
+                        : topupHighlight && operationsHistoryScope === "owner"
+                          ? "Ожидается подтверждение инвестором; при необходимости откройте строку и отзовите запрос"
+                          : undefined;
                     const topUpPendingRequest =
                       !item.initialFromCreation && item.status === "pending_investor";
                     return (
@@ -879,15 +985,17 @@ export function DashboardOperationsHistory({
                         key={item.id}
                         {...operationRowInteractiveProps(onOperationClick, item, operationRowPredicate)}
                         title={attentionTitleTopUp}
-                        data-finance-history-attention={needsTopUpAction ? "action" : undefined}
+                        data-finance-history-attention={
+                          needsTopUpAction ? "action" : topupHighlight ? "pending" : undefined
+                        }
                         className={cn(
                           "flex items-center gap-2 px-2 py-2 transition-colors hover:bg-muted/10",
                           operationRowPointerCn(onOperationClick, item, operationRowPredicate),
-                          needsTopUpAction &&
+                          topupHighlight &&
                             "border-l-[3px] border-l-amber-500/85 bg-amber-500/[0.07] dark:border-l-amber-400/80 dark:bg-amber-400/[0.09]"
                         )}
                         style={
-                          needsTopUpAction
+                          topupHighlight
                             ? undefined
                             : { background: "var(--thai-color-topup-bg)" }
                         }
@@ -895,7 +1003,7 @@ export function DashboardOperationsHistory({
                         <div
                           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background/50"
                           style={{
-                            borderColor: needsTopUpAction
+                            borderColor: topupHighlight
                               ? "color-mix(in srgb, rgb(245 158 11) 55%, transparent)"
                               : "color-mix(in srgb, var(--thai-color-topup) 45%, transparent)",
                           }}
@@ -905,9 +1013,7 @@ export function DashboardOperationsHistory({
                             className="h-4 w-4 shrink-0 text-[var(--thai-color-topup)]"
                             strokeWidth={2}
                             style={
-                              needsTopUpAction
-                                ? { color: "rgb(245 158 11)", opacity: 0.92 }
-                                : undefined
+                              topupHighlight ? { color: "rgb(245 158 11)", opacity: 0.92 } : undefined
                             }
                           />
                         </div>
@@ -916,13 +1022,25 @@ export function DashboardOperationsHistory({
                             <span className="truncate text-[12px] font-semibold text-foreground">
                               {showMultiPositionLabels ? `Пополнение · ${item.positionName}` : "Пополнение тела"}
                             </span>
-                            {needsTopUpAction ? (
+                            {topupHighlight ? (
                               <span className="inline-flex shrink-0 rounded border border-amber-500/45 bg-amber-500/14 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-950 dark:text-amber-100">
-                                {paymentAttentionBadgeLabel(operationsHistoryScope)}
+                                {bodyTopUpAttentionBadgeLabel(
+                                  operationsHistoryScope,
+                                  item.investorId,
+                                  item.positionName,
+                                  bodyTopupAddresseeIds
+                                )}
                               </span>
                             ) : null}
                           </div>
-                          <div className="line-clamp-2 text-[10px] text-muted-foreground">{subline}</div>
+                          <div
+                            className={cn(
+                              "line-clamp-2 text-[10px] text-muted-foreground",
+                              topupHighlight && "font-medium text-amber-950/95 dark:text-amber-50/90"
+                            )}
+                          >
+                            {subline}
+                          </div>
                         </div>
                         <div className="shrink-0 text-right leading-tight">
                           <div
@@ -1018,7 +1136,11 @@ export function DashboardOperationsHistory({
             ) : (
               <div className="rounded-xl border-0 bg-muted/12 px-3 py-6 text-center backdrop-blur-[2px]">
                 <Text className="text-[12px] text-muted-foreground">
-                  {allOps.length === 0 ? "Операций пока нет." : "Нет операций в выбранном периоде и фильтре."}
+                  {allOps.length === 0
+                    ? "Операций пока нет."
+                    : splitPendingActionQueue && pendingQueueOps.length > 0 && filteredOps.length === 0
+                      ? "Нет завершённых проводок в выборке · открытые заявки выше"
+                      : "Нет операций в выбранном периоде и фильтре."}
                 </Text>
               </div>
             )}

@@ -17,6 +17,7 @@ import NotificationBell from "@/components/notifications/NotificationBell";
 
 import { SuperAdminNetworkOverviewCard } from "@/components/dashboard/SuperAdminNetworkOverviewCard";
 import { ManagePositionDeskModal } from "@/components/investors/ManagePositionDeskModal";
+import { parseDeskAmountDigits } from "@/lib/desk-amount-input";
 import {
   InvestorCredentialsReveal,
   type InvestorCredentials,
@@ -159,12 +160,6 @@ export default function DashboardManagePage() {
     isPrivate: false,
   });
 
-  const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
-  const formatAmountInput = (value: string) => {
-    const amount = parseAmountInput(value);
-    if (!amount) return "";
-    return `${amount.toLocaleString("ru-RU")} ฿`;
-  };
   const { data: privateCreateCtxData, isLoading: loadingPrivateCreateCtx } = useQuery({
     queryKey: ["investors-private-create-context"],
     queryFn: () =>
@@ -246,7 +241,7 @@ export default function DashboardManagePage() {
         name: data.name,
         handle: data.handle,
         phone: data.phone,
-        body: parseAmountInput(data.body),
+        body: parseDeskAmountDigits(data.body),
         entryDate: data.entryDate,
         isPrivate: data.isPrivate,
       };
@@ -280,7 +275,7 @@ export default function DashboardManagePage() {
         name: becomeOwnerForm.name.trim(),
         handle: becomeOwnerForm.handle.trim() || undefined,
         phone: becomeOwnerForm.phone.trim() || undefined,
-        body: parseAmountInput(becomeOwnerForm.body),
+        body: parseDeskAmountDigits(becomeOwnerForm.body),
         rate: Number(becomeOwnerForm.rate),
         entryDate: becomeOwnerForm.entryDate,
         allowMultiple: becomeOwnerForm.allowMultiple,

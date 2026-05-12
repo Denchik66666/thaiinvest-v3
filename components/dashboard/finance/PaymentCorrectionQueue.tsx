@@ -40,9 +40,56 @@ function paymentTypeRu(type: string) {
   return type;
 }
 
-function payloadSummary(p: CorrectionPayload): string {
-  if (p.mode === "dates_only") return "Правка дат";
-  return p.rollbackTarget === "owner_step" ? "Откат на шаг владельца" : "Откат на шаг инвестора";
+function isoToDdMmYy(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+/** Одна фраза про предлагаемые даты/сумму (без дублирования adminNote). */
+function proposedChangePhrase(payload: CorrectionPayload): string {
+  if (payload.mode === "rollback") {
+    const t =
+      payload.rollbackTarget === "owner_step" ? "откат на шаг владельца" : "откат на шаг инвестора";
+    const rev = payload.reverseCompletion ? ", с откатом проводки" : "";
+    const patch = payload.patchDates;
+    if (!patch || Object.keys(patch).length === 0) return t + rev;
+    const dates: string[] = [];
+    for (const key of ["createdAt", "approvedAt", "acceptedAt"] as const) {
+      if (!(key in patch) || patch[key] === undefined) continue;
+      const v = patch[key]!;
+      if (v === null) dates.push(key === "createdAt" ? "сброс подачи" : key === "approvedAt" ? "сброс одобрения" : "сброс подтверждения");
+      else dates.push(isoToDdMmYy(v));
+    }
+    if (dates.length === 0) return t + rev;
+    const datePart = dates.length === 1 ? `предлагаемая дата: ${dates[0]}` : `предлагаемые даты: ${dates.join(", ")}`;
+    return `${t}${rev}; ${datePart}`;
+  }
+  const patch = payload.patchDates ?? {};
+  const dates: string[] = [];
+  for (const key of ["createdAt", "approvedAt", "acceptedAt"] as const) {
+    if (!(key in patch) || patch[key] === undefined) continue;
+    const v = patch[key]!;
+    if (v === null) dates.push(key === "createdAt" ? "сброс подачи" : key === "approvedAt" ? "сброс одобрения" : "сброс подтверждения");
+    else dates.push(isoToDdMmYy(v));
+  }
+  const bits: string[] = [];
+  if (dates.length === 1) bits.push(`предлагаемая дата: ${dates[0]}`);
+  else if (dates.length > 1) bits.push(`предлагаемые даты: ${dates.join(", ")}`);
+  if (payload.patchAmount !== undefined) {
+    bits.push(`сумма в заявке: ${formatCurrency(payload.patchAmount)}`);
+  }
+  return bits.length > 0 ? bits.join(" · ") : "состав правки в данных заявки";
+}
+
+function countDateOnlyPatches(payload: CorrectionPayload): number {
+  if (payload.mode !== "dates_only") return 0;
+  const p = payload.patchDates ?? {};
+  let n = 0;
+  for (const k of ["createdAt", "approvedAt", "acceptedAt"] as const) {
+    if (k in p && p[k] !== undefined) n++;
+  }
+  return n;
 }
 
 function ProposalCard({
@@ -57,40 +104,38 @@ function ProposalCard({
   onDecide?: (id: number, decision: "approve" | "reject") => void;
 }) {
   const disabled = busyId != null;
+  const pos = investorDisplayHandle(row.payment.investor) ?? row.payment.investor.name;
+  const payShort = `№${row.paymentId} · ${paymentTypeRu(row.payment.type)} · ${formatCurrency(row.payment.amount)}`;
+
+  const proposed = proposedChangePhrase(row.payload);
+  const incomingIntro =
+    row.payload.mode === "rollback"
+      ? `Запрос от ${row.createdBy.username}: ${proposed}`
+      : countDateOnlyPatches(row.payload) === 1 && row.payload.patchAmount === undefined
+        ? `Запрос от ${row.createdBy.username} на корректировку даты, ${proposed}`
+        : `Запрос от ${row.createdBy.username} на корректировку дат, ${proposed}`;
+
+  const mainText =
+    variant === "incoming"
+      ? `${incomingIntro}. ${payShort} · ${pos}.`
+      : `Ожидает решения: ${payShort} · ${pos}. ${proposed}`;
+
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/30 bg-background/20 px-2.5 py-2 text-[11px] leading-snug",
-        variant === "incoming" && "border-l-2 border-l-amber-500/55"
+        "border-b border-border/25 py-2 text-[11px] leading-snug last:border-b-0",
+        variant === "incoming" && "border-l-2 border-l-amber-500/50 pl-2"
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
-          <p className="font-semibold tabular-nums text-foreground">
-            Заявка №{row.paymentId} · {paymentTypeRu(row.payment.type)} · {formatCurrency(row.payment.amount)}
-          </p>
-          <p className="text-[10px] text-muted-foreground">
-            {investorDisplayHandle(row.payment.investor) ?? row.payment.investor.name} · {payloadSummary(row.payload)}
-          </p>
-          {variant === "incoming" ? (
-            <p className="text-[10px] text-foreground/90">
-              <span className="font-medium text-muted-foreground">От админа ({row.createdBy.username}): </span>
-              {row.adminNote}
-            </p>
-          ) : (
-            <p className="text-[10px] text-muted-foreground">Ожидает решения адресата</p>
-          )}
-        </div>
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
+        <p className="min-w-0 flex-1 text-foreground/95 [overflow-wrap:anywhere]">{mainText}</p>
         {variant === "incoming" && onDecide ? (
-          <div className="flex shrink-0 gap-1.5">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               disabled={disabled}
               onClick={() => onDecide(row.id, "approve")}
-              className={cn(
-                "rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-800 dark:text-emerald-300",
-                "transition hover:bg-emerald-500/15 disabled:opacity-40"
-              )}
+              className="text-[11px] font-semibold text-emerald-600 underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400/95"
             >
               Принять
             </button>
@@ -98,10 +143,7 @@ function ProposalCard({
               type="button"
               disabled={disabled}
               onClick={() => onDecide(row.id, "reject")}
-              className={cn(
-                "rounded-lg border border-border/40 bg-transparent px-2 py-1 text-[10px] font-semibold text-muted-foreground",
-                "transition hover:bg-muted/20 disabled:opacity-40"
-              )}
+              className="text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-40"
             >
               Отклонить
             </button>
@@ -155,12 +197,12 @@ export function PaymentCorrectionQueue() {
   if (!enabled || (incoming.length === 0 && outgoing.length === 0)) return null;
 
   return (
-    <div className="mb-3 space-y-2 rounded-xl border border-border/25 bg-background/15 px-2.5 py-2 md:mb-4 md:px-3 md:py-2.5">
+    <div className="mb-3 space-y-1 border-b border-border/20 pb-2 md:mb-4">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         Запросы правок заявок
       </p>
       {incoming.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-0">
           <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/90">Входящие</p>
           {incoming.map((row) => (
             <ProposalCard
@@ -174,7 +216,7 @@ export function PaymentCorrectionQueue() {
         </div>
       ) : null}
       {outgoing.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-0">
           <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/90">Отправленные</p>
           {outgoing.map((row) => (
             <ProposalCard key={row.id} row={row} variant="outgoing" busyId={busyId} />

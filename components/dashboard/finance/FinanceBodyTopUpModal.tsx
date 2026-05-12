@@ -245,15 +245,14 @@ export function FinanceBodyTopUpModal({
 
   const [deskEntryYmd, setDeskEntryYmd] = useState(() => investorEntryToYmd(undefined));
 
+  /**
+   * Дата в заявке (`requestDate`): при каждом открытии — сегодня (локальный день).
+   * Не брать `entryDate` позиции: это дата входа в сделку, не «дата заявки» → в UI оказывалось 02.02.26 и т.п.
+   */
   useEffect(() => {
     if (!open) return;
-    if (primaryInvestor) {
-      setDeskEntryYmd(investorEntryToYmd(primaryInvestor.entryDate));
-      return;
-    }
-    const first = investors.find((i) => eligibility(i, pendingTopUpIds).ok);
-    if (first) setDeskEntryYmd(investorEntryToYmd(first.entryDate));
-  }, [open, primaryInvestor?.id, primaryInvestor?.entryDate, investors, pendingTopUpIds]);
+    setDeskEntryYmd(investorEntryToYmd(undefined));
+  }, [open]);
 
   const mutation = useMutation({
     mutationFn: async () => {

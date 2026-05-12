@@ -335,25 +335,27 @@ export default function InvestorDetailPageClient({ investorId }: { investorId: s
                   {hasPendingBodyTopUp ? "Пополнение на подтверждении" : "Пополнение тела"}
                 </Button>
               ) : null}
-              <Button
-                variant="outline"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                onClick={() => {
-                  void (async () => {
-                    const ok = await confirm({
-                      title: "Удалить инвестора?",
-                      description: "Действие необратимо.",
-                      confirmLabel: "Удалить",
-                      cancelLabel: "Отмена",
-                      tone: "danger",
-                    });
-                    if (ok) deleteMutation.mutate();
-                  })();
-                }}
-                disabled={deleteMutation.isPending}
-              >
-                Удалить инвестора
-              </Button>
+              {user.role === "SUPER_ADMIN" ? (
+                <Button
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await confirm({
+                        title: "Удалить инвестора?",
+                        description: "Действие необратимо.",
+                        confirmLabel: "Удалить",
+                        cancelLabel: "Отмена",
+                        tone: "danger",
+                      });
+                      if (ok) deleteMutation.mutate();
+                    })();
+                  }}
+                  disabled={deleteMutation.isPending}
+                >
+                  Удалить инвестора
+                </Button>
+              ) : null}
             </div>
 
             {credentials ? (

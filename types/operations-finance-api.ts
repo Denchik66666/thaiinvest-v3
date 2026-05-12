@@ -22,7 +22,13 @@ export type OperationsHistoryResponse = {
   meta?: { investorSelection: FinanceInvestorSelectionMeta };
 };
 
-export type OperationsSummaryRow = { growth: number; paidOut: number; openRequests: number };
+/** `topupInflow` — начальное тело в периоде + принятые пополнения в периоде (для бейджа при фильтре «Тело»). */
+export type OperationsSummaryRow = {
+  growth: number;
+  paidOut: number;
+  openRequests: number;
+  topupInflow: number;
+};
 
 export type OperationsSummaryResponse = {
   byInvestorId: Record<string, OperationsSummaryRow>;

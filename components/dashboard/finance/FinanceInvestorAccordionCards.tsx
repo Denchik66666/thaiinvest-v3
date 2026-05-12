@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Globe2, Lock } from "lucide-react";
 
 import { apiClient } from "@/lib/api-client";
@@ -42,6 +42,8 @@ export type FinanceMetricFilterScope = { kind: "network" } | { kind: "investor";
 
 type Props = {
   investors: FinanceInvestorAccordionModel[];
+  /** Позиции с активной заявкой на пополнение тела в `pending_investor` (из `GET /api/body-topup-requests`). */
+  pendingBodyTopUpInvestorIds?: ReadonlySet<number>;
   /** SUPER_ADMIN: фильтр для сводок и префетча истории при «вся сеть». */
   superAdminHistoryNetwork?: "common" | "private" | "all" | null;
   networkTotals: { body: number; accrued: number; paid: number; requestedPayments?: number };
@@ -172,6 +174,7 @@ function MetricsRow({
 
 export function FinanceInvestorAccordionCards({
   investors,
+  pendingBodyTopUpInvestorIds,
   superAdminHistoryNetwork = null,
   networkTotals,
   expanded,
@@ -190,14 +193,17 @@ export function FinanceInvestorAccordionCards({
   const summaryNetworkSeg = superAdminHistoryNetwork ?? "-";
   const [pendingExpand, setPendingExpand] = useState<FinanceInvestorAccordionExpanded | null>(null);
 
-  const { data: opsSummaryData } = useQuery({
-    queryKey: ["investors", "operations-summary", operationsHistoryScope, idsParam, periodValue, opFilter, summaryNetworkSeg] as const,
+  /** Стабильная строка в queryKey и в URL — иначе TanStack Query может не различать смену объекта периода. */
+  const periodParam = useMemo(() => JSON.stringify(periodValue), [periodValue]);
+
+  const { data: opsSummaryData, isFetching } = useQuery({
+    queryKey: ["investors", "operations-summary", operationsHistoryScope, idsParam, periodParam, opFilter, summaryNetworkSeg] as const,
     queryFn: () => {
       const netQs =
         superAdminHistoryNetwork != null ? `&network=${encodeURIComponent(superAdminHistoryNetwork)}` : "";
       return apiClient.get<OperationsSummaryResponse>(
         `/api/investors/operations-summary?ids=${encodeURIComponent(idsParam)}&period=${encodeURIComponent(
-          JSON.stringify(periodValue)
+          periodParam
         )}&filter=${encodeURIComponent(opFilter)}${netQs}`
       );
     },
@@ -206,7 +212,6 @@ export function FinanceInvestorAccordionCards({
     gcTime: 5 * 60_000,
     refetchInterval: false,
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
   });
 
   const summaryById = opsSummaryData?.byInvestorId ?? {};
@@ -264,7 +269,8 @@ export function FinanceInvestorAccordionCards({
     const inactive = inv.status !== "active";
     const displayName = normalizeHandleDisplay(inv.handle) ?? inv.name;
 
-    const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0 };
+    const invTotals = summaryById[String(inv.id)] ?? { growth: 0, paidOut: 0, openRequests: 0, topupInflow: 0 };
+    const greenPlusAmount = opFilter === "topup" ? invTotals.topupInflow : invTotals.growth;
 
     const headingMeta = (
       <>
@@ -318,12 +324,19 @@ export function FinanceInvestorAccordionCards({
           >
             <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-col items-end gap-1" aria-hidden>
               <div className="flex items-center gap-1">
-                {invTotals.growth > 0 ? (
+                {greenPlusAmount > 0 ? (
                   <span
-                    className="inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95"
-                    title="Начисления и пополнения в выборке (период + тип)"
+                    className={cn(
+                      "inline-flex items-center rounded-md border border-emerald-500/22 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-800 dark:text-emerald-200/95",
+                      isFetching && summaryReady && "opacity-55"
+                    )}
+                    title={
+                      opFilter === "topup"
+                        ? "Пополнения тела в выборке: начальное при создании (если дата в периоде) + принятые заявки. Отозванные и отклонённые не входят."
+                        : "Начисления за закрытые недели и подтверждённые пополнения тела (инвестор принял заявку) в выборке периода и типа; начальное тело при создании позиции — отдельной строкой в ленте. Отозванные и отклонённые пополнения не входят. Выплаты — отдельным бейджем."
+                    }
                   >
-                    +{formatCurrency(invTotals.growth)}
+                    +{formatCurrency(greenPlusAmount)}
                   </span>
                 ) : summaryReady ? null : (
                   <span className="inline-flex items-center rounded-md border border-border/30 bg-background/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:border-white/[0.07] dark:bg-black/18">
@@ -332,7 +345,10 @@ export function FinanceInvestorAccordionCards({
                 )}
                 {invTotals.paidOut > 0 ? (
                   <span
-                    className="inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95"
+                    className={cn(
+                      "inline-flex items-center rounded-md border border-sky-500/22 bg-sky-500/[0.07] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sky-900 dark:text-sky-200/95",
+                      isFetching && summaryReady && "opacity-55"
+                    )}
                     title="Завершённые выплаты в выборке (период + тип)"
                   >
                     −{formatCurrency(invTotals.paidOut)}
@@ -349,6 +365,14 @@ export function FinanceInvestorAccordionCards({
                   title="Активные заявки на выплату"
                 >
                   {inv.requestedPayments} заявк.
+                </span>
+              ) : null}
+              {pendingBodyTopUpInvestorIds?.has(inv.id) ? (
+                <span
+                  className="inline-flex max-w-[9.5rem] items-center truncate rounded-md border border-orange-500/38 bg-orange-500/14 px-1.5 py-0.5 text-[9px] font-semibold text-orange-950 dark:text-orange-100"
+                  title="Запрос на пополнение тела ждёт подтверждения инвестора по этой позиции"
+                >
+                  Пополнение · ждёт
                 </span>
               ) : null}
             </div>

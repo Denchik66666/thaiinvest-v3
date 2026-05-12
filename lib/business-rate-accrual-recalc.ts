@@ -1,147 +1,114 @@
 import { prisma } from "@/lib/prisma";
 import { getPreviousOrCurrentMonday, startOfDay } from "@/lib/weekly";
 import { withDbRetry } from "@/lib/db-retry";
+import {
+  computeInvestorAccruedEndFromLedger,
+  computeInvestorPaidCompletedTotal,
+  toWeeklyLedgerPayments,
+} from "@/lib/investor-accrued-ledger";
 
 /**
- * Пересчитывает `Investor.accrued` по полной истории `RateHistory`
- * (копия логики POST `/api/system/business-rate` после любого изменения истории).
- *
- * Начисление в `accrued` — только по **закрытым** неделям; текущая открытая неделя
- * не добавляет процент. Выплаты текущей недели по-прежнему уменьшают остаток.
- * Итог округляется до целого бата.
+ * Пересчитывает **`Investor.accrued`** и **`Investor.paid`** для всех незакрытых позиций
+ * через **`buildWeeklyLedgerRows`** (см. **`lib/investor-accrued-ledger.ts`**).
+ * Вызывается после изменений **`RateHistory`** и из очереди пересчёта.
  */
 export async function recalculateInvestorAccruedFromRateHistory(): Promise<void> {
   const now = new Date();
   const lastClosedWeekStart = getPreviousOrCurrentMonday(now);
-  const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
-  const rateHistory = await withDbRetry(() =>
-    prisma.rateHistory.findMany({
-      orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
-      select: { effectiveDate: true, newRate: true },
-    })
-  );
-
-  const investors = await withDbRetry(() =>
-    prisma.investor.findMany({
-      where: {
-        status: { not: "closed" },
-        activationDate: { lte: lastClosedWeekStart },
-      },
-      select: {
-        id: true,
-        body: true,
-        activationDate: true,
-        isPrivate: true,
-        rate: true,
-        accrued: true,
-        payments: {
-          where: { status: "completed" },
-          select: {
-            id: true,
-            investorId: true,
-            type: true,
-            amount: true,
-            createdAt: true,
-            approvedAt: true,
-            acceptedAt: true,
-            status: true,
+  const [rateHistory, investors] = await Promise.all([
+    withDbRetry(() =>
+      prisma.rateHistory.findMany({
+        orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+        select: { effectiveDate: true, newRate: true },
+      })
+    ),
+    withDbRetry(() =>
+      prisma.investor.findMany({
+        where: {
+          status: { not: "closed" },
+          activationDate: { lte: lastClosedWeekStart },
+        },
+        select: {
+          id: true,
+          body: true,
+          activationDate: true,
+          isPrivate: true,
+          rate: true,
+          accrued: true,
+          paid: true,
+          payments: {
+            where: { status: "completed" },
+            select: {
+              id: true,
+              investorId: true,
+              type: true,
+              amount: true,
+              createdAt: true,
+              approvedAt: true,
+              acceptedAt: true,
+              status: true,
+            },
           },
         },
-      },
-    })
-  );
+      })
+    ),
+  ]);
 
-  const resolveBusinessRateAt = (weekStart: Date, pointer: { idx: number }) => {
-    if (!rateHistory.length) return undefined;
-    while (
-      pointer.idx + 1 < rateHistory.length &&
-      rateHistory[pointer.idx + 1].effectiveDate.getTime() <= weekStart.getTime()
-    ) {
-      pointer.idx += 1;
-    }
-    return rateHistory[pointer.idx]?.newRate;
-  };
+  const investorIds = investors.map((i) => i.id);
+  const allTopUps =
+    investorIds.length > 0
+      ? await withDbRetry(() =>
+          prisma.bodyTopUpRequest.findMany({
+            where: { investorId: { in: investorIds } },
+            select: {
+              investorId: true,
+              amount: true,
+              status: true,
+              requestDate: true,
+              decidedAt: true,
+              createdAt: true,
+            },
+          })
+        )
+      : [];
+
+  const topByInv = new Map<number, typeof allTopUps>();
+  for (const t of allTopUps) {
+    const list = topByInv.get(t.investorId) ?? [];
+    list.push(t);
+    topByInv.set(t.investorId, list);
+  }
 
   const eps = 0.00001;
   for (const inv of investors) {
-    let cursor = new Date(inv.activationDate);
-    cursor.setHours(0, 0, 0, 0);
+    const topRows = (topByInv.get(inv.id) ?? []).map((t) => ({
+      amount: t.amount,
+      status: t.status,
+      requestDate: t.requestDate,
+      decidedAt: t.decidedAt,
+      createdAt: t.createdAt,
+    }));
 
-    let body = inv.body;
-    let accrued = 0;
-
-    const pointer = { idx: 0 };
-    if (rateHistory.length) {
-      while (
-        pointer.idx + 1 < rateHistory.length &&
-        rateHistory[pointer.idx + 1].effectiveDate.getTime() <= cursor.getTime()
-      ) {
-        pointer.idx += 1;
-      }
-    }
-
-    const resolveRate = (weekStart: Date) => {
-      if (!rateHistory.length) return inv.isPrivate ? inv.rate * 2 : inv.rate;
-      const rate = resolveBusinessRateAt(weekStart, pointer);
-      return typeof rate === "number" ? rate : 0;
-    };
-
-    while (cursor.getTime() < lastClosedWeekStart.getTime()) {
-      const weekStart = new Date(cursor);
-      const weekEnd = new Date(cursor.getTime() + oneWeekMs);
-
-      const businessRate = resolveRate(weekStart);
-      const appliedRate = inv.isPrivate ? businessRate / 2 : businessRate;
-      const weeklyRatePercent = appliedRate / 4;
-      const accruedAdded = body * (weeklyRatePercent / 100);
-
-      const completedPaymentsInWeek = inv.payments.filter((payment) => {
-        const eventDate = payment.createdAt;
-        return eventDate >= weekStart && eventDate < weekEnd;
-      });
-
-      const interestPaid = completedPaymentsInWeek.filter((p) => p.type === "interest").reduce((sum, p) => sum + p.amount, 0);
-      const bodyPaid = completedPaymentsInWeek.filter((p) => p.type === "body").reduce((sum, p) => sum + p.amount, 0);
-      const closingPaid = completedPaymentsInWeek.filter((p) => p.type === "close").reduce((sum, p) => sum + p.amount, 0);
-
-      accrued += accruedAdded;
-      accrued = Math.max(accrued - interestPaid, 0);
-
-      if (bodyPaid > 0) body = Math.max(body - bodyPaid, 0);
-      if (closingPaid > 0) {
-        accrued = 0;
-        body = 0;
-      }
-
-      cursor = weekEnd;
-    }
-
-    const currentWeekStart = new Date(lastClosedWeekStart);
-
-    const currentWeekPayments = inv.payments.filter((payment) => {
-      if (payment.status !== "completed") return false;
-      const eventDate = payment.createdAt;
-      return eventDate >= currentWeekStart && eventDate <= now;
+    const accrued = computeInvestorAccruedEndFromLedger({
+      activationDate: inv.activationDate,
+      body: inv.body,
+      rate: inv.rate,
+      isPrivate: inv.isPrivate,
+      payments: toWeeklyLedgerPayments(inv.payments),
+      bodyTopUpRows: topRows,
+      rateHistory,
+      now,
     });
+    const paid = computeInvestorPaidCompletedTotal(inv.payments);
 
-    if (currentWeekPayments.length > 0) {
-      const interestPaid = currentWeekPayments.filter((p) => p.type === "interest").reduce((sum, p) => sum + p.amount, 0);
-      const bodyPaid = currentWeekPayments.filter((p) => p.type === "body").reduce((sum, p) => sum + p.amount, 0);
-      const closingPaid = currentWeekPayments.filter((p) => p.type === "close").reduce((sum, p) => sum + p.amount, 0);
-
-      accrued = Math.max(accrued - interestPaid, 0);
-      if (bodyPaid > 0) body = Math.max(body - bodyPaid, 0);
-      if (closingPaid > 0) {
-        accrued = 0;
-        body = 0;
-      }
-    }
-
-    accrued = Math.round(accrued);
-
-    if (Math.abs((inv.accrued ?? 0) - accrued) > eps) {
-      await withDbRetry(() => prisma.investor.update({ where: { id: inv.id }, data: { accrued } }));
+    if (Math.abs((inv.accrued ?? 0) - accrued) > eps || Math.abs((inv.paid ?? 0) - paid) > eps) {
+      await withDbRetry(() =>
+        prisma.investor.update({
+          where: { id: inv.id },
+          data: { accrued, paid },
+        })
+      );
     }
   }
 }

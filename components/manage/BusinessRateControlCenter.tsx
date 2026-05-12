@@ -10,11 +10,8 @@ import { Text } from "@/components/ui/Text";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { DatePicker } from "@/components/ui/DatePicker";
-import {
-  HistoryPeriodPopover,
-  sortAtInHistoryPeriod,
-  type HistoryPeriodValue,
-} from "@/components/dashboard/HistoryPeriodPopover";
+import { financeCalendarReferenceToolbarContentWidthPx } from "@/components/ui/finance-calendar-popover-skin";
+import { HistoryPeriodPopover, sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
 import { FinanceMonthCalendar, startOfMonth } from "@/components/ui/FinanceMonthCalendar";
 import { useAppDialogs } from "@/components/feedback/AppDialogsProvider";
 import { cn } from "@/lib/utils";
@@ -407,9 +404,13 @@ export function BusinessRateControlCenter({
 
         <form className="mt-2 space-y-1.5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-0 flex-1 sm:max-w-[11.5rem]">
+            <div className="shrink-0">
               <span className={labelClass}>Понедельник</span>
               <DatePicker
+                inline
+                financeFeedToolbar
+                allowClear={false}
+                triggerTitle="Понедельник в записи"
                 value={form.effectiveDate}
                 onChange={onEffectiveMondayChange}
                 highlightedDates={Array.from(changeDays)}
@@ -621,16 +622,21 @@ export function BusinessRateControlCenter({
 
         {calendarPlanExpanded ? (
           <div className="space-y-1.5 px-3 pb-2.5 md:px-4 md:pb-3">
-            <FinanceMonthCalendar
-              viewMonth={viewMonth}
-              onViewMonthChange={setViewMonth}
-              sessionToday={today}
-              mode="range"
-              isDayInRange={planCalendarDayInRange}
-              isDayEndpoint={planCalendarDayEndpoint}
-              onPickDay={onPlanCalendarPickDay}
-              highlightedYmds={Array.from(changeDays)}
-            />
+            <div
+              className="mx-auto max-w-full"
+              style={{ width: financeCalendarReferenceToolbarContentWidthPx() }}
+            >
+              <FinanceMonthCalendar
+                viewMonth={viewMonth}
+                onViewMonthChange={setViewMonth}
+                sessionToday={today}
+                mode="range"
+                isDayInRange={planCalendarDayInRange}
+                isDayEndpoint={planCalendarDayEndpoint}
+                onPickDay={onPlanCalendarPickDay}
+                highlightedYmds={Array.from(changeDays)}
+              />
+            </div>
             <p className="mt-1.5 line-clamp-2 px-0.5 text-[10px] leading-snug text-muted-foreground/90">
               {isOwner ? (
                 <>
@@ -761,6 +767,10 @@ export function BusinessRateControlCenter({
                                   Дата
                                 </label>
                                 <DatePicker
+                                  inline
+                                  financeFeedToolbar
+                                  allowClear={false}
+                                  triggerTitle="Дата в плане"
                                   value={edit.effectiveDate}
                                   onChange={(v) => {
                                     setPlanEdit((p) => (p ? { ...p, effectiveDate: v } : p));

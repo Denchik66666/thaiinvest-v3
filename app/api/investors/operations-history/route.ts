@@ -14,35 +14,29 @@ import type { Prisma } from "@prisma/client";
 
 import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRateHistoryRowsForLedger } from "@/lib/rate-history-rows-cache";
 import { superAdminFinanceMaxPositions } from "@/lib/super-admin-finance-limits";
 import { findBodyTopUpsForOperationsHistory } from "@/lib/body-topup-request-date-compat";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { resolveInitialBodyAtCreation } from "@/lib/investor-create-audit-body";
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
+import { getWeekStartMonday, startOfDay } from "@/lib/weekly";
 import { mergeLedgerWeeks, type MergedHistoryWeek } from "@/lib/merge-ledger-weeks";
-import { buildWeeklyLedgerRows, type WeeklyLedgerPaymentInput } from "@/lib/weekly-ledger-rows";
+import {
+  buildWeeklyLedgerRows,
+  ledgerAcceptedTopUpsFromPrismaRows,
+  type WeeklyLedgerPaymentInput,
+} from "@/lib/weekly-ledger-rows";
 import { isSameOpenWeekAsNow, openWeekDayProgress } from "@/lib/open-week-forecast";
 import type { FinanceOperationItem } from "@/types/finance-operations";
 import type { FinanceInvestorSelectionMeta, OperationsHistoryResponse } from "@/types/operations-finance-api";
-
-type CacheEntry = { expiresAt: number; payload: OperationsHistoryResponse };
-const CACHE_TTL_MS = 60_000;
-const memoryCache = new Map<string, CacheEntry>();
+import {
+  getOperationsHistoryCacheEntry,
+  setOperationsHistoryCacheEntry,
+} from "@/lib/operations-history-server-cache";
 
 /** В ленте и сортировке выплат — момент подачи (`createdAt`), не подтверждения. */
 function paymentSortAt(p: { createdAt: Date }) {
   return p.createdAt.toISOString();
-}
-
-function parseInitialBodyFromAudit(newValue: string | null): number | null {
-  if (!newValue) return null;
-  try {
-    const j = JSON.parse(newValue) as { body?: unknown };
-    const b = j.body;
-    return typeof b === "number" && Number.isFinite(b) ? b : null;
-  } catch {
-    return null;
-  }
 }
 
 function injectSyntheticCurrentWeek(merged: MergedHistoryWeek[], investorCount: number): MergedHistoryWeek[] {
@@ -155,11 +149,11 @@ export async function GET(request: NextRequest) {
         : "";
     const cacheKey = `${decoded.userId}:${decoded.role}:${investorId == null ? "all" : String(investorId)}:${cacheNetworkSeg}`;
     cacheKeyForStale = cacheKey;
-    const cached = memoryCache.get(cacheKey);
+    const cached = getOperationsHistoryCacheEntry(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.payload, {
         headers: {
-          "Cache-Control": "private, max-age=60, stale-while-revalidate=120",
+          "Cache-Control": "private, max-age=0, must-revalidate",
         },
       });
     }
@@ -185,6 +179,21 @@ export async function GET(request: NextRequest) {
           updatedAt: true,
           investorUser: { select: { username: true } },
           linkedUser: { select: { username: true } },
+          /** Как в GET `/api/investors/[id]/weekly-ledger`: те же платежи, что вложены в позицию (не отдельный findMany). */
+          payments: {
+            select: {
+              id: true,
+              investorId: true,
+              type: true,
+              amount: true,
+              status: true,
+              comment: true,
+              createdAt: true,
+              approvedAt: true,
+              acceptedAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
         orderBy: superAdminAllNetworkUnscoped ? { updatedAt: "desc" } : { createdAt: "desc" },
         take: takeFetch,
@@ -217,22 +226,10 @@ export async function GET(request: NextRequest) {
         return { tag: "empty" as const };
       }
 
-      const [rateHistory, payments, topUps, createInvestorAudits] = await Promise.all([
-        getRateHistoryRowsForLedger(),
-        prisma.payment.findMany({
-          where: { investorId: { in: ids } },
-          select: {
-            id: true,
-            investorId: true,
-            type: true,
-            amount: true,
-            status: true,
-            comment: true,
-            createdAt: true,
-            approvedAt: true,
-            acceptedAt: true,
-          },
-          orderBy: { createdAt: "desc" },
+      const [rateHistory, topUps, createInvestorAudits] = await Promise.all([
+        prisma.rateHistory.findMany({
+          orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+          select: { effectiveDate: true, newRate: true },
         }),
         findBodyTopUpsForOperationsHistory(ids),
         prisma.auditLog.findMany({
@@ -250,7 +247,6 @@ export async function GET(request: NextRequest) {
         tag: "ok" as const,
         scopedInvestors,
         rateHistory,
-        payments,
         topUps,
         createInvestorAudits,
         investorSelectionMeta,
@@ -264,18 +260,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: [] satisfies FinanceOperationItem[] } satisfies OperationsHistoryResponse);
     }
 
-    const { scopedInvestors, rateHistory, payments, topUps, createInvestorAudits, investorSelectionMeta } = histBundle;
+    const { scopedInvestors, rateHistory, topUps, createInvestorAudits, investorSelectionMeta } = histBundle;
+
+    const topUpsByInvestorId = new Map<number, (typeof topUps)[number][]>();
+    for (const t of topUps) {
+      const list = topUpsByInvestorId.get(t.investorId) ?? [];
+      list.push(t);
+      topUpsByInvestorId.set(t.investorId, list);
+    }
 
     const positionNameById = new Map(
       scopedInvestors.map((i) => [i.id, investorDisplayHandle(i) ?? i.name])
     );
-
-    const paymentsByInvestorId = new Map<number, typeof payments>();
-    for (const p of payments) {
-      const list = paymentsByInvestorId.get(p.investorId) ?? [];
-      list.push(p);
-      paymentsByInvestorId.set(p.investorId, list);
-    }
 
     const firstCreateAuditByInvestorId = new Map<number, string | null>();
     for (const row of createInvestorAudits) {
@@ -291,7 +287,8 @@ export async function GET(request: NextRequest) {
           body: inv.body,
           rate: inv.rate,
           isPrivate: inv.isPrivate,
-          payments: (paymentsByInvestorId.get(inv.id) ?? []) as WeeklyLedgerPaymentInput[],
+          payments: inv.payments as WeeklyLedgerPaymentInput[],
+          acceptedBodyTopUps: ledgerAcceptedTopUpsFromPrismaRows(topUpsByInvestorId.get(inv.id) ?? []),
         },
         rateHistory,
         now
@@ -304,7 +301,8 @@ export async function GET(request: NextRequest) {
     const weekItems: FinanceOperationItem[] = merged.map((w) => ({
       kind: "week_accrual" as const,
       id: `week:${w.weekStart}`,
-      sortAt: w.weekStart,
+      /** Конец закрытой недели, чтобы события внутри интервала (пополнение 04.03 и т.д.) в ленте (sortAt desc) шли **ниже** строки начисления за эту неделю — хронология «сначала факты в неделе, затем итог начисления». */
+      sortAt: w.weekEnd,
       weekStart: w.weekStart,
       weekEnd: w.weekEnd,
       accrued: w.accrued,
@@ -316,60 +314,72 @@ export async function GET(request: NextRequest) {
       syntheticOpen: w.isSyntheticOpenRow === true,
     }));
 
-    const paymentItems: FinanceOperationItem[] = payments.map((p) => ({
-      kind: "payment" as const,
-      id: `pay:${p.id}`,
-      sortAt: paymentSortAt(p),
-      paymentId: p.id,
-      investorId: p.investorId,
-      positionName: positionNameById.get(p.investorId) ?? "",
-      type: p.type,
-      amount: p.amount,
-      status: p.status,
-      comment: p.comment,
-      createdAt: p.createdAt.toISOString(),
-      approvedAt: p.approvedAt?.toISOString() ?? null,
-      acceptedAt: p.acceptedAt?.toISOString() ?? null,
+    const paymentItems: FinanceOperationItem[] = scopedInvestors.flatMap((inv) =>
+      inv.payments.map((p) => ({
+        kind: "payment" as const,
+        id: `pay:${p.id}`,
+        sortAt: paymentSortAt(p),
+        paymentId: p.id,
+        investorId: p.investorId,
+        positionName: positionNameById.get(p.investorId) ?? "",
+        type: p.type,
+        amount: p.amount,
+        status: p.status,
+        comment: p.comment,
+        createdAt: p.createdAt.toISOString(),
+        approvedAt: p.approvedAt?.toISOString() ?? null,
+        acceptedAt: p.acceptedAt?.toISOString() ?? null,
+      }))
+    );
+
+    const topUpFromRequests: FinanceOperationItem[] = topUps.map((t) => ({
+      kind: "topup" as const,
+      id: `top:${t.id}`,
+      /** Как в сводке/подписи ленты: календарная дата заявки, иначе создание записи — не `decidedAt`, иначе принятие в мае уезжает выше недель марта. */
+      sortAt: (t.requestDate ?? t.createdAt).toISOString(),
+      requestId: t.id,
+      investorId: t.investorId,
+      positionName: positionNameById.get(t.investorId) ?? "",
+      amount: t.amount,
+      status: t.status,
+      comment: t.comment,
+      createdAt: t.createdAt.toISOString(),
+      requestDate: t.requestDate?.toISOString() ?? null,
+      decidedAt: t.decidedAt?.toISOString() ?? null,
     }));
 
-    const topUpFromRequests: FinanceOperationItem[] = topUps.map((t) => {
-      const requestAt = t.requestDate ?? t.createdAt;
-      return {
-        kind: "topup" as const,
-        id: `top:${t.id}`,
-        sortAt: requestAt.toISOString(),
-        requestId: t.id,
-        investorId: t.investorId,
-        positionName: positionNameById.get(t.investorId) ?? "",
-        amount: t.amount,
-        status: t.status,
-        comment: t.comment,
-        createdAt: t.createdAt.toISOString(),
-        requestDate: t.requestDate?.toISOString() ?? null,
-        decidedAt: t.decidedAt?.toISOString() ?? null,
-      };
-    });
-
-    /** Начальное тело при создании позиции — в ленте как пополнение (без BodyTopUpRequest). */
-    const topUpFromCreation: FinanceOperationItem[] = scopedInvestors.map((inv) => {
+    /** Начальное тело при открытии: аудит `CREATE_INVESTOR`, иначе `текущее тело − принятые заявки` (не подмена всего `inv.body` при пустом аудите). */
+    const topUpFromCreation: FinanceOperationItem[] = scopedInvestors.flatMap((inv) => {
       const auditJson = firstCreateAuditByInvestorId.get(inv.id) ?? null;
-      const initialBody = parseInitialBodyFromAudit(auditJson) ?? inv.body;
-      return {
-        kind: "topup" as const,
-        id: `top:initial:${inv.id}`,
-        sortAt: inv.activationDate.toISOString(),
-        requestId: -inv.id,
-        investorId: inv.id,
-        positionName: investorDisplayHandle(inv) ?? inv.name,
-        amount: initialBody,
-        status: "completed_at_creation",
-        comment: null,
-        createdAt: inv.createdAt.toISOString(),
-        decidedAt: inv.activationDate.toISOString(),
-        initialFromCreation: true,
-        entryDate: inv.entryDate.toISOString(),
-        activationDate: inv.activationDate.toISOString(),
-      };
+      const invTopUpsForInitial = topUps.filter((t) => t.investorId === inv.id);
+      const initialBody = resolveInitialBodyAtCreation({
+        createInvestorAuditNewValue: auditJson,
+        currentBody: inv.body,
+        acceptedBodyTopUpRequests: invTopUpsForInitial,
+      });
+      if (initialBody == null) return [];
+      const openingAnchorMs = Math.min(inv.entryDate.getTime(), inv.activationDate.getTime());
+      const openingWeekMonday = getWeekStartMonday(startOfDay(new Date(openingAnchorMs)));
+      /** Чуть раньше первой недельной строки леджера, чтобы «вход тела» всегда был ниже по времени, чем начисление за ту же неделю (лента по `sortAt` desc). */
+      const initialTopupSortAt = new Date(openingWeekMonday.getTime() - 1).toISOString();
+      return [
+        {
+          kind: "topup" as const,
+          id: `top:initial:${inv.id}`,
+          sortAt: initialTopupSortAt,
+          requestId: -inv.id,
+          investorId: inv.id,
+          positionName: investorDisplayHandle(inv) ?? inv.name,
+          amount: initialBody,
+          status: "completed_at_creation",
+          comment: null,
+          createdAt: inv.createdAt.toISOString(),
+          decidedAt: inv.activationDate.toISOString(),
+          initialFromCreation: true,
+          entryDate: inv.entryDate.toISOString(),
+          activationDate: inv.activationDate.toISOString(),
+        },
+      ];
     });
 
     const topUpItems = [...topUpFromRequests, ...topUpFromCreation];
@@ -387,9 +397,9 @@ export async function GET(request: NextRequest) {
       items: capped satisfies FinanceOperationItem[],
       ...(investorSelectionMeta ? { meta: { investorSelection: investorSelectionMeta } } : {}),
     };
-    memoryCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, payload });
+    setOperationsHistoryCacheEntry(cacheKey, payload);
     const headers: Record<string, string> = {
-      "Cache-Control": "private, max-age=60, stale-while-revalidate=120",
+      "Cache-Control": "private, max-age=0, must-revalidate",
     };
     if (investorSelectionMeta?.investorPositions.moreAvailable) {
       headers["X-Thaiinvest-Investor-Selection-Partial"] = "1";
@@ -398,7 +408,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("OPERATIONS_HISTORY_ERROR:", error);
     if (isTransientDbError(error)) {
-      const stale = cacheKeyForStale ? memoryCache.get(cacheKeyForStale) : undefined;
+      const stale = cacheKeyForStale ? getOperationsHistoryCacheEntry(cacheKeyForStale) : undefined;
       if (stale) {
         return NextResponse.json(stale.payload, {
           headers: {

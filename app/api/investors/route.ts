@@ -5,7 +5,7 @@ import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { CreateInvestorSchema } from '@/lib/schemas'
 import { logAction } from '@/lib/audit'
-import { getNextMonday, getPreviousOrCurrentMonday, startOfDay } from '@/lib/weekly'
+import { getNextMonday, startOfDay } from '@/lib/weekly'
 import {
   getCurrentBusinessRate,
   getCurrentBusinessRateForCalendarYmd,
@@ -15,6 +15,7 @@ import { hashPassword } from '@/lib/auth'
 import { getPrivateInvestorCreateContext } from '@/lib/private-investor-create-context'
 import { isTransientDbError, withDbRetry } from '@/lib/db-retry'
 import { moneyRound2 } from '@/lib/money-round'
+import { computeInvestorAccruedEndFromLedger, toWeeklyLedgerPayments } from '@/lib/investor-accrued-ledger'
 
 type CacheEntry = { expiresAt: number; payload: unknown }
 const CACHE_TTL_MS = 20_000
@@ -531,33 +532,28 @@ export async function POST(request: NextRequest) {
     }
 
     /* ================================
-           РЕТРО-РАСЧЁТ ПРОЦЕНТОВ (по неделям и RateHistory)
+           РЕТРО-`accrued`: только `buildWeeklyLedgerRows` (`lib/investor-accrued-ledger.ts`)
     ================================= */
 
-    const oneWeekMs = 7 * 24 * 60 * 60 * 1000
+    const rateHistoryRows = await withDbRetry(() =>
+      prisma.rateHistory.findMany({
+        orderBy: [{ effectiveDate: 'asc' }, { createdAt: 'asc' }],
+        select: { effectiveDate: true, newRate: true },
+      })
+    )
+
     let accrued = 0
     if (status === 'active') {
-      const currentWeekMonday = getPreviousOrCurrentMonday(today)
-      let cursor = new Date(activationDate)
-      cursor.setHours(0, 0, 0, 0)
-      while (cursor.getTime() < currentWeekMonday.getTime()) {
-        const weekStart = new Date(cursor)
-        const snap = await getCurrentBusinessRate(weekStart)
-        if (!snap) {
-          const d = weekStart.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-          return NextResponse.json(
-            {
-              error: `Ставка сети не задана на ${d}. Сначала задайте ставку в Управлении.`,
-            },
-            { status: 400 }
-          )
-        }
-        const businessRate = snap.rate
-        const appliedRate = isPrivateNetwork ? businessRate / 2 : businessRate
-        const weeklyRatePercent = appliedRate / 4
-        accrued += investorBody * (weeklyRatePercent / 100)
-        cursor = new Date(cursor.getTime() + oneWeekMs)
-      }
+      accrued = computeInvestorAccruedEndFromLedger({
+        activationDate,
+        body: investorBody,
+        rate: finalRate,
+        isPrivate: isPrivateNetwork,
+        payments: toWeeklyLedgerPayments([]),
+        bodyTopUpRows: [],
+        rateHistory: rateHistoryRows,
+        now: today,
+      })
     }
 
     /* ================================

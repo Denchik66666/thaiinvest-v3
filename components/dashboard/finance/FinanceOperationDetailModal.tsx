@@ -11,10 +11,23 @@ import { apiClient } from "@/lib/api-client";
 import { toast } from "@/lib/notify";
 import { paymentCorrectionProposalsQueryKey } from "@/lib/payment-correction-query";
 import type { CorrectionPayload } from "@/lib/payment-correction";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAppDialogsSafe } from "@/components/feedback/AppDialogsProvider";
+import {
+  buildBodyTopupAddresseeInvestorIds,
+  bodyTopUpPendingStatusPhrase,
+  topupViewerIsAddressee,
+} from "@/lib/finance-payment-attention";
+import {
+  INVESTORS_LIST_QUERY_ROOT,
+  investorsDashboardListQueryKey,
+  investorsDashboardNetworkParam,
+  type SuperAdminInvestorsNetwork,
+} from "@/lib/investors-query";
 import { DatePicker } from "@/components/ui/DatePicker";
-import { Check, ShieldX, Trash2, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Ban, Check, ShieldX, Trash2, X } from "lucide-react";
 
 function formatDateTime(iso: string) {
   const d = new Date(iso);
@@ -55,7 +68,7 @@ function paymentStatusRu(status: string) {
 
 function topUpStatusRu(status: string) {
   const map: Record<string, string> = {
-    pending_investor: "Ожидает решения инвестора",
+    pending_investor: "Ожидает подтверждения инвестора",
     accepted_by_investor: "Принято",
     rejected_by_investor: "Отклонено инвестором",
     cancelled_by_owner: "Отменено владельцем",
@@ -81,8 +94,26 @@ type PaymentAmountStory = {
   reconstructed: boolean;
 };
 
+function amountStoryAllSameAmounts(s: PaymentAmountStory, draftFinal: number | null): boolean {
+  const fin = draftFinal != null ? moneyRound2(draftFinal) : moneyRound2(s.finalRecorded);
+  const orig = s.originalRequested != null ? moneyRound2(s.originalRequested) : fin;
+  if (orig !== fin) return false;
+  if (s.ownerApprovedAmount != null && moneyRound2(s.ownerApprovedAmount) !== fin) return false;
+  if (s.investorConfirmedAmount != null && moneyRound2(s.investorConfirmedAmount) !== fin) return false;
+  return true;
+}
+
 type PaymentContextPayload = {
-  payment: { id: number; investorId: number; type: string; status: string; requestedAmount: number };
+  payment: {
+    id: number;
+    investorId: number;
+    type: string;
+    status: string;
+    requestedAmount: number;
+    createdAt: string;
+    approvedAt: string | null;
+    acceptedAt: string | null;
+  };
   position: { body: number; accrued: number; status: string };
   limits: { availableNow: number; maxApprove: number; pendingInterest: number; pendingBody: number; hasPendingClose: boolean };
   timeline: PaymentTimelineStep[];
@@ -100,7 +131,7 @@ type BodyTopUpContextPayload = {
     requestDate: string | null;
     decidedAt: string | null;
   };
-  position: { body: number; accrued: number; status: string };
+  position: { body: number; accrued: number; status: string; rate: number; isPrivate: boolean };
   limits: {
     availableNow: number;
     maxApprove: number;
@@ -109,6 +140,13 @@ type BodyTopUpContextPayload = {
     hasPendingClose: boolean;
   };
   timeline: PaymentTimelineStep[];
+  bodyTopUpChain?: {
+    creatorUsername: string;
+    addresseeLabel: string;
+    investorLegalName: string;
+    previewEffectiveMondayIso: string | null;
+    effectiveMondayAfterAcceptIso: string | null;
+  } | null;
 };
 
 /** Кнопки «Требует действия»: выплата (`/api/payments`) или пополнение тела (`/api/body-topup-requests`). */
@@ -156,20 +194,6 @@ function clientTimelineFallback(item: Extract<FinanceOperationItem, { kind: "pay
   return steps;
 }
 
-function clientTopUpTimelineFallback(item: Extract<FinanceOperationItem, { kind: "topup" }>): PaymentTimelineStep[] {
-  const at = item.requestDate ?? item.createdAt;
-  return [
-    {
-      at,
-      kind: "request",
-      title: "Заявка",
-      actorUsername: "—",
-      source: "reconstructed",
-      stepAmount: moneyRound2(item.amount),
-    },
-  ];
-}
-
 type PaymentDateField = "createdAt" | "approvedAt" | "acceptedAt";
 
 function isoToYmdUtc(iso: string): string {
@@ -179,6 +203,29 @@ function isoToYmdUtc(iso: string): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Компактно DD.MM.YY из YYYY-MM-DD */
+function formatYmdDdMmYy(ymd: string): string {
+  const t = ymd.trim();
+  if (!t) return "—";
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return t;
+  return `${m[3]}.${m[2]}.${m[1].slice(-2)}`;
+}
+
+function formatIsoUtcDdMmYy(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ymd = isoToYmdUtc(iso);
+  return ymd ? formatYmdDdMmYy(ymd) : "—";
+}
+
+/** Календарная дата заявки или ISO с сервера */
+function topupRequestDateDisplay(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const s = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatYmdDdMmYy(s);
+  return formatIsoUtcDdMmYy(s);
 }
 
 function mergeYmdIntoUtcIsoPreservingTime(ymd: string, referenceIso: string): string {
@@ -271,6 +318,57 @@ function describeCorrectionPayloadLines(
     lines.push(`Сумма в заявке: будет ${formatCurrency(payload.patchAmount)}`);
   }
   return lines;
+}
+
+function correctionPatchDateDisplay(v: string): string {
+  const t = v.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return formatYmdDdMmYy(t);
+  return formatIsoUtcDdMmYy(v);
+}
+
+type CorrectionApprovalRow = { field: string; before: string; after: string };
+
+function correctionPayloadApprovalRows(
+  payload: CorrectionPayload,
+  baseline: { createdAt: string; approvedAt: string | null; acceptedAt: string | null },
+  currentRequestedAmount?: number
+): CorrectionApprovalRow[] {
+  const fieldShortRu = (key: "createdAt" | "approvedAt" | "acceptedAt") =>
+    key === "createdAt" ? "Подача" : key === "approvedAt" ? "Одобрение" : "Подтверждение";
+
+  const pushDatePatches = (
+    patch: Partial<{ createdAt: string; approvedAt: string | null; acceptedAt: string | null }> | undefined,
+    rows: CorrectionApprovalRow[]
+  ) => {
+    if (!patch) return;
+    for (const key of ["createdAt", "approvedAt", "acceptedAt"] as const) {
+      if (!(key in patch) || patch[key] === undefined) continue;
+      const next = patch[key]!;
+      const prev = baseline[key];
+      const before = prev ? formatIsoUtcDdMmYy(prev) : "—";
+      const after = next === null ? "сброс даты" : correctionPatchDateDisplay(next);
+      rows.push({ field: fieldShortRu(key), before, after });
+    }
+  };
+
+  const rows: CorrectionApprovalRow[] = [];
+
+  if (payload.mode === "rollback") {
+    pushDatePatches(payload.patchDates, rows);
+    return rows;
+  }
+
+  pushDatePatches(payload.patchDates, rows);
+
+  if (payload.patchAmount !== undefined && currentRequestedAmount !== undefined) {
+    rows.push({
+      field: "Сумма",
+      before: formatCurrency(currentRequestedAmount),
+      after: formatCurrency(payload.patchAmount),
+    });
+  }
+
+  return rows;
 }
 
 type SaEditSheet = null | { kind: "date"; field: PaymentDateField; referenceIso: string; label: string } | { kind: "amount" };
@@ -398,6 +496,7 @@ export function FinanceOperationDetailModal({
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const dialogs = useAppDialogsSafe();
   const queryClient = useQueryClient();
   const [comment, setComment] = useState("");
@@ -408,7 +507,54 @@ export function FinanceOperationDetailModal({
   const [draftDates, setDraftDates] = useState<Partial<Record<PaymentDateField, string>>>({});
   const [amtDraftStr, setAmtDraftStr] = useState<string | null>(null);
   const [saSheet, setSaSheet] = useState<SaEditSheet>(null);
+  /** Черновик правок SUPER_ADMIN по заявке пополнения (синхронизируется с контекстом). */
+  const [topUpSaForm, setTopUpSaForm] = useState<{
+    amount: string;
+    status: string;
+    requestDateYmd: string;
+    createdYmd: string;
+    decidedYmd: string;
+  } | null>(null);
   const isOpen = Boolean(open && item);
+
+  const saBodyTopupNetwork = useMemo((): SuperAdminInvestorsNetwork => {
+    if (user?.role !== "SUPER_ADMIN") return "common";
+    const v = searchParams.get("network");
+    if (v === "private" || v === "all") return v;
+    return "common";
+  }, [user?.role, searchParams]);
+
+  const financeModalInvestorsTopupQuery = useQuery({
+    queryKey: investorsDashboardListQueryKey(
+      user?.role,
+      user?.role === "SUPER_ADMIN" ? saBodyTopupNetwork : undefined
+    ),
+    queryFn: () =>
+      apiClient.get<{ investors: { id: number; investorUserId?: number | null; linkedUserId?: number | null }[] }>(
+        `/api/investors?network=${encodeURIComponent(
+          investorsDashboardNetworkParam(user!.role, user!.role === "SUPER_ADMIN" ? saBodyTopupNetwork : undefined)
+        )}&lean=1`
+      ),
+    enabled: Boolean(
+      open &&
+        item &&
+        user?.role === "SUPER_ADMIN" &&
+        item.kind === "topup" &&
+        !item.initialFromCreation &&
+        item.requestId > 0
+    ),
+    staleTime: 30_000,
+  });
+
+  const modalBodyTopupAddresseeIds = useMemo((): ReadonlySet<number> | null => {
+    if (!user || item?.kind !== "topup") return null;
+    if (user.role === "INVESTOR") return null;
+    if (user.role === "SUPER_ADMIN") {
+      const rows = financeModalInvestorsTopupQuery.data?.investors ?? [];
+      return buildBodyTopupAddresseeInvestorIds(user.id, rows);
+    }
+    return null;
+  }, [user, item?.kind, financeModalInvestorsTopupQuery.data?.investors]);
 
   const paymentContextQuery = useQuery({
     queryKey:
@@ -464,7 +610,9 @@ export function FinanceOperationDetailModal({
       if (rowSt !== "pending_investor") return [];
       const role = user?.role ?? "";
       const canManage = role === "OWNER" || role === "SUPER_ADMIN";
-      const canActAsInvestor = role === "INVESTOR" || role === "SUPER_ADMIN";
+      const canActAsInvestor =
+        role === "INVESTOR" ||
+        (role === "SUPER_ADMIN" && topupViewerIsAddressee(item.investorId, modalBodyTopupAddresseeIds));
       const actions: FinanceModalPendingAction[] = [];
       if (canActAsInvestor) {
         actions.push(
@@ -518,23 +666,7 @@ export function FinanceOperationDetailModal({
     }
 
     return actions;
-  }, [item, user?.role, paymentRowStatus, topUpRowStatus]);
-
-  const topUpTimeline = useMemo((): PaymentTimelineStep[] => {
-    if (!item || item.kind !== "topup" || item.initialFromCreation || item.requestId <= 0) return [];
-    if (topUpContext?.timeline?.length) return topUpContext.timeline;
-    if (topUpContextQuery.isError) return clientTopUpTimelineFallback(item);
-    if (topUpContextQuery.isPending && !topUpContextQuery.data) return [];
-    return clientTopUpTimelineFallback(item);
-  }, [item, topUpContext?.timeline, topUpContextQuery.data, topUpContextQuery.isError, topUpContextQuery.isPending]);
-
-  const topUpTimelineSkeleton =
-    item?.kind === "topup" &&
-    !item.initialFromCreation &&
-    item.requestId > 0 &&
-    topUpContextQuery.isPending &&
-    topUpTimeline.length === 0 &&
-    !topUpContextQuery.isError;
+  }, [item, user?.role, paymentRowStatus, topUpRowStatus, modalBodyTopupAddresseeIds]);
 
   const paymentTimeline = useMemo((): PaymentTimelineStep[] => {
     if (!item || item.kind !== "payment") return [];
@@ -573,6 +705,26 @@ export function FinanceOperationDetailModal({
     return null;
   }, [item, paymentContext, paymentContext?.amountStory, paymentContextQuery.isError, paymentContextQuery.isPending]);
 
+  const paymentDisplayedFinalAmount = useMemo(() => {
+    if (!item || item.kind !== "payment") return null;
+    if (amtDraftStr != null && amtDraftStr !== "") return moneyRound2(Number(amtDraftStr));
+    if (amountStoryView) return moneyRound2(amountStoryView.finalRecorded);
+    return moneyRound2(item.amount);
+  }, [item, amountStoryView, amtDraftStr]);
+
+  const paymentDatesForSummary = useMemo(() => {
+    if (!item || item.kind !== "payment") return null;
+    const p = paymentContext?.payment;
+    const baseCreated = p?.createdAt ?? item.createdAt;
+    const baseApproved = p?.approvedAt !== undefined ? p.approvedAt : item.approvedAt ?? null;
+    const baseAccepted = p?.acceptedAt !== undefined ? p.acceptedAt : item.acceptedAt ?? null;
+    return {
+      createdAt: draftDates.createdAt ?? baseCreated,
+      approvedAt: draftDates.approvedAt !== undefined ? draftDates.approvedAt! : baseApproved,
+      acceptedAt: draftDates.acceptedAt !== undefined ? draftDates.acceptedAt! : baseAccepted,
+    };
+  }, [item, paymentContext?.payment, draftDates]);
+
   const paymentTimelineSkeleton =
     item?.kind === "payment" &&
     paymentContextQuery.isPending &&
@@ -605,14 +757,32 @@ export function FinanceOperationDetailModal({
     return correctionProposals.incoming.find((p) => p.paymentId === paymentRowForCorrection.paymentId) ?? null;
   }, [paymentRowForCorrection, correctionProposals?.incoming]);
 
-  const incomingCorrectionLines = useMemo(() => {
-    if (!incomingCorrectionForPayment || !paymentRowForCorrection) return [];
-    return describeCorrectionPayloadLines(incomingCorrectionForPayment.payload, {
-      createdAt: paymentRowForCorrection.createdAt,
-      approvedAt: paymentRowForCorrection.approvedAt ?? null,
-      acceptedAt: paymentRowForCorrection.acceptedAt ?? null,
-    });
-  }, [incomingCorrectionForPayment, paymentRowForCorrection]);
+  const incomingCorrectionApprovalBundle = useMemo(() => {
+    if (!incomingCorrectionForPayment || !paymentRowForCorrection) {
+      return { rows: [] as CorrectionApprovalRow[], fallbackText: "" };
+    }
+    const p = paymentContext?.payment;
+    const baseline = {
+      createdAt: p?.createdAt ?? paymentRowForCorrection.createdAt,
+      approvedAt: p?.approvedAt !== undefined ? p.approvedAt : paymentRowForCorrection.approvedAt ?? null,
+      acceptedAt: p?.acceptedAt !== undefined ? p.acceptedAt : paymentRowForCorrection.acceptedAt ?? null,
+    };
+    const currentAmt = p?.requestedAmount ?? moneyRound2(paymentRowForCorrection.amount);
+    const rows = correctionPayloadApprovalRows(
+      incomingCorrectionForPayment.payload,
+      baseline,
+      currentAmt
+    );
+    if (rows.length > 0) return { rows, fallbackText: "" };
+    const payload = incomingCorrectionForPayment.payload;
+    if (payload.mode === "rollback") {
+      return {
+        rows,
+        fallbackText: describeCorrectionPayloadLines(payload, baseline).join(" · "),
+      };
+    }
+    return { rows, fallbackText: incomingCorrectionForPayment.adminNote };
+  }, [incomingCorrectionForPayment, paymentRowForCorrection, paymentContext?.payment]);
 
   const createCorrectionMut = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -697,6 +867,94 @@ export function FinanceOperationDetailModal({
     },
   });
 
+  const deleteTopUpRequestMut = useMutation({
+    mutationFn: (requestId: number) =>
+      new Promise<unknown>((resolve, reject) => {
+        const ms = 45_000;
+        const t = window.setTimeout(() => reject(new Error(`Нет ответа сервера за ${ms / 1000} с`)), ms);
+        void apiClient
+          .delete(`/api/body-topup-requests/${requestId}`)
+          .then((v) => {
+            window.clearTimeout(t);
+            resolve(v);
+          })
+          .catch((e) => {
+            window.clearTimeout(t);
+            reject(e instanceof Error ? e : new Error("Не удалось удалить"));
+          });
+      }),
+    meta: { skipErrorToast: true },
+    onSuccess: () => {
+      toast.success("Заявка на пополнение удалена");
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests", "context"] }),
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors", "operations-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors"] }),
+        queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] }),
+        queryClient.invalidateQueries({ queryKey: ["reports-feed"] }),
+      ]);
+      onClose();
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Не удалось удалить");
+    },
+  });
+
+  const patchTopUpSuperAdminMut = useMutation({
+    mutationFn: ({ requestId, payload }: { requestId: number; payload: Record<string, unknown> }) =>
+      apiClient.patch(`/api/body-topup-requests/${requestId}`, payload),
+    meta: { skipErrorToast: true },
+    onSuccess: () => {
+      toast.success("Заявка обновлена");
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests", "context"] }),
+        queryClient.invalidateQueries({ queryKey: ["body-topup-requests-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors", "operations-history"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors", "operations-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["investors"] }),
+        queryClient.invalidateQueries({ queryKey: [INVESTORS_LIST_QUERY_ROOT] }),
+        queryClient.invalidateQueries({ queryKey: ["reports-feed"] }),
+      ]);
+    },
+    onError: (e: unknown) => {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+    },
+  });
+
+  useEffect(() => {
+    if (!isOpen || !item || item.kind !== "topup" || item.initialFromCreation || item.requestId <= 0) {
+      setTopUpSaForm(null);
+      return;
+    }
+    if (!topUpContext?.request) {
+      setTopUpSaForm(null);
+      return;
+    }
+    const r = topUpContext.request;
+    setTopUpSaForm({
+      amount: String(Math.round(r.requestedAmount)),
+      status: r.status,
+      requestDateYmd: r.requestDate ? isoToYmdUtc(r.requestDate) : "",
+      createdYmd: isoToYmdUtc(r.createdAt),
+      decidedYmd: r.decidedAt ? isoToYmdUtc(r.decidedAt) : "",
+    });
+  }, [
+    isOpen,
+    item?.kind,
+    item?.kind === "topup" ? item.requestId : undefined,
+    item?.kind === "topup" ? item.initialFromCreation : undefined,
+    topUpContext?.request?.id,
+    topUpContext?.request?.status,
+    topUpContext?.request?.requestedAmount,
+    topUpContext?.request?.createdAt,
+    topUpContext?.request?.requestDate,
+    topUpContext?.request?.decidedAt,
+  ]);
+
   const datesDirty =
     item?.kind === "payment"
       ? (["createdAt", "approvedAt", "acceptedAt"] as const).some((f) => {
@@ -712,6 +970,20 @@ export function FinanceOperationDetailModal({
     item?.kind === "payment" &&
     amtDraftStr != null &&
     amtDraftNum !== moneyRound2(item.amount);
+
+  const topUpSaDirty = useMemo(() => {
+    if (!topUpSaForm || !topUpContext?.request) return false;
+    const r = topUpContext.request;
+    const amt = moneyRound2(Number(String(topUpSaForm.amount).replace(/\D/g, "") || 0));
+    if (amt !== moneyRound2(r.requestedAmount)) return true;
+    if (topUpSaForm.status !== r.status) return true;
+    const reqBase = r.requestDate ? isoToYmdUtc(r.requestDate) : "";
+    if (topUpSaForm.requestDateYmd !== reqBase) return true;
+    if (topUpSaForm.createdYmd !== isoToYmdUtc(r.createdAt)) return true;
+    const decBase = r.decidedAt ? isoToYmdUtc(r.decidedAt) : "";
+    if (topUpSaForm.decidedYmd !== decBase) return true;
+    return false;
+  }, [topUpSaForm, topUpContext?.request]);
 
   const saCorrectionEditable =
     user?.role === "SUPER_ADMIN" &&
@@ -920,6 +1192,50 @@ export function FinanceOperationDetailModal({
     deletePaymentMut.mutate(item.paymentId);
   }
 
+  async function confirmDeleteTopUpRequest() {
+    if (!item || item.kind !== "topup" || item.requestId <= 0) return;
+    const ok =
+      (await dialogs?.confirm({
+        title: "Удалить заявку полностью?",
+        description:
+          "Заявка будет удалена из базы и пропадёт из истории. Если она была принята, сумма спишется с тела позиции (откат зачисления). В журнале аудита останется служебная запись об удалении.",
+        confirmLabel: "Удалить безвозвратно",
+        cancelLabel: "Отмена",
+        tone: "danger",
+      })) ?? false;
+    if (!ok) return;
+    deleteTopUpRequestMut.mutate(item.requestId);
+  }
+
+  function submitTopUpSuperAdminPatch() {
+    if (!item || item.kind !== "topup" || item.requestId <= 0 || !topUpSaForm || !topUpContext?.request) return;
+    const r = topUpContext.request;
+    const p: Record<string, unknown> = {};
+    const amt = moneyRound2(Number(String(topUpSaForm.amount).replace(/\D/g, "") || 0));
+    if (amt !== moneyRound2(r.requestedAmount)) p.amount = amt;
+    if (topUpSaForm.status !== r.status) p.status = topUpSaForm.status;
+    const reqBase = r.requestDate ? isoToYmdUtc(r.requestDate) : "";
+    if (topUpSaForm.requestDateYmd !== reqBase) {
+      p.requestDate = topUpSaForm.requestDateYmd.trim() ? topUpSaForm.requestDateYmd.trim() : null;
+    }
+    if (topUpSaForm.createdYmd !== isoToYmdUtc(r.createdAt)) {
+      if (!topUpSaForm.createdYmd.trim()) {
+        toast.error("Дата «Создано» не может быть пустой");
+        return;
+      }
+      p.createdAtYmd = topUpSaForm.createdYmd.trim();
+    }
+    const decBase = r.decidedAt ? isoToYmdUtc(r.decidedAt) : "";
+    if (topUpSaForm.decidedYmd !== decBase) {
+      p.decidedAtYmd = topUpSaForm.decidedYmd.trim() ? topUpSaForm.decidedYmd.trim() : null;
+    }
+    if (Object.keys(p).length === 0) {
+      toast.info("Нет изменений");
+      return;
+    }
+    patchTopUpSuperAdminMut.mutate({ requestId: item.requestId, payload: p });
+  }
+
   function submitSaInlineCorrection() {
     if (!item || item.kind !== "payment") return;
     if (pendingCorrectionForPayment) return;
@@ -971,10 +1287,18 @@ export function FinanceOperationDetailModal({
   const paymentStatusCaption = (() => {
     if (item.kind !== "payment" || paymentRowStatus == null) return null;
     const role = user?.role ?? "";
-    if (paymentRowStatus === "requested" && (role === "OWNER" || role === "SUPER_ADMIN")) {
+    if (
+      financeModalPendingActions.length > 0 &&
+      paymentRowStatus === "requested" &&
+      (role === "OWNER" || role === "SUPER_ADMIN")
+    ) {
       return "Требует вашего решения";
     }
-    if (paymentRowStatus === "approved_waiting_accept" && (role === "INVESTOR" || role === "SUPER_ADMIN")) {
+    if (
+      financeModalPendingActions.length > 0 &&
+      paymentRowStatus === "approved_waiting_accept" &&
+      (role === "INVESTOR" || role === "SUPER_ADMIN")
+    ) {
       return "Требует вашего подтверждения";
     }
     return paymentStatusRu(paymentRowStatus);
@@ -983,6 +1307,7 @@ export function FinanceOperationDetailModal({
   const paymentStatusIsActionHighlight =
     item.kind === "payment" &&
     paymentRowStatus != null &&
+    financeModalPendingActions.length > 0 &&
     ((paymentRowStatus === "requested" && (user?.role === "OWNER" || user?.role === "SUPER_ADMIN")) ||
       (paymentRowStatus === "approved_waiting_accept" &&
         (user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN")));
@@ -994,12 +1319,9 @@ export function FinanceOperationDetailModal({
     topUpRowStatus === "pending_investor";
 
   const topUpModalStatusCaption = (() => {
-    if (!topUpModalAttention) return null;
-    const role = user?.role ?? "";
-    if (role === "INVESTOR") return "Требует вашего подтверждения";
-    if (role === "OWNER") return "Ожидает решения инвестора";
-    if (role === "SUPER_ADMIN") return "Требуется решение";
-    return topUpStatusRu(item.status);
+    if (!topUpModalAttention || !item || item.kind !== "topup") return null;
+    const scope = user?.role === "OWNER" ? "owner" : "investor";
+    return bodyTopUpPendingStatusPhrase(scope, item.investorId, item.positionName, modalBodyTopupAddresseeIds);
   })();
 
   const topUpModalStatusHighlight =
@@ -1080,12 +1402,15 @@ export function FinanceOperationDetailModal({
           />
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
           {financeModalPendingActions.map((a) => {
             const danger = a.tone === "danger";
             const isApprove = a.apiAction === "owner_approve" || a.apiAction === "investor_accept";
             const rejectBlocked = a.channel === "payment" && a.apiAction === "owner_reject" && !comment.trim();
             const disabled = busyAction != null || rejectBlocked;
+            const isBodyTop = a.channel === "bodyTopUp";
+            const isTopReject = isBodyTop && a.apiAction === "investor_reject";
+            const isTopCancel = isBodyTop && a.apiAction === "owner_cancel";
             return (
               <button
                 key={a.id}
@@ -1093,11 +1418,18 @@ export function FinanceOperationDetailModal({
                 disabled={disabled}
                 onClick={() => void runFinanceModalPendingAction(a)}
                 className={cn(
-                  "inline-flex h-8 w-8 items-center justify-center rounded-full transition",
-                  "bg-transparent text-muted-foreground",
-                  danger
-                    ? "hover:bg-[color-mix(in_srgb,var(--thai-color-rejected-bg)_160%,transparent)] hover:text-[color:var(--thai-color-rejected)]"
-                    : "hover:bg-white/[0.06] hover:text-[color:var(--thai-color-accrued)]",
+                  "inline-flex items-center justify-center rounded-full border-0 bg-transparent transition",
+                  isBodyTop ? "h-9 w-9" : "h-8 w-8",
+                  "text-muted-foreground",
+                  isApprove && "hover:text-emerald-600 dark:hover:text-emerald-400/95",
+                  isTopReject && "hover:text-rose-600 dark:hover:text-rose-400/95",
+                  isTopCancel && "hover:text-amber-700/95 dark:hover:text-amber-400/90",
+                  !isBodyTop &&
+                    danger &&
+                    "hover:bg-[color-mix(in_srgb,var(--thai-color-rejected-bg)_160%,transparent)] hover:text-[color:var(--thai-color-rejected)]",
+                  !isBodyTop &&
+                    !danger &&
+                    "hover:bg-white/[0.06] hover:text-[color:var(--thai-color-accrued)] dark:hover:bg-white/[0.04]",
                   "active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   busyAction === a.apiAction && "opacity-60",
                   disabled && "pointer-events-none opacity-35 hover:bg-transparent hover:text-muted-foreground"
@@ -1108,7 +1440,11 @@ export function FinanceOperationDetailModal({
                 {busyAction === a.apiAction ? (
                   <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/35 border-t-transparent" />
                 ) : isApprove ? (
-                  <Check className="h-4 w-4" strokeWidth={2.3} aria-hidden />
+                  <Check className={isBodyTop ? "h-[1.15rem] w-[1.15rem]" : "h-4 w-4"} strokeWidth={2.35} aria-hidden />
+                ) : isTopReject ? (
+                  <X className="h-[1.15rem] w-[1.15rem]" strokeWidth={2.35} aria-hidden />
+                ) : isTopCancel ? (
+                  <Ban className="h-[1.05rem] w-[1.05rem]" strokeWidth={2.35} aria-hidden />
                 ) : (
                   <ShieldX className="h-4 w-4" strokeWidth={2.3} aria-hidden />
                 )}
@@ -1241,6 +1577,49 @@ export function FinanceOperationDetailModal({
                   <div className="h-6 w-32 animate-pulse rounded bg-muted/18" />
                 </div>
               ) : amountStoryView ? (
+                amountStoryAllSameAmounts(
+                  amountStoryView,
+                  amtDraftStr != null && amtDraftStr !== "" ? moneyRound2(Number(amtDraftStr)) : null
+                ) ? (
+                  <div className="space-y-2 border-b border-border/20 pb-2.5">
+                    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Сумма · {paymentTypeRu(item.type)}
+                      </span>
+                      {user?.role === "SUPER_ADMIN" ? (
+                        <button
+                          type="button"
+                          disabled={!saCorrectionEditable}
+                          onClick={openSaAmountEditor}
+                          className={cn(
+                            "text-[1.3rem] font-bold tabular-nums leading-none tracking-tight sm:text-[1.4rem]",
+                            item.status === "completed"
+                              ? "text-[color:var(--thai-color-paid)]"
+                              : "thai-dashboard-premium-gold-amount",
+                            saCorrectionEditable &&
+                              "cursor-pointer rounded-sm underline decoration-dotted decoration-muted-foreground/55 underline-offset-4 hover:bg-muted/15",
+                            !saCorrectionEditable && "opacity-80"
+                          )}
+                        >
+                          {formatCurrency(
+                            amtDraftStr != null ? moneyRound2(Number(amtDraftStr || 0)) : amountStoryView.finalRecorded
+                          )}
+                        </button>
+                      ) : (
+                        <span
+                          className={cn(
+                            "text-[1.3rem] font-bold tabular-nums leading-none tracking-tight sm:text-[1.4rem]",
+                            item.status === "completed"
+                              ? "text-[color:var(--thai-color-paid)]"
+                              : "thai-dashboard-premium-gold-amount"
+                          )}
+                        >
+                          {formatCurrency(amountStoryView.finalRecorded)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <div className="space-y-2 border-b border-border/20 pb-2.5">
                   <dl className="space-y-1.5 text-[11px] leading-snug tabular-nums">
                     <div className="flex items-baseline justify-between gap-3">
@@ -1376,43 +1755,88 @@ export function FinanceOperationDetailModal({
                     )}
                   </div>
                 </div>
+                )
+              ) : null}
+
+              {paymentDatesForSummary ? (
+                <p className="text-[10px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                  <span className="font-semibold uppercase tracking-wide text-muted-foreground/90">Даты в заявке: </span>
+                  подача {formatIsoUtcDdMmYy(paymentDatesForSummary.createdAt)}
+                  <span className="text-muted-foreground/70"> · </span>
+                  одобр.{" "}
+                  {paymentDatesForSummary.approvedAt ? formatIsoUtcDdMmYy(paymentDatesForSummary.approvedAt) : "—"}
+                  <span className="text-muted-foreground/70"> · </span>
+                  подтв.{" "}
+                  {paymentDatesForSummary.acceptedAt ? formatIsoUtcDdMmYy(paymentDatesForSummary.acceptedAt) : "—"}
+                </p>
               ) : null}
 
               {incomingCorrectionForPayment && paymentRowForCorrection ? (
                 <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.09] px-2.5 py-2 dark:bg-amber-500/[0.07]">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-100">
-                    Запрос правки от администратора
+                    Правка от администратора
                   </p>
-                  <p className="text-[11px] leading-snug text-foreground [overflow-wrap:anywhere]">
-                    <span className="font-medium text-muted-foreground">
-                      {incomingCorrectionForPayment.createdBy.username}:{" "}
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    Предложение от{" "}
+                    <span className="font-medium text-foreground">
+                      {incomingCorrectionForPayment.createdBy.username}
                     </span>
-                    {incomingCorrectionForPayment.adminNote}
+                    .
+                    {incomingCorrectionApprovalBundle.rows.length > 0 ? (
+                      <>
+                        {" "}
+                        Слева — значения <span className="font-medium text-foreground/90">сейчас в заявке</span>, справа —
+                        что <span className="font-medium text-foreground/90">запишется</span>, если нажать «Применить
+                        правку».
+                      </>
+                    ) : null}
                   </p>
-                  {incomingCorrectionLines.length > 0 ? (
-                    <ul className="list-disc space-y-0.5 pl-4 text-[10px] leading-snug text-muted-foreground">
-                      {incomingCorrectionLines.map((line, i) => (
-                        <li key={`${i}-${line.slice(0, 48)}`}>{line}</li>
-                      ))}
-                    </ul>
+                  {incomingCorrectionApprovalBundle.rows.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-border/35 bg-background/35 px-2 py-1.5">
+                        <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Сейчас в заявке
+                        </p>
+                        <ul className="mt-1 space-y-0.5 text-[11px] leading-snug tabular-nums text-foreground">
+                          {incomingCorrectionApprovalBundle.rows.map((r) => (
+                            <li key={r.field}>
+                              <span className="text-muted-foreground">{r.field}: </span>
+                              {r.before}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-2 py-1.5 dark:bg-emerald-500/[0.1]">
+                        <p className="text-[9px] font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-200">
+                          После «Применить правку»
+                        </p>
+                        <ul className="mt-1 space-y-0.5 text-[11px] font-medium leading-snug tabular-nums text-foreground">
+                          {incomingCorrectionApprovalBundle.rows.map((r) => (
+                            <li key={`${r.field}-after`}>
+                              <span className="font-normal text-emerald-950/85 dark:text-emerald-100/85">{r.field}: </span>
+                              {r.after}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : incomingCorrectionApprovalBundle.fallbackText.trim() ? (
+                    <p className="text-[11px] leading-snug text-foreground [overflow-wrap:anywhere]">
+                      {incomingCorrectionApprovalBundle.fallbackText}
+                    </p>
                   ) : (
-                    <p className="text-[10px] text-muted-foreground">Детали в комментарии администратора выше.</p>
+                    <p className="text-[11px] leading-snug text-foreground [overflow-wrap:anywhere]">
+                      {incomingCorrectionForPayment.adminNote}
+                    </p>
                   )}
-                  <p className="text-[9px] leading-snug text-muted-foreground">
-                    Кнопки ниже («одобрить заявку» / «отклонить») относятся к самой выплате. Здесь — только решение по
-                    правке данных.
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5 text-[10px] font-semibold">
                     <button
                       type="button"
                       disabled={decideCorrectionMut.isPending}
                       onClick={() =>
                         decideCorrectionMut.mutate({ id: incomingCorrectionForPayment.id, decision: "approve" })
                       }
-                      className={cn(
-                        "rounded-lg border border-emerald-500/40 bg-emerald-500/12 px-3 py-1.5 text-[10px] font-semibold text-emerald-900 dark:text-emerald-200",
-                        "transition hover:bg-emerald-500/18 disabled:opacity-40"
-                      )}
+                      className="text-emerald-700 underline decoration-emerald-600/50 underline-offset-2 hover:text-emerald-600 disabled:opacity-40 dark:text-emerald-400"
                     >
                       Применить правку
                     </button>
@@ -1422,12 +1846,9 @@ export function FinanceOperationDetailModal({
                       onClick={() =>
                         decideCorrectionMut.mutate({ id: incomingCorrectionForPayment.id, decision: "reject" })
                       }
-                      className={cn(
-                        "rounded-lg border border-border/45 bg-transparent px-3 py-1.5 text-[10px] font-semibold text-muted-foreground",
-                        "transition hover:bg-muted/20 disabled:opacity-40"
-                      )}
+                      className="text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground disabled:opacity-40"
                     >
-                      Отклонить правку
+                      Отклонить
                     </button>
                   </div>
                 </div>
@@ -1501,7 +1922,9 @@ export function FinanceOperationDetailModal({
                                 {formatDateTime(stepIso)}
                               </time>
                             )}
-                            {step.stepAmount != null ? (
+                            {step.stepAmount != null &&
+                            paymentDisplayedFinalAmount != null &&
+                            moneyRound2(step.stepAmount) !== paymentDisplayedFinalAmount ? (
                               <>
                                 <span className="text-muted-foreground/80">·</span>
                                 {user?.role === "SUPER_ADMIN" ? (
@@ -1722,189 +2145,291 @@ export function FinanceOperationDetailModal({
           ) : null}
 
           {item.kind === "topup" ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-[10px] leading-snug text-muted-foreground">
-                {item.initialFromCreation
-                  ? "Начальное тело при создании позиции в общей сети."
-                  : "Та же карточка решения, что и по выплате: этапы, баланс позиции и действия внизу."}
-              </p>
+            <div className="flex flex-col gap-2">
+              {item.initialFromCreation ? (
+                <div className="space-y-1.5 rounded-xl border border-border/35 bg-muted/[0.04] p-2.5">
+                  <p
+                    className={cn(
+                      "text-[11px] leading-tight",
+                      paymentStatusCaptionClass(item.status, false)
+                    )}
+                  >
+                    {topUpStatusRu(item.status)}
+                  </p>
+                  <p className="text-[13px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    Сумма: +{formatCurrency(item.amount)}
+                  </p>
+                  <p className="text-[10px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                    {[
+                      item.entryDate ? `Вход: ${topupRequestDateDisplay(item.entryDate)}` : null,
+                      item.activationDate ? `Активация: ${topupRequestDateDisplay(item.activationDate)}` : null,
+                      `Создано: ${formatIsoUtcDdMmYy(item.createdAt)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  const topSt = topUpRowStatus ?? item.status;
+                  const podachaAmt =
+                    item.requestId > 0 && topUpContext ? topUpContext.request.requestedAmount : item.amount;
+                  const chain = topUpContext?.bodyTopUpChain ?? null;
+                  const req = topUpContext?.request ?? null;
+                  const sf = topUpSaForm;
+                  const isSa = user?.role === "SUPER_ADMIN" && sf != null;
 
-              {(() => {
-                const topSt = topUpRowStatus ?? item.status;
-                const podachaAmt =
-                  !item.initialFromCreation && item.requestId > 0 && topUpContext
-                    ? topUpContext.request.requestedAmount
-                    : item.amount;
-                return (
-                  <div className="space-y-2 border-b border-border/20 pb-2.5">
-                    <dl className="space-y-1.5 text-[11px] leading-snug tabular-nums">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <dt className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {item.initialFromCreation ? "Тело при входе" : "Подача"}
-                        </dt>
-                        <dd className="min-w-0 text-right font-semibold text-foreground">
-                          {formatCurrency(podachaAmt)}
-                        </dd>
+                  const entryDisplay =
+                    req?.requestDate != null
+                      ? topupRequestDateDisplay(req.requestDate)
+                      : topupRequestDateDisplay(item.requestDate ?? undefined);
+
+                  const previewMon = chain?.previewEffectiveMondayIso ?? null;
+                  const afterAcceptMon = chain?.effectiveMondayAfterAcceptIso ?? null;
+                  const reportingMondayText =
+                    topSt === "pending_investor" && previewMon
+                      ? formatIsoUtcDdMmYy(previewMon)
+                      : topSt === "accepted_by_investor" && afterAcceptMon
+                        ? formatIsoUtcDdMmYy(afterAcceptMon)
+                        : "—";
+
+                  const bodyEffectLine =
+                    topSt === "pending_investor"
+                      ? "Тело позиции увеличится сразу после того, как инвестор примет заявку."
+                      : topSt === "accepted_by_investor"
+                        ? "Сумма уже на теле позиции; отчётные недели считаются с указанного понедельника."
+                        : topSt === "rejected_by_investor"
+                          ? "При отклонении тело позиции не менялось."
+                          : topSt === "cancelled_by_owner"
+                            ? "После отзыва владельцем тело не менялось."
+                            : "";
+
+                  const stageTailFrom = (s: string) =>
+                    s === "pending_investor"
+                      ? "Чтобы завершить заявку, инвестор должен принять или отклонить пополнение (если это ваш шаг — кнопки ниже)."
+                      : s === "accepted_by_investor"
+                        ? "Заявка закрыта."
+                        : s === "rejected_by_investor"
+                          ? "Инвестор отклонил заявку."
+                          : s === "cancelled_by_owner"
+                            ? "Владелец отозвал заявку."
+                            : "";
+
+                  const statusHeadline = isSa && sf ? sf.status : topSt;
+                  const stageTail = stageTailFrom(statusHeadline);
+
+                  return (
+                    <div className="space-y-2 rounded-xl border border-border/35 bg-muted/[0.04] p-2.5">
+                      <p className="text-[13px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        Сумма пополнения тела: +{formatCurrency(podachaAmt)}
+                      </p>
+
+                      {topUpContext?.position &&
+                      typeof topUpContext.position.rate === "number" &&
+                      Number.isFinite(topUpContext.position.rate) ? (
+                        <p className="text-[10px] leading-snug text-muted-foreground">
+                          <span className="font-medium text-foreground/80">
+                            {topUpContext.position.isPrivate ? "Личная сеть" : "Общая сеть"}
+                          </span>
+                          {" · "}
+                          <span className="tabular-nums">
+                            ставка{" "}
+                            {topUpContext.position.rate.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}% / нед
+                          </span>
+                        </p>
+                      ) : null}
+
+                      {!isSa ? (
+                        <p className="text-[10px] leading-snug text-muted-foreground">
+                          <span className="font-medium text-foreground/80">Дата вступления в заявке:</span>{" "}
+                          {entryDisplay}
+                        </p>
+                      ) : null}
+
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] leading-snug text-muted-foreground">
+                          <span className="font-medium text-foreground/85">Отчётные недели с (пн):</span>{" "}
+                          <span className="tabular-nums text-foreground/95">{reportingMondayText}</span>
+                        </p>
+                        <p className="text-[9px] leading-snug text-muted-foreground/90">
+                          {topSt === "pending_investor"
+                            ? "Первый понедельник после даты вступления в заявке — старт недель в отчёте, если заявку примут."
+                            : topSt === "accepted_by_investor"
+                              ? "Понедельник после даты решения инвестора."
+                              : null}
+                        </p>
                       </div>
-                      {topSt === "accepted_by_investor" || topSt === "completed_at_creation" ? (
-                        <div className="flex items-baseline justify-between gap-3">
-                          <dt className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {topSt === "completed_at_creation" ? "Зафиксировано" : "Зачислено"}
-                          </dt>
-                          <dd className="text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-                            {formatCurrency(podachaAmt)}
-                          </dd>
+
+                      {bodyEffectLine ? (
+                        <p className="text-[10px] leading-snug text-foreground/90">{bodyEffectLine}</p>
+                      ) : null}
+
+                      <div className="space-y-1 rounded-lg border border-border/25 bg-background/20 p-2">
+                        <p
+                          className={cn(
+                            "text-[11px] font-semibold leading-tight",
+                            paymentStatusCaptionClass(statusHeadline, Boolean(topUpModalStatusHighlight))
+                          )}
+                        >
+                          {topUpStatusRu(statusHeadline)}
+                        </p>
+                        {chain ? (
+                          <p className="text-[10px] leading-snug text-foreground/95">
+                            <span className="text-muted-foreground">Создал</span> {chain.creatorUsername}
+                            <span className="text-muted-foreground"> · </span>
+                            <span className="text-muted-foreground">Подтверждает</span> {chain.addresseeLabel}
+                            {chain.investorLegalName ? (
+                              <span className="text-muted-foreground"> ({chain.investorLegalName})</span>
+                            ) : null}
+                            . {stageTail}
+                          </p>
+                        ) : item.requestId > 0 && topUpContextQuery.isPending && !req ? (
+                          <p className="text-[10px] text-muted-foreground">Загрузка…</p>
+                        ) : null}
+                        {topUpModalStatusCaption ? (
+                          <p className="text-[10px] font-medium leading-snug text-amber-700 dark:text-amber-400/95">
+                            {topUpModalStatusCaption}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {item.comment ? (
+                        <p className="text-[10px] leading-snug text-foreground/90 [overflow-wrap:anywhere]">
+                          <span className="text-muted-foreground">Комментарий: </span>
+                          {item.comment}
+                        </p>
+                      ) : null}
+
+                      {user?.role === "SUPER_ADMIN" && item.requestId > 0 && sf ? (
+                        <div className="space-y-2 border-t border-border/20 pt-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label
+                                className="text-[9px] font-semibold uppercase text-muted-foreground"
+                                htmlFor="topup-sa-status"
+                              >
+                                Статус
+                              </label>
+                              <select
+                                id="topup-sa-status"
+                                value={sf.status}
+                                onChange={(e) => setTopUpSaForm((s) => (s ? { ...s, status: e.target.value } : s))}
+                                className="h-8 w-full rounded-lg border border-border/40 bg-background/40 px-2 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                {(
+                                  [
+                                    "pending_investor",
+                                    "accepted_by_investor",
+                                    "rejected_by_investor",
+                                    "cancelled_by_owner",
+                                  ] as const
+                                ).map((st) => (
+                                  <option key={st} value={st}>
+                                    {topUpStatusRu(st)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                className="text-[9px] font-semibold uppercase text-muted-foreground"
+                                htmlFor="topup-sa-amt"
+                              >
+                                Сумма ฿
+                              </label>
+                              <input
+                                id="topup-sa-amt"
+                                value={sf.amount}
+                                onChange={(e) =>
+                                  setTopUpSaForm((s) => (s ? { ...s, amount: e.target.value.replace(/\D/g, "") } : s))
+                                }
+                                inputMode="numeric"
+                                className="h-8 w-full rounded-lg border border-border/40 bg-background/40 px-2 text-[11px] font-semibold tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-semibold uppercase text-muted-foreground">
+                              Дата вступления (в заявке)
+                            </span>
+                            <DatePicker
+                              value={sf.requestDateYmd}
+                              onChange={(ymd) => setTopUpSaForm((s) => (s ? { ...s, requestDateYmd: ymd } : s))}
+                              placeholder="Не задано"
+                            />
+                          </div>
+
+                          <details className="group rounded-lg border border-border/25 bg-background/10 px-2 py-1.5">
+                            <summary className="cursor-pointer list-none text-[9px] font-semibold uppercase tracking-wide text-muted-foreground marker:content-none [&::-webkit-details-marker]:hidden">
+                              <span className="underline decoration-dotted decoration-muted-foreground/60 underline-offset-2 group-open:text-foreground">
+                                Служебные даты (аудит)
+                              </span>
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-semibold uppercase text-muted-foreground">
+                                  Создано (UTC)
+                                </span>
+                                <DatePicker
+                                  value={sf.createdYmd}
+                                  onChange={(ymd) => setTopUpSaForm((s) => (s ? { ...s, createdYmd: ymd } : s))}
+                                  placeholder="Дата"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-semibold uppercase text-muted-foreground">
+                                    Решение (UTC)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                                    onClick={() => setTopUpSaForm((s) => (s ? { ...s, decidedYmd: "" } : s))}
+                                  >
+                                    Сброс
+                                  </button>
+                                </div>
+                                <DatePicker
+                                  value={sf.decidedYmd}
+                                  onChange={(ymd) => setTopUpSaForm((s) => (s ? { ...s, decidedYmd: ymd } : s))}
+                                  placeholder="Нет"
+                                />
+                              </div>
+                            </div>
+                          </details>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={!topUpSaDirty || patchTopUpSuperAdminMut.isPending}
+                              onClick={() => submitTopUpSuperAdminPatch()}
+                              className="h-8 rounded-lg border border-primary/28 bg-primary/10 px-3 text-[11px] font-semibold text-primary hover:bg-primary/18 disabled:opacity-40"
+                            >
+                              {patchTopUpSuperAdminMut.isPending ? "…" : "Сохранить"}
+                            </Button>
+                            <button
+                              type="button"
+                              disabled={deleteTopUpRequestMut.isPending || patchTopUpSuperAdminMut.isPending}
+                              onClick={() => void confirmDeleteTopUpRequest()}
+                              className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700/95 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300"
+                            >
+                              {deleteTopUpRequestMut.isPending ? (
+                                <span className="inline-flex h-3 w-3 animate-spin rounded-full border border-rose-400/40 border-t-transparent" />
+                              ) : (
+                                <Trash2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                              )}
+                              Удалить заявку полностью
+                            </button>
+                          </div>
                         </div>
                       ) : null}
-                    </dl>
-                    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-0 border-t border-border/15 pt-2">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Итог · {item.initialFromCreation ? "создание позиции" : "пополнение тела"}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[1.3rem] font-bold tabular-nums leading-none tracking-tight sm:text-[1.4rem]",
-                          topSt === "accepted_by_investor" || topSt === "completed_at_creation"
-                            ? "text-[color:var(--thai-color-paid)]"
-                            : topSt === "rejected_by_investor" || topSt === "cancelled_by_owner"
-                              ? "text-rose-700 dark:text-rose-400"
-                              : "thai-dashboard-premium-gold-amount"
-                        )}
-                      >
-                        {formatCurrency(podachaAmt)}
-                      </span>
                     </div>
-                  </div>
-                );
-              })()}
-
-              {!item.initialFromCreation && item.requestId > 0 ? (
-                <>
-                  <div className="space-y-2 border-b border-border/20 pb-2.5">
-                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide">
-                      <span className="font-semibold text-muted-foreground">Этапы</span>
-                      <span
-                        className={cn(
-                          "max-w-[70%] text-right normal-case tracking-normal",
-                          paymentStatusCaptionClass(topUpRowStatus ?? item.status, topUpModalStatusHighlight)
-                        )}
-                      >
-                        {topUpModalStatusCaption ?? topUpStatusRu(topUpRowStatus ?? item.status)}
-                      </span>
-                    </div>
-
-                    {topUpTimelineSkeleton ? (
-                      <div className="space-y-2 pt-0.5">
-                        {[1, 2, 3].map((i) => (
-                          <div key={i} className="border-l-2 border-border/25 pl-2.5">
-                            <div className="h-3 w-full max-w-[16rem] animate-pulse rounded bg-muted/18" />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <ul className="space-y-1.5 pt-0.5">
-                        {topUpTimeline.map((step, idx) => (
-                          <li key={`${step.at}-${step.kind}-${idx}`}>
-                            <div
-                              className={cn(
-                                paymentStepAccentBorder(step.kind),
-                                "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] tabular-nums leading-snug"
-                              )}
-                            >
-                              <span className="w-[1.25rem] shrink-0 text-center font-mono text-[10px] font-medium text-muted-foreground">
-                                {String(idx + 1).padStart(2, "0")}
-                              </span>
-                              <span className={cn("shrink-0 font-semibold tracking-tight", paymentStepTitleClass(step.kind))}>
-                                {step.title}
-                              </span>
-                              <span className="text-muted-foreground/80">·</span>
-                              <span className="min-w-0 truncate font-medium text-foreground">{step.actorUsername}</span>
-                              <span className="text-muted-foreground/80">·</span>
-                              <time
-                                className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground"
-                                dateTime={step.at}
-                              >
-                                {formatDateTime(step.at)}
-                              </time>
-                              {step.stepAmount != null ? (
-                                <>
-                                  <span className="text-muted-foreground/80">·</span>
-                                  <span className={cn("shrink-0", paymentStepAmountClass(step.kind))}>
-                                    {formatCurrency(step.stepAmount)}
-                                  </span>
-                                </>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {topUpContext ? (
-                    <div className="grid grid-cols-3 gap-x-2 gap-y-1 border-b border-border/15 pb-3 text-center text-[11px] leading-snug">
-                      <div className="min-w-0">
-                        <div className="font-semibold tabular-nums text-sky-800 dark:text-sky-400">
-                          {formatCurrency(topUpContext.limits.availableNow)}
-                        </div>
-                        <div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Доступно
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold tabular-nums text-foreground">
-                          {formatCurrency(topUpContext.request.requestedAmount)}
-                        </div>
-                        <div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                          В заявке сейчас
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-medium tabular-nums text-muted-foreground">
-                          {formatCurrency(topUpContext.position.body + topUpContext.position.accrued)}
-                        </div>
-                        <div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Всего по позиции
-                        </div>
-                      </div>
-                    </div>
-                  ) : topUpContextQuery.isPending ? (
-                    <div className="grid grid-cols-3 gap-x-2 border-b border-border/15 pb-3">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex flex-col items-center gap-1">
-                          <div className="h-4 w-[4.5rem] max-w-full animate-pulse rounded bg-muted/18" />
-                          <div className="h-2 w-12 animate-pulse rounded bg-muted/12" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </>
-              ) : item.initialFromCreation ? (
-                <div className="flex flex-wrap gap-x-3 gap-y-1 border-b border-border/20 pb-2.5 text-[10px] tabular-nums text-muted-foreground">
-                  {item.entryDate ? <span>Вход · {formatDateShort(item.entryDate)}</span> : null}
-                  {item.activationDate ? <span>Активация · {formatDateShort(item.activationDate)}</span> : null}
-                  <span>Создано · {formatDateTime(item.createdAt)}</span>
-                </div>
-              ) : null}
-
-              {item.comment ? (
-                <div className="space-y-1.5 border-t border-border/15 pt-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Комментарий к заявке
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-foreground [overflow-wrap:anywhere]">{item.comment}</p>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap gap-x-2 text-[9px] tabular-nums text-muted-foreground">
-                <span className="max-w-full truncate rounded bg-zinc-500/15 px-1 py-0.5 font-medium text-foreground/90">
-                  {item.positionName}
-                </span>
-                <span className="rounded bg-zinc-500/15 px-1 py-0.5">Поз. #{item.investorId}</span>
-                {!item.initialFromCreation && item.requestId > 0 ? (
-                  <span className="rounded bg-zinc-500/15 px-1 py-0.5">Заявка #{item.requestId}</span>
-                ) : null}
-              </div>
+                  );
+                })()
+              )}
 
               {financePendingActionsPanel}
             </div>

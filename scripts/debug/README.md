@@ -28,5 +28,10 @@ node scripts/debug/debug-db-reset.mjs
 | `debug-superadmin-password.ts` / `.mjs` | Подбор/проверка хэшей супер-админа |
 | `debug-db-reset.mjs` / `debug-db-reset-superadmin.ts` | Сценарии сброса через API (осторожно) |
 | `debug-login-probe.mjs` | Перебор логина к dev-серверу |
+| `recalculate-den-investor-2.ts` | Пересчёт **`accrued`** / **`paid`** и дат канона для инвестора id=2 (Den); опирается на **`lib/investor-accrued-ledger.ts`** |
+| `den-investor-2-full-audit.ts` | Полный JSON-срез по Den + леджер с учётом пополнений |
+| `diagnose-investor-2-operations.ts` | Сырые строки БД по позиции id=2 для сверки с «Финансы» |
+
+Удалены как дублирующие устаревшую математику: `scripts/explain-sega-accrued.ts`, `scripts/debug/inspect-den-body-topup-100k.ts` — единый расчёт см. **`lib/investor-accrued-ledger.ts`** / **`buildWeeklyLedgerRows`**.
 
 Перед изменением схемы Prisma или API — перепроверьте, что скрипт ещё соответствует коду.

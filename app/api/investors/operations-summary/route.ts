@@ -1,7 +1,7 @@
 /**
  * GET /api/investors/operations-summary
  *
- * Тело: `{ byInvestorId: Record<string, SummaryRow>, meta?: { investorSelection } }`.
+ * Тело: `{ byInvestorId: Record<string, OperationsSummaryRow>, meta?: { investorSelection } }`.
  * Условия `meta` и заголовка `X-Thaiinvest-Investor-Selection-Partial` — как у operations-history.
  */
 import type { NextRequest } from "next/server";
@@ -13,14 +13,19 @@ import { verifyToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { superAdminFinanceMaxPositions } from "@/lib/super-admin-finance-limits";
 import { getRateHistoryRowsForLedger } from "@/lib/rate-history-rows-cache";
+import { bodyTopUpRequestCountedAsInflow } from "@/lib/body-topup-inflow";
 import { findBodyTopUpsForOperationsSummary } from "@/lib/body-topup-request-date-compat";
+import { resolveInitialBodyAtCreation } from "@/lib/investor-create-audit-body";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
-import { buildWeeklyLedgerRows, type WeeklyLedgerPaymentInput } from "@/lib/weekly-ledger-rows";
+import {
+  buildWeeklyLedgerRows,
+  ledgerAcceptedTopUpsFromPrismaRows,
+  type WeeklyLedgerPaymentInput,
+} from "@/lib/weekly-ledger-rows";
 import type { FinanceOperationsHistoryOpFilter } from "@/types/finance-operations-filter";
-import type { FinanceInvestorSelectionMeta, OperationsSummaryResponse } from "@/types/operations-finance-api";
-import type { PeriodPreset, HistoryPeriodValue } from "@/components/dashboard/HistoryPeriodPopover";
-
-type SummaryRow = { growth: number; paidOut: number; openRequests: number };
+import type { FinanceInvestorSelectionMeta, OperationsSummaryResponse, OperationsSummaryRow } from "@/types/operations-finance-api";
+import { sortAtInHistoryPeriod, type HistoryPeriodValue } from "@/lib/history-period";
+import { moneyRound2 } from "@/lib/money-round";
 
 type CacheEntry = { expiresAt: number; payload: OperationsSummaryResponse };
 const CACHE_TTL_MS = 45_000;
@@ -37,44 +42,6 @@ function cacheKey(parts: {
 }) {
   const net = parts.role === "SUPER_ADMIN" && parts.network ? parts.network : "";
   return `${parts.userId}:${parts.role}:${parts.idsParam}:${parts.periodRaw}:${parts.filter}:${net}`;
-}
-
-function periodStartMs(p: PeriodPreset): number | null {
-  if (p === "all") return null;
-  const days = p === "7d" ? 7 : p === "30d" ? 30 : p === "90d" ? 90 : 365;
-  return Date.now() - days * 86400000;
-}
-
-function parseYmd(value: string): Date | null {
-  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  if (!y || !mo || !d) return null;
-  const dt = new Date(y, mo - 1, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-
-function startOfDayMs(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function endOfDayMs(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
-}
-
-function sortAtInHistoryPeriod(sortAtIso: string, period: HistoryPeriodValue): boolean {
-  const t = new Date(sortAtIso).getTime();
-  if (period.kind === "preset") {
-    const start = periodStartMs(period.preset);
-    if (start == null) return true;
-    return t >= start;
-  }
-  const fromD = parseYmd(period.fromYmd);
-  const toD = parseYmd(period.toYmd);
-  if (!fromD || !toD) return true;
-  return t >= startOfDayMs(fromD) && t <= endOfDayMs(toD);
 }
 
 function isRecord(u: unknown): u is Record<string, unknown> {
@@ -105,17 +72,6 @@ function parseOpFilter(raw: string | null): FinanceOperationsHistoryOpFilter {
 
 function openPaymentStatus(status: string) {
   return status !== "completed";
-}
-
-function parseInitialBodyFromAudit(newValue: string | null): number | null {
-  if (!newValue) return null;
-  try {
-    const j = JSON.parse(newValue) as { body?: unknown };
-    const b = j.body;
-    return typeof b === "number" && Number.isFinite(b) ? b : null;
-  } catch {
-    return null;
-  }
 }
 
 export async function GET(request: NextRequest) {
@@ -246,7 +202,7 @@ export async function GET(request: NextRequest) {
 
     if (scoped.length === 0) {
       return NextResponse.json(
-        { byInvestorId: {} satisfies Record<string, SummaryRow> } satisfies OperationsSummaryResponse
+        { byInvestorId: {} satisfies Record<string, OperationsSummaryRow> } satisfies OperationsSummaryResponse
       );
     }
 
@@ -282,9 +238,10 @@ export async function GET(request: NextRequest) {
       topUpsByInv.set(t.investorId, list);
     }
 
-    const byInvestorId: Record<string, SummaryRow> = {};
+    const byInvestorId: Record<string, OperationsSummaryRow> = {};
 
     for (const inv of scoped) {
+      const invTopups = topUpsByInv.get(inv.id) ?? [];
       // accrual weeks
       const weeks = buildWeeklyLedgerRows(
         {
@@ -293,30 +250,38 @@ export async function GET(request: NextRequest) {
           rate: inv.rate,
           isPrivate: inv.isPrivate,
           payments: inv.payments as WeeklyLedgerPaymentInput[],
+          acceptedBodyTopUps: ledgerAcceptedTopUpsFromPrismaRows(invTopups),
         },
         rateHistory,
         new Date()
       );
 
-      const accrualGrowth = weeks.reduce((s, w) => (sortAtInHistoryPeriod(w.weekStart, period) ? s + w.accruedAdded : s), 0);
+      const accrualGrowth = weeks.reduce((s, w) =>
+        sortAtInHistoryPeriod(w.weekStart, period) ? moneyRound2(s + w.accruedAdded) : s,
+      0);
 
-      const invTopups = topUpsByInv.get(inv.id) ?? [];
       const topupGrowth = invTopups.reduce((s, t) => {
+        if (!bodyTopUpRequestCountedAsInflow(t.status)) return s;
         const sortAt = (t.requestDate ?? t.createdAt).toISOString();
         if (!sortAtInHistoryPeriod(sortAt, period)) return s;
-        return s + t.amount;
+        return moneyRound2(s + t.amount);
       }, 0);
 
-      // Начальное тело при создании позиции — в ленте идёт как пополнение (без BodyTopUpRequest).
+      // Начальное тело при создании: аудит CREATE_INVESTOR; иначе тело − принятые заявки (не подмена всего inv.body).
       const auditJson = firstCreateAuditByInvestorId.get(inv.id) ?? null;
-      const initialBody = parseInitialBodyFromAudit(auditJson) ?? inv.body;
+      const initialResolved = resolveInitialBodyAtCreation({
+        createInvestorAuditNewValue: auditJson,
+        currentBody: inv.body,
+        acceptedBodyTopUpRequests: invTopups,
+      });
       const initialTopupAt = inv.activationDate.toISOString();
-      const initialTopup = sortAtInHistoryPeriod(initialTopupAt, period) ? initialBody : 0;
+      const initialTopup =
+        initialResolved != null && sortAtInHistoryPeriod(initialTopupAt, period) ? moneyRound2(initialResolved) : 0;
 
       const paidOut = inv.payments.reduce((s, p) => {
         if (!sortAtInHistoryPeriod(p.createdAt.toISOString(), period)) return s;
         if (p.status !== "completed") return s;
-        return s + p.amount;
+        return moneyRound2(s + p.amount);
       }, 0);
 
       const openRequests = inv.payments.reduce((s, p) => {
@@ -325,14 +290,22 @@ export async function GET(request: NextRequest) {
         return s + 1;
       }, 0);
 
-      const rowAll: SummaryRow = { growth: accrualGrowth + topupGrowth + initialTopup, paidOut, openRequests };
+      const topupInflow = moneyRound2(topupGrowth + initialTopup);
 
-      let row: SummaryRow;
+      const rowAll: OperationsSummaryRow = {
+        growth: moneyRound2(accrualGrowth + topupInflow),
+        topupInflow,
+        paidOut,
+        openRequests,
+      };
+
+      let row: OperationsSummaryRow;
       if (opFilter === "all") row = rowAll;
-      else if (opFilter === "accrual") row = { growth: accrualGrowth, paidOut: 0, openRequests: 0 };
-      else if (opFilter === "topup") row = { growth: topupGrowth + initialTopup, paidOut: 0, openRequests: 0 };
-      else if (opFilter === "payout") row = { growth: 0, paidOut, openRequests: 0 };
-      else row = { growth: 0, paidOut: 0, openRequests }; // request
+      else if (opFilter === "accrual")
+        row = { growth: accrualGrowth, topupInflow, paidOut: 0, openRequests: 0 };
+      else if (opFilter === "topup") row = { growth: topupInflow, topupInflow, paidOut: 0, openRequests: 0 };
+      else if (opFilter === "payout") row = { growth: 0, topupInflow, paidOut, openRequests: 0 };
+      else row = { growth: 0, topupInflow, paidOut: 0, openRequests }; // request
 
       byInvestorId[String(inv.id)] = row;
     }

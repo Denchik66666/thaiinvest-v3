@@ -260,6 +260,9 @@ export async function GET(request: NextRequest) {
         type: payment.type,
         status: payment.status,
         requestedAmount: moneyRound2(payment.amount),
+        createdAt: payment.createdAt.toISOString(),
+        approvedAt: payment.approvedAt?.toISOString() ?? null,
+        acceptedAt: payment.acceptedAt?.toISOString() ?? null,
       },
       position: {
         body: payment.investor.body,
