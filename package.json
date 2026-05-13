@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
     "build": "prisma generate && next build",
-    "build:vercel": "prisma generate && prisma migrate deploy && next build",
+    "build:vercel": "node scripts/vercel-build.mjs",
     "start": "next start",
     "start:remote": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint",
