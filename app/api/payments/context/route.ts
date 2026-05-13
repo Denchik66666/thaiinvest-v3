@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
       prisma.payment.findMany({
         where: {
           investorId: payment.investorId,
-          status: { in: OPEN_STATUSES as any },
+          status: { in: [...OPEN_STATUSES] },
         },
         select: { id: true, type: true, amount: true, status: true },
       })

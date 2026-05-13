@@ -137,19 +137,21 @@ export function FinanceBodyTopUpModal({
     const eligibleList = investors.filter((i) => eligibility(i, pendingTopUpIds).ok);
     const hintOk =
       hintInvestorId != null && eligibleList.some((i) => i.id === hintInvestorId);
-    if (investors.length <= 1) {
-      setScope("one");
-      setOneId(eligibleList[0] ? String(eligibleList[0].id) : "");
-    } else if (hintOk) {
-      setScope("one");
-      setOneId(String(hintInvestorId));
-    } else {
-      setScope("all");
-      setOneId("");
-    }
-    setMultiIds(new Set());
-    setAmount("");
-    setComment("");
+    queueMicrotask(() => {
+      if (investors.length <= 1) {
+        setScope("one");
+        setOneId(eligibleList[0] ? String(eligibleList[0].id) : "");
+      } else if (hintOk) {
+        setScope("one");
+        setOneId(String(hintInvestorId));
+      } else {
+        setScope("all");
+        setOneId("");
+      }
+      setMultiIds(new Set());
+      setAmount("");
+      setComment("");
+    });
   }, [open, investors, investorsSig, hintInvestorId, pendingTopUpIds]);
 
   const parsedAmount = parseAmountInput(amount);
@@ -251,7 +253,7 @@ export function FinanceBodyTopUpModal({
    */
   useEffect(() => {
     if (!open) return;
-    setDeskEntryYmd(investorEntryToYmd(undefined));
+    queueMicrotask(() => setDeskEntryYmd(investorEntryToYmd(undefined)));
   }, [open]);
 
   const mutation = useMutation({

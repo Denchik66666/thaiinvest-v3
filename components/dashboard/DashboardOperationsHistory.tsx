@@ -331,7 +331,8 @@ export function DashboardOperationsHistory({
   /** Раскрыть журнал при появлении явного `?investor=` (initial state не обновляется при смене пропа). */
   useEffect(() => {
     if (!embeddedCollapsible) return;
-    if (embeddedInitiallyExpanded) setEmbeddedExpanded(true);
+    if (!embeddedInitiallyExpanded) return;
+    queueMicrotask(() => setEmbeddedExpanded(true));
   }, [embeddedCollapsible, embeddedInitiallyExpanded]);
 
   const showPanel = embedded ? (embeddedCollapsible ? embeddedExpanded : true) : expanded;
@@ -428,7 +429,8 @@ export function DashboardOperationsHistory({
 
   useEffect(() => {
     if (!splitPendingActionQueue) return;
-    if (opFilter === "request") setOpFilter("all");
+    if (opFilter !== "request") return;
+    queueMicrotask(() => setOpFilter("all"));
   }, [splitPendingActionQueue, opFilter]);
 
   const visibleOps = useMemo(

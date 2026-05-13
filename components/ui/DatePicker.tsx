@@ -145,14 +145,16 @@ export function DatePicker({
   useEffect(() => {
     if (!open) return;
     const d = value ? parseYmd(value) : null;
-    if (d) {
-      setDraftStart(d);
-      setDraftEnd(d);
-      queueMicrotask(() => setViewDate(startOfMonth(d)));
-    } else {
-      setDraftStart(null);
-      setDraftEnd(null);
-    }
+    queueMicrotask(() => {
+      if (d) {
+        setDraftStart(d);
+        setDraftEnd(d);
+        setViewDate(startOfMonth(d));
+      } else {
+        setDraftStart(null);
+        setDraftEnd(null);
+      }
+    });
   }, [open, value]);
 
   useEffect(() => {
@@ -186,7 +188,7 @@ export function DatePicker({
 
   useLayoutEffect(() => {
     if (!open) return;
-    computePopover();
+    queueMicrotask(() => computePopover());
     const onResize = () => computePopover();
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onResize, true);

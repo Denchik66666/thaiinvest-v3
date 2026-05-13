@@ -60,15 +60,17 @@ export function InvestorCard({ investor, variant = "view", className }: Investor
   });
 
   useEffect(() => {
-    setEditForm({
-      name: investor.name,
-      body: String(investor.body),
-      rate: String(investor.rate),
-      accrued: String(investor.accrued),
-      paid: investor.paid != null ? String(investor.paid) : "0",
-      entryDate: investor.entryDate ? investor.entryDate.split("T")[0] : "",
-      activationDate: investor.activationDate ? investor.activationDate.split("T")[0] : "",
-    });
+    queueMicrotask(() =>
+      setEditForm({
+        name: investor.name,
+        body: String(investor.body),
+        rate: String(investor.rate),
+        accrued: String(investor.accrued),
+        paid: investor.paid != null ? String(investor.paid) : "0",
+        entryDate: investor.entryDate ? investor.entryDate.split("T")[0] : "",
+        activationDate: investor.activationDate ? investor.activationDate.split("T")[0] : "",
+      })
+    );
   }, [
     investor.id,
     investor.name,

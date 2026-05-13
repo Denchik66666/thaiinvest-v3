@@ -208,7 +208,8 @@ function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
   }, [investorIdFromUrl, validatedInvestorFilterId, investorsData, searchParams, router]);
 
   useEffect(() => {
-    if (validatedInvestorFilterId != null || networkExpanded) setOwnerSingleInvestorFeedCollapsed(false);
+    if (validatedInvestorFilterId == null && !networkExpanded) return;
+    queueMicrotask(() => setOwnerSingleInvestorFeedCollapsed(false));
   }, [validatedInvestorFilterId, networkExpanded]);
 
   // Сворачиваем “сеть” сразу в обработчике выбора инвестора; отдельный effect не нужен.
@@ -223,13 +224,7 @@ function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
       return { kind: "investor", id: myInvestors[0].id };
     }
     return { kind: "collapsed" };
-  }, [
-    validatedInvestorFilterId,
-    networkExpanded,
-    user?.role,
-    myInvestors,
-    ownerSingleInvestorFeedCollapsed,
-  ]);
+  }, [validatedInvestorFilterId, networkExpanded, user, myInvestors, ownerSingleInvestorFeedCollapsed]);
 
   const effectiveFilterInvestorId = accordionExpanded.kind === "investor" ? accordionExpanded.id : null;
 
@@ -312,7 +307,7 @@ function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
     if (!hit) return;
     if (deepLinkOpenedRef.current === dedupeKey) return;
     deepLinkOpenedRef.current = dedupeKey;
-    setDetailItem(hit);
+    queueMicrotask(() => setDetailItem(hit));
   }, [paymentIdFromUrl, resolvedInvestorForPaymentDeepLink, deepLinkHistoryData?.items]);
 
   const pushInvestorQuery = useCallback(
@@ -370,7 +365,7 @@ function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
       setOwnerSingleInvestorFeedCollapsed(false);
       pushInvestorQuery(id);
     },
-    [validatedInvestorFilterId, pushInvestorQuery, user?.role, myInvestors, ownerSingleInvestorFeedCollapsed]
+    [validatedInvestorFilterId, pushInvestorQuery, user, myInvestors, ownerSingleInvestorFeedCollapsed]
   );
 
   const investorCardsSlot = showInvestorFilter

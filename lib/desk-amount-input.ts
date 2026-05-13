@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, KeyboardEvent } from "react";
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 export function parseDeskAmountDigits(value: string): number {
   return Number(value.replace(/[^\d]/g, ""));
@@ -97,5 +97,10 @@ export function useDeskAmountCursorRestore(displayValue: string) {
     return next;
   }
 
-  return { inputRef, captureFromChangeEvent, armCursor };
+  /** Callback-ref: eslint react-hooks/refs не ругается на `ref={inputRef}` у объекта из хука. */
+  const setInputRef = useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+  }, []);
+
+  return { inputRef, setInputRef, captureFromChangeEvent, armCursor };
 }

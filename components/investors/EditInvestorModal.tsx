@@ -42,7 +42,7 @@ export function EditInvestorModal({ open, onClose, investor }: EditInvestorModal
 
   useEffect(() => {
     if (!open) return;
-    setFormData(investorToForm(investor));
+    queueMicrotask(() => setFormData(investorToForm(investor)));
   }, [open, investor]);
 
   const isCommonNetwork = investor.isPrivate !== true;

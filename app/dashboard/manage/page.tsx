@@ -360,7 +360,7 @@ export default function DashboardManagePage() {
     if (!user?.id) return [];
     const list = superAdminCommonData?.investors ?? [];
     return list.filter((inv) => inv.linkedUserId === user.id && inv.isPrivate === false);
-  }, [user?.id, superAdminCommonData?.investors]);
+  }, [user, superAdminCommonData?.investors]);
   const ownerUsername = readinessData?.snapshot?.ownerUser?.username ?? null;
   const missingBlockingChecks = readinessData?.missingBlocking ?? readinessData?.missing ?? [];
   const missingOptionalChecks = readinessData?.missingOptional ?? [];

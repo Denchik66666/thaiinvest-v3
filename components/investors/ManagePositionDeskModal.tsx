@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type SetStateAction,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
 } from "react";
@@ -343,13 +344,17 @@ function CreateInvestorContent(p: CreateModeProps) {
     onClose,
   } = p;
 
-  const bodyCursor = useDeskAmountCursorRestore(formData.body);
+  const {
+    setInputRef: setDeskBodyInputRef,
+    captureFromChangeEvent: captureDeskBodyChange,
+    armCursor: armDeskBodyCursor,
+  } = useDeskAmountCursorRestore(formData.body);
   const typedBody = parseDeskAmountDigits(formData.body);
 
   const onBodyAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const hit = deskAmountBackspaceInSuffix(e, formData.body);
     if (!hit) return;
-    bodyCursor.armCursor(hit.cursor);
+    armDeskBodyCursor(hit.cursor);
     setFormData({ ...formData, body: hit.nextFormatted });
   };
   const privateOver =
@@ -545,9 +550,9 @@ function CreateInvestorContent(p: CreateModeProps) {
               type="text"
               required
               disabled={loading}
-              ref={bodyCursor.inputRef}
+              ref={setDeskBodyInputRef}
               value={formData.body}
-              onChange={(e) => setFormData({ ...formData, body: bodyCursor.captureFromChangeEvent(e) })}
+              onChange={(e) => setFormData({ ...formData, body: captureDeskBodyChange(e) })}
               onKeyDown={onBodyAmountKeyDown}
               placeholder="Тело · ฿"
               inputMode="numeric"
@@ -561,9 +566,9 @@ function CreateInvestorContent(p: CreateModeProps) {
                 type="text"
                 required
                 disabled={loading}
-                ref={bodyCursor.inputRef}
+                ref={setDeskBodyInputRef}
                 value={formData.body}
-                onChange={(e) => setFormData({ ...formData, body: bodyCursor.captureFromChangeEvent(e) })}
+                onChange={(e) => setFormData({ ...formData, body: captureDeskBodyChange(e) })}
                 onKeyDown={onBodyAmountKeyDown}
                 placeholder="Тело · ฿"
                 inputMode="numeric"
@@ -667,7 +672,10 @@ export function CommonNetworkInvestorDeskShell({
   });
 
   const rateCallbackRef = useRef(onBusinessRateCurrent);
-  rateCallbackRef.current = onBusinessRateCurrent;
+
+  useLayoutEffect(() => {
+    rateCallbackRef.current = onBusinessRateCurrent;
+  }, [onBusinessRateCurrent]);
 
   useEffect(() => {
     if (!open) return;
@@ -815,12 +823,16 @@ function LinkSelfDeskWithShell(props: LinkSelfModeProps) {
 
 function LinkSelfContent(p: LinkSelfModeProps) {
   const { form, setForm, onSubmit, onClose, loading, systemReady, submitDisabled, error } = p;
-  const bodyCursor = useDeskAmountCursorRestore(form.body);
+  const {
+    setInputRef: setLinkSelfBodyInputRef,
+    captureFromChangeEvent: captureLinkSelfBodyChange,
+    armCursor: armLinkSelfBodyCursor,
+  } = useDeskAmountCursorRestore(form.body);
 
   const onBodyAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const hit = deskAmountBackspaceInSuffix(e, form.body);
     if (!hit) return;
-    bodyCursor.armCursor(hit.cursor);
+    armLinkSelfBodyCursor(hit.cursor);
     setForm((prev) => ({ ...prev, body: hit.nextFormatted }));
   };
 
@@ -894,9 +906,9 @@ function LinkSelfContent(p: LinkSelfModeProps) {
             type="text"
             required
             disabled={loading}
-            ref={bodyCursor.inputRef}
+            ref={setLinkSelfBodyInputRef}
             value={form.body}
-            onChange={(e) => setForm((prev) => ({ ...prev, body: bodyCursor.captureFromChangeEvent(e) }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, body: captureLinkSelfBodyChange(e) }))}
             onKeyDown={onBodyAmountKeyDown}
             placeholder="Тело · ฿"
             inputMode="numeric"
@@ -953,13 +965,17 @@ function LinkSelfContent(p: LinkSelfModeProps) {
 
 function BodyTopUpContent(p: BodyTopUpModeProps) {
   const { amount, setAmount, comment, setComment, onSubmit, onClose, loading, error } = p;
-  const amountCursor = useDeskAmountCursorRestore(amount);
+  const {
+    setInputRef: setBodyTopUpAmountInputRef,
+    captureFromChangeEvent: captureBodyTopUpAmountChange,
+    armCursor: armBodyTopUpAmountCursor,
+  } = useDeskAmountCursorRestore(amount);
   const parsed = parseDeskAmountDigits(amount);
 
   const onAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const hit = deskAmountBackspaceInSuffix(e, amount);
     if (!hit) return;
-    amountCursor.armCursor(hit.cursor);
+    armBodyTopUpAmountCursor(hit.cursor);
     setAmount(hit.nextFormatted);
   };
 
@@ -980,9 +996,9 @@ function BodyTopUpContent(p: BodyTopUpModeProps) {
           required
           type="text"
           inputMode="numeric"
-          ref={amountCursor.inputRef}
+          ref={setBodyTopUpAmountInputRef}
           value={amount}
-          onChange={(e) => setAmount(amountCursor.captureFromChangeEvent(e))}
+          onChange={(e) => setAmount(captureBodyTopUpAmountChange(e))}
           onKeyDown={onAmountKeyDown}
           placeholder="Сумма · ฿"
           disabled={loading}

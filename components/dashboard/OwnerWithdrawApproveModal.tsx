@@ -32,7 +32,8 @@ export function OwnerWithdrawApproveModal({
   const [comment, setComment] = useState("");
 
   useEffect(() => {
-    if (open && payment) setComment("");
+    if (!open || !payment) return;
+    queueMicrotask(() => setComment(""));
   }, [open, payment?.id, variant]);
 
   const handleClose = () => {

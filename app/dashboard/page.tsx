@@ -165,11 +165,15 @@ export default function DashboardPage() {
     amount: "",
     comment: "",
   });
-  const withdrawAmountCursor = useDeskAmountCursorRestore(withdrawForm.amount);
+  const {
+    setInputRef: setWithdrawAmountInputRef,
+    captureFromChangeEvent: captureWithdrawAmountChange,
+    armCursor: armWithdrawAmountCursor,
+  } = useDeskAmountCursorRestore(withdrawForm.amount);
   const onWithdrawAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const hit = deskAmountBackspaceInSuffix(e, withdrawForm.amount);
     if (!hit) return;
-    withdrawAmountCursor.armCursor(hit.cursor);
+    armWithdrawAmountCursor(hit.cursor);
     setWithdrawForm((prev) => ({ ...prev, amount: hit.nextFormatted }));
   };
   const [pageVisible, setPageVisible] = useState(true);
@@ -587,12 +591,12 @@ export default function DashboardPage() {
                     <Input
                       required
                       type="text"
-                      ref={withdrawAmountCursor.inputRef}
+                      ref={setWithdrawAmountInputRef}
                       value={withdrawForm.amount}
                       onChange={(e) =>
                         setWithdrawForm((prev) => ({
                           ...prev,
-                          amount: withdrawAmountCursor.captureFromChangeEvent(e),
+                          amount: captureWithdrawAmountChange(e),
                         }))
                       }
                       onKeyDown={onWithdrawAmountKeyDown}

@@ -52,7 +52,7 @@ async function main() {
     }),
   ]);
 
-  let auditBodies: { auditId: number; createdAt: string; bodyFromJson: unknown }[] = [];
+  const auditBodies: { auditId: number; createdAt: string; bodyFromJson: unknown }[] = [];
   for (const a of audits) {
     let bodyFromJson: unknown = null;
     if (a.newValue) {
