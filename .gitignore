@@ -43,6 +43,7 @@ yarn-error.log*
 .env.vercel
 .env.vercel.*
 .env.vercel.pull
+.env.migrate-direct
 
 # vercel
 .vercel
@@ -57,6 +58,7 @@ next-env.d.ts
 .cursor/debug-*.log
 backup_*.zip
 backups/*.bundle
+backups/*.dump
 db_backup_*.json
 prisma/dev.db
 
