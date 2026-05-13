@@ -190,12 +190,14 @@
 
 **Запрещено** вводить второй способ расчёта «начислено» или недельных сумм в обход нижеуказанного кода (никаких параллельных формул `body * rate * weeks` и т.п.).
 
+**Обязательная синхронизация:** при **любом** создании, удалении или редактировании данных, которые участвуют в леджере (**`Payment`**, **`BodyTopUpRequest`** — статус/сумма/даты, завершение выплаты и т.д.), после успешной мутации вызывать **`syncSingleInvestorAccruedAndPaidFromLedger`** (`lib/business-rate-accrual-recalc.ts`) для затронутого **`investorId`**, чтобы в БД сразу попали **`accrued`** = **`computeInvestorAccruedEndFromLedger`** и **`paid`** = **`computeInvestorPaidCompletedTotal`**. Не полагаться только на отложенный **`scheduleBusinessRateRecalc`** для согласованности после удаления строк.
+
 ### 7.1 Поле **`Investor.accrued`**
 
 - Считается **только** через **`buildWeeklyLedgerRows`** → последняя строка **`accruedEnd`**, обёрнутая в **`computeInvestorAccruedEndFromLedger`** (`lib/investor-accrued-ledger.ts`).
 - Учитываются **только закрытые недели**; текущая открытая неделя **не добавляет** процент в остаток; выплаты текущей недели **уменьшают** остаток по правилам леджера.
 - Итог в БД — **целые баты** (`Math.round` / без дробной части в продуктовом смысле).
-- Массовый пересчёт: **`recalculateInvestorAccruedFromRateHistory`** (`lib/business-rate-accrual-recalc.ts`) и очередь **`scheduleBusinessRateRecalc`**.
+- Массовый пересчёт: **`recalculateInvestorAccruedFromRateHistory`** (`lib/business-rate-accrual-recalc.ts`) и очередь **`scheduleBusinessRateRecalc`** (изменения **`RateHistory`** и т.п.). Точечная синхронизация одной позиции — **`syncSingleInvestorAccruedAndPaidFromLedger`** (тот же канон, что и в **`PATCH /api/investors/[id]`** при пересчёте).
 
 ### 7.2 Поле **`Investor.paid`**
 
@@ -216,5 +218,6 @@
 ### 7.5 Файлы-ориентиры
 
 - Леджер: **`lib/weekly-ledger-rows.ts`** (`buildWeeklyLedgerRows`), **`lib/investor-accrued-ledger.ts`** (обёртки для БД).
+- Синхронизация одной позиции после мутаций выплат/пополнений: **`syncSingleInvestorAccruedAndPaidFromLedger`** в **`lib/business-rate-accrual-recalc.ts`**.
 - История операций / сводка / API карточки: передают **`acceptedBodyTopUps`** в **`buildWeeklyLedgerRows`**.
 - Создание позиции (**`POST /api/investors`**), **`PATCH /api/investors/[id]`**, **`become-semen-investor`**: ретро-**`accrued`** только через **`computeInvestorAccruedEndFromLedger`**, не через локальные циклы по неделям.

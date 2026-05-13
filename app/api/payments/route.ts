@@ -8,7 +8,7 @@ import { getNextMonday } from "@/lib/weekly";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
 import { moneyRound2 } from "@/lib/money-round";
-import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
+import { syncSingleInvestorAccruedAndPaidFromLedger } from "@/lib/business-rate-accrual-recalc";
 import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
 
 type PaymentType = "interest" | "body" | "close";
@@ -431,7 +431,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT ACCEPT AUDIT ERROR:", auditError);
       }
-      scheduleBusinessRateRecalc();
+      await syncSingleInvestorAccruedAndPaidFromLedger(payment.investorId);
       clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
@@ -512,7 +512,7 @@ export async function POST(request: NextRequest) {
       } catch (auditError) {
         console.error("PAYMENT FORCE APPROVE AUDIT ERROR:", auditError);
       }
-      scheduleBusinessRateRecalc();
+      await syncSingleInvestorAccruedAndPaidFromLedger(payment.investorId);
       clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
