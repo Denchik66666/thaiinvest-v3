@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/Input";
 import { InvestorCard } from "@/components/investors/InvestorCard";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { apiClient } from "@/lib/api-client";
 import { investorEntryToYmd } from "@/lib/investor-entry-ymd";
 import { investorDisplayHandle } from "@/lib/investor-display-handle";
@@ -277,8 +278,9 @@ export default function InvestorDetailPageClient({ investorId }: { investorId: s
             <ChevronLeft className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
             <span className="truncate">Назад</span>
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <NotificationBell />
+            <DashboardLogoutButton />
           </div>
         </div>
 

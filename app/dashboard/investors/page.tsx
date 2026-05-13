@@ -13,6 +13,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { InvestorsTable } from "@/components/investors/InvestorsTable";
 import { apiClient } from "@/lib/api-client";
 import { normalizeHandleDisplay } from "@/lib/investor-display-handle";
@@ -272,8 +273,9 @@ export default function InvestorsListPage() {
               ›
             </span>
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <NotificationBell />
+            <DashboardLogoutButton />
           </div>
         </div>
 

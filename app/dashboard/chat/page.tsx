@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/Input";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 
 type ChatContext = {
@@ -161,8 +162,9 @@ function ChatPageInner() {
             <ChevronLeft className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
             <span className="truncate">Главная</span>
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <NotificationBell />
+            <DashboardLogoutButton />
             <button
               type="button"
               onClick={() => router.push("/dashboard/profile")}
