@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 
 export type DashboardTopbarProps = {
   barScrolled: boolean;
@@ -61,8 +62,9 @@ export function DashboardTopbar({
         </div>
         <span className="min-h-px min-w-0 flex-1 select-none" aria-hidden />
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
         <NotificationBell />
+        <DashboardLogoutButton />
       </div>
     </div>
   );

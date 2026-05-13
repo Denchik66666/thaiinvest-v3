@@ -19,6 +19,7 @@ import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
@@ -468,8 +469,9 @@ function FinanceHubFinanceBody({ user }: { user: AuthUser }) {
                 Финансы
               </h1>
             </div>
-            <div className="flex justify-end pr-0.5">
+            <div className="flex justify-end gap-1.5 pr-0.5 sm:gap-2">
               <NotificationBell />
+              <DashboardLogoutButton />
             </div>
           </div>
           {user.role === "SUPER_ADMIN" ? (

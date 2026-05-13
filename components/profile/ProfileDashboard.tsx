@@ -27,6 +27,7 @@ import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import ThemeToggle from "@/components/ThemeToggle";
 import { UserAvatar } from "@/components/user/UserAvatar";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { SuperAdminDatabaseResetSection } from "@/components/profile/SuperAdminDatabaseResetSection";
 import { toast } from "@/lib/notify";
 import {
@@ -422,7 +423,7 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
               "bg-background/[0.35] dark:bg-[#0d0d14]/65"
             )}
           >
-            <div className="grid grid-cols-[minmax(2.5rem,auto)_1fr_minmax(2.5rem,auto)] items-center gap-1">
+            <div className="grid grid-cols-[minmax(2.5rem,auto)_1fr_minmax(6.5rem,auto)] items-center gap-1">
               <button
                 type="button"
                 onClick={goHistoryBack}
@@ -438,8 +439,9 @@ export function ProfileDashboard({ user, refresh }: { user: AuthUser; refresh: (
               <h1 className="truncate px-1 text-center text-[15px] font-semibold tracking-tight text-foreground">
                 Профиль
               </h1>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-1">
                 <NotificationBell />
+                <DashboardLogoutButton />
               </div>
             </div>
             <nav className="mt-2 flex gap-0.5 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/[0.04]" aria-label="Разделы профиля">

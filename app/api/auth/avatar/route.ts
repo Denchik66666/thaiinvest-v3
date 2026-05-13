@@ -1,6 +1,7 @@
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 
+import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
@@ -51,23 +52,37 @@ export async function POST(request: Request) {
 
   const buf = Buffer.from(await file.arrayBuffer());
   const ext = file.type === "image/png" ? "png" : "jpg";
-  const dir = avatarDir();
-  await mkdir(dir, { recursive: true });
-
   const userId = decoded.userId;
-  for (const e of ["jpg", "jpeg", "png"] as const) {
-    try {
-      await unlink(path.join(dir, `${userId}.${e}`));
-    } catch {
-      /* ignore */
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+
+  let avatarUrl: string;
+
+  if (blobToken) {
+    const blob = await put(`avatars/user-${userId}.${ext}`, buf, {
+      access: "public",
+      token: blobToken,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    avatarUrl = `${blob.url}?v=${Date.now()}`;
+  } else {
+    const dir = avatarDir();
+    await mkdir(dir, { recursive: true });
+
+    for (const e of ["jpg", "jpeg", "png"] as const) {
+      try {
+        await unlink(path.join(dir, `${userId}.${e}`));
+      } catch {
+        /* ignore */
+      }
     }
+
+    const filename = `${userId}.${ext}`;
+    const filepath = path.join(dir, filename);
+    await writeFile(filepath, buf);
+
+    avatarUrl = `/uploads/avatars/${filename}?v=${Date.now()}`;
   }
-
-  const filename = `${userId}.${ext}`;
-  const filepath = path.join(dir, filename);
-  await writeFile(filepath, buf);
-
-  const avatarUrl = `/uploads/avatars/${filename}?v=${Date.now()}`;
 
   await withDbRetry(() =>
     prisma.user.update({

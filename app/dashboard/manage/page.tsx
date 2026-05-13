@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 
 import { SuperAdminNetworkOverviewCard } from "@/components/dashboard/SuperAdminNetworkOverviewCard";
 import { ManagePositionDeskModal } from "@/components/investors/ManagePositionDeskModal";
@@ -496,8 +497,9 @@ export default function DashboardManagePage() {
                 aria-hidden
               />
             </div>
-            <div className="flex justify-end pr-0.5">
+            <div className="flex justify-end gap-1.5 pr-0.5 sm:gap-2">
               <NotificationBell />
+              <DashboardLogoutButton />
             </div>
           </div>
         </div>
