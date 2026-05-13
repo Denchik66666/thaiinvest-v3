@@ -1,4 +1,4 @@
-import { getNextMonday, getPreviousOrCurrentMonday, getWeekStartMonday, startOfDay } from "@/lib/weekly";
+import { bangkokWeekStartMondayContaining, getNextMondayBangkok } from "@/lib/history-period";
 import { moneyRound2 } from "@/lib/money-round";
 
 export type WeeklyLedgerRow = {
@@ -47,10 +47,10 @@ export function ledgerAcceptedTopUpsFromPrismaRows(
  *
  * Если переданы **`acceptedBodyTopUps`** (принятые заявки на пополнение тела):
  * - стартовое тело до первого пополнения = `body` − сумма принятых пополнений + сумма завершённых выплат «тело»;
- * - в понедельник **`getNextMonday(startOfDay(effectiveAt))`**: если день пополнения не понедельник — первый понедельник **после** этой даты (тело не увеличивается «задним числом» в начале календарной недели до даты заявки);
- * - шаг недели выравнивается на понедельник от `activationDate`, чтобы сетка недель совпадала с `RateHistory` / UI.
+ * - в понедельник **`getNextMondayBangkok(effectiveAt)`** (`lib/history-period.ts`): если день пополнения не понедельник по Bangkok — первый понедельник **после** этой даты (тело не увеличивается «задним числом» в начале календарной недели до даты заявки);
+ * - шаг недели: **`bangkokWeekStartMondayContaining(activationDate)`** — сетка совпадает с `RateHistory` / UI (Asia/Bangkok).
  *
- * Если **`acceptedBodyTopUps`** нет — прежнее поведение: на все недели берётся текущее `body` (без истории пополнений).
+ * Если **`acceptedBodyTopUps`** нет — на все недели берётся текущее `body` (без истории пополнений), но сетка недель та же (понедельник Bangkok).
  */
 export function buildWeeklyLedgerRows(
   investor: {
@@ -64,7 +64,7 @@ export function buildWeeklyLedgerRows(
   rateHistory: RateHistoryRow[],
   now: Date = new Date()
 ): WeeklyLedgerRow[] {
-  const lastClosedWeekStart = getPreviousOrCurrentMonday(now);
+  const lastClosedWeekStart = bangkokWeekStartMondayContaining(now);
 
   const resolveBusinessRateForWeek = (weekStart: Date) => {
     if (!rateHistory.length) return investor.rate;
@@ -94,16 +94,12 @@ export function buildWeeklyLedgerRows(
 
   const topUpByWeekMonday = new Map<number, number>();
   for (const t of sortedTopUps) {
-    const bumpWeekStart = getNextMonday(startOfDay(t.effectiveAt));
+    const bumpWeekStart = getNextMondayBangkok(t.effectiveAt);
     const wk = bumpWeekStart.getTime();
     topUpByWeekMonday.set(wk, moneyRound2((topUpByWeekMonday.get(wk) ?? 0) + t.amount));
   }
 
-  let cursor = new Date(investor.activationDate);
-  cursor.setHours(0, 0, 0, 0);
-  if (sortedTopUps.length > 0) {
-    cursor = getWeekStartMonday(startOfDay(investor.activationDate));
-  }
+  let cursor = bangkokWeekStartMondayContaining(investor.activationDate);
 
   let runningBody = sortedTopUps.length > 0 ? initialBaseBody : investor.body;
   let accrued = 0;
@@ -113,7 +109,7 @@ export function buildWeeklyLedgerRows(
     const weekStart = new Date(cursor);
     const weekEnd = new Date(cursor.getTime() + oneWeekMs);
 
-    const weekMondayTs = getWeekStartMonday(startOfDay(weekStart)).getTime();
+    const weekMondayTs = bangkokWeekStartMondayContaining(weekStart).getTime();
     const bump = topUpByWeekMonday.get(weekMondayTs);
     if (bump != null && bump !== 0) {
       runningBody = moneyRound2(runningBody + bump);
@@ -169,7 +165,7 @@ export function buildWeeklyLedgerRows(
   const currentWeekStart = new Date(lastClosedWeekStart);
   const currentWeekEnd = new Date(currentWeekStart.getTime() + oneWeekMs);
 
-  const curMondayTs = getWeekStartMonday(startOfDay(currentWeekStart)).getTime();
+  const curMondayTs = bangkokWeekStartMondayContaining(currentWeekStart).getTime();
   const bumpOpen = topUpByWeekMonday.get(curMondayTs);
   if (bumpOpen != null && bumpOpen !== 0) {
     runningBody = moneyRound2(runningBody + bumpOpen);
