@@ -9,6 +9,7 @@ import { applyApprovedCorrectionPayload, type CorrectionPayload } from "@/lib/pa
 import { getPaymentCorrectionProposalDelegate } from "@/lib/payment-correction-proposal-delegate";
 import { isPrismaMissingTableForModel } from "@/lib/prisma-known-errors";
 import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
+import { syncSingleInvestorAccruedAndPaidFromLedger } from "@/lib/business-rate-accrual-recalc";
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -118,6 +119,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         newValue: JSON.stringify({ proposalId: proposal.id, paymentId: updatedPayment.id }),
       });
 
+      await syncSingleInvestorAccruedAndPaidFromLedger(proposal.payment.investorId);
       clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updatedPayment });
     } catch (err) {

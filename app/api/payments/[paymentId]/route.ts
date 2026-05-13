@@ -11,6 +11,7 @@ import { logAction } from "@/lib/audit";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { moneyRound2 } from "@/lib/money-round";
 import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
+import { syncSingleInvestorAccruedAndPaidFromLedger } from "@/lib/business-rate-accrual-recalc";
 
 export async function DELETE(_request: NextRequest, context: { params: Promise<{ paymentId: string }> }) {
   try {
@@ -56,28 +57,20 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
       throw new Error("DELETE_CLOSE_UNSUPPORTED");
     }
 
-    if (payment.status === "completed" && (payType === "interest" || payType === "body")) {
+    /** Восстановление тела при удалении завершённой выплаты «тело» — нужно для формулы леджера (`Investor.body` + completed body payments). Проценты: только удаление строки + пересчёт каноном. */
+    if (payment.status === "completed" && payType === "body") {
       const inv = payment.investor;
       const amt = moneyRound2(payment.amount);
-      if (payType === "interest") {
-        await withDbRetry(() =>
-          prisma.investor.update({
-            where: { id: inv.id },
-            data: { accrued: moneyRound2(inv.accrued + amt) },
-          })
-        );
-      } else {
-        const nb = moneyRound2(inv.body + amt);
-        await withDbRetry(() =>
-          prisma.investor.update({
-            where: { id: inv.id },
-            data: {
-              body: nb,
-              status: nb > 0 && inv.status === "closed" ? "active" : inv.status,
-            },
-          })
-        );
-      }
+      const nb = moneyRound2(inv.body + amt);
+      await withDbRetry(() =>
+        prisma.investor.update({
+          where: { id: inv.id },
+          data: {
+            body: nb,
+            status: nb > 0 && inv.status === "closed" ? "active" : inv.status,
+          },
+        })
+      );
     }
 
     auditPayload = {
@@ -88,6 +81,8 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
     };
 
     await withDbRetry(() => prisma.payment.delete({ where: { id: payment.id } }));
+
+    await syncSingleInvestorAccruedAndPaidFromLedger(payment.investorId);
 
     if (auditPayload) {
       void logAction({

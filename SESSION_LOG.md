@@ -2,6 +2,12 @@
 
 Краткие записи о зафиксированных договорённостях и заметных изменениях контекста (для агента и людей).
 
+## 2026-05-09 — После restore: сверка accrued/paid
+
+- **Скрипт (только `.env` → прод):** `npm run db:reconcile-investors:prod` (dry-run), `npm run db:reconcile-investors:prod:apply` (запись). Исходник: `scripts/reconcile-all-investors-prod.ts` (импорт `scripts/load-prod-env-only.ts` — **без** `.env.local`).
+- **Канон пересчёта:** `reconcileAllInvestorsAccruedAndPaidFromLedger` в `lib/business-rate-accrual-recalc.ts` — все позиции, включая `closed` (в отличие от фонового `recalculateInvestorAccruedFromRateHistory`, который закрытые пропускает).
+- **Чек-лист после переноса дампа на Supabase:** (1) `prisma migrate deploy`; (2) dry-run reconcile и просмотр расхождений; (3) `--apply`; (4) сравнение с локалью в том же скрипте; (5) не править вручную только `paid` без последующего пересчёта — иначе снова рассинхрон с `Payment`.
+
 ## 2026-05-09 — Релиз v3.1.0 (финальный статус перед деплоем)
 
 - Зафиксированы **git-тег `v3.1.0`**, версия в **`package.json` — `3.1.0`**, коммит: *«v3.1.0 — финальная подготовка к деплою: единый расчёт accrued/paid, правила, чистка»*. Полный список тем — **`CHANGELOG.md`** § **[3.1.0] — 2026-05-09**.

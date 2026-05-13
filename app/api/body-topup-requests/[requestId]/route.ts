@@ -11,6 +11,8 @@ import { logAction } from "@/lib/audit";
 import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
 import { moneyRound2 } from "@/lib/money-round";
 import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
+import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
+import { syncSingleInvestorAccruedAndPaidFromLedger } from "@/lib/business-rate-accrual-recalc";
 
 const TOPUP_STATUSES = new Set([
   "pending_investor",
@@ -93,6 +95,8 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
 
     await withDbRetry(() => prisma.bodyTopUpRequest.delete({ where: { id: row.id } }));
 
+    await syncSingleInvestorAccruedAndPaidFromLedger(row.investorId);
+
     void logAction({
       userId: decoded.userId,
       action: "BODY_TOPUP_SUPER_ADMIN_DELETE",
@@ -100,6 +104,8 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
       entityId: requestId,
       oldValue: JSON.stringify(auditPayload),
     });
+
+    clearOperationsHistoryServerCache();
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
@@ -279,6 +285,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ r
         },
       }),
     });
+
+    await syncSingleInvestorAccruedAndPaidFromLedger(inv.id);
+    clearOperationsHistoryServerCache();
 
     return NextResponse.json({ success: true, request: updated });
   } catch (error: unknown) {
