@@ -31,7 +31,8 @@
     "bench:seed-payment-may5": "tsx scripts/seed-benchmark-payment-5000-may5.ts",
     "backup:full": "node scripts/ensure-local-db.mjs && node scripts/full-backup.mjs",
     "vercel:env:pull:production": "vercel env pull .env.vercel.pull --environment production --yes",
-    "db:migrate:vercel-production": "node scripts/run-prisma-migrate-with-env.mjs .env.vercel.pull"
+    "db:migrate:vercel-production": "node scripts/run-prisma-migrate-with-env.mjs .env.vercel.pull",
+    "env:sync-vercel-production": "node scripts/sync-dotenv-to-vercel-production.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
