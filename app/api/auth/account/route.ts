@@ -3,12 +3,21 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, hashPassword } from "@/lib/auth";
+import { invalidateAuthMeServerCache } from "@/lib/auth-me-server-cache";
 
 type AccountUpdateBody = {
   username?: string;
   currentPassword?: string;
   newPassword?: string;
 };
+
+/** Сравнение логина / handle без учёта регистра и ведущего «@». */
+function loginMatchesStoredHandle(login: string, handle: string | null | undefined): boolean {
+  if (handle == null) return false;
+  const a = login.trim().replace(/^@+/, "").toLowerCase();
+  const b = handle.trim().replace(/^@+/, "").toLowerCase();
+  return a.length > 0 && a === b;
+}
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -70,16 +79,43 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: updateData,
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        isSystemOwner: true,
-      },
+    const previousUsername = user.username;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: user.id },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          role: true,
+          isSystemOwner: true,
+        },
+      });
+
+      if (updateData.username) {
+        const rows = await tx.investor.findMany({
+          where: {
+            OR: [{ investorUserId: user.id }, { linkedUserId: user.id }],
+            handle: { not: null },
+          },
+          select: { id: true, handle: true },
+        });
+        const idsToClear = rows
+          .filter((r) => loginMatchesStoredHandle(previousUsername, r.handle))
+          .map((r) => r.id);
+        if (idsToClear.length) {
+          await tx.investor.updateMany({
+            where: { id: { in: idsToClear } },
+            data: { handle: null },
+          });
+        }
+      }
+
+      return u;
     });
+
+    invalidateAuthMeServerCache(user.id);
 
     return NextResponse.json({ success: true, user: updated });
   } catch (error) {

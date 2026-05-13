@@ -1,39 +1,52 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
+import { investorsDashboardListQueryKey, investorsDashboardNetworkParam } from "@/lib/investors-query";
+import { investorDisplayHandle } from "@/lib/investor-display-handle";
+import { getPreviousOrCurrentMonday } from "@/lib/weekly";
+import { sumExpectedFullOpenWeekAccrualRounded } from "@/lib/open-week-forecast";
+import { parseDeskAmountDigits, deskAmountBackspaceInSuffix, useDeskAmountCursorRestore } from "@/lib/desk-amount-input";
 import { DASHBOARD_STICKY_BAR_CLASS } from "@/lib/dashboard-sticky-bar";
 import { Container } from "@/components/ui/Container";
-import { Card } from "@/components/ui/Card";
 import { Text } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
-import { DatePicker } from "@/components/ui/DatePicker";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
-import { UserAvatar } from "@/components/user/UserAvatar";
-import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "@/lib/notify";
 import { notifyWithAttention } from "@/lib/attention-notify";
-import {
-  persistAppTheme,
-} from "@/lib/app-theme";
 import {
   readNotificationPreferences,
   subscribeNotificationPreferences,
 } from "@/lib/notification-preferences";
-
+import {
+  InvestorWithdrawalStatusBanner,
+  pickLatestWithdrawalRequest,
+} from "@/components/dashboard/investor-withdrawal-request-status";
+import { DashboardOperationsHistory } from "@/components/dashboard/DashboardOperationsHistory";
+import { InvestorPremiumDashboard, type InvestorForecastStrip } from "@/components/dashboard/InvestorPremiumDashboard";
+import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
+import type { OwnerPendingPaymentRow } from "@/components/dashboard/OwnerPendingPaymentsQueue";
+import { OwnerPremiumDashboard } from "@/components/dashboard/OwnerPremiumDashboard";
+import { InvestorPositionAvatarHeading } from "@/components/dashboard/InvestorPositionAvatarHeading";
 type InvestorRow = {
   id: number;
+  ownerId?: number;
   name: string;
+  handle?: string | null;
+  investorUser?: { username: string; avatarUrl?: string | null } | null;
+  linkedUser?: { id: number; username: string; avatarUrl?: string | null } | null;
   body: number;
   rate: number;
   accrued: number;
+  lifetimeInterestPaid?: number;
   paid: number;
   due: number;
   status: string;
@@ -57,6 +70,47 @@ type PaymentRow = {
   approvedAt?: string | null;
 };
 
+function subscribeHtmlDark(onStoreChange: () => void) {
+  if (typeof document === "undefined") return () => {};
+  const el = document.documentElement;
+  const obs = new MutationObserver(onStoreChange);
+  obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+  return () => obs.disconnect();
+}
+
+function snapshotHtmlDark() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
+function serverHtmlDark() {
+  return false;
+}
+
+const DASHBOARD_DARK_ROOT_STYLE: CSSProperties = {
+  background: "#0d0d14",
+  backgroundImage:
+    "radial-gradient(ellipse at 15% 0%, rgba(109,40,217,0.22) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(30,27,75,0.35) 0%, transparent 50%)",
+  minHeight: "100vh",
+};
+
+const GLASS_CARD_DARK: CSSProperties = {
+  background: "color-mix(in srgb, var(--thai-color-card-bg) 52%, transparent)",
+  backdropFilter: "blur(22px) saturate(165%)",
+  WebkitBackdropFilter: "blur(22px) saturate(165%)",
+  border: "none",
+  boxShadow: "0 18px 40px -24px rgba(0,0,0,0.45)",
+  borderRadius: "16px",
+};
+
+const GLASS_CARD_LIGHT: CSSProperties = {
+  background: "rgba(255,255,255,0.38)",
+  backdropFilter: "blur(22px) saturate(175%)",
+  WebkitBackdropFilter: "blur(22px) saturate(175%)",
+  border: "none",
+  boxShadow: "0 14px 36px -20px rgba(88, 52, 180, 0.14)",
+  borderRadius: "16px",
+};
+
 function getCurrentWeek() {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -77,63 +131,96 @@ function getCurrentWeek() {
   return { start: format(monday), end: format(sunday), nextPayout: format(nextMonday) };
 }
 
+function DashboardAuthSkeleton() {
+  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
+  const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
+  return (
+    <Container>
+      <div
+        className="thai-dashboard-root min-h-screen space-y-3 py-3 pb-24 md:space-y-5 md:py-8 md:pb-28"
+        style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+      >
+        <div className={DASHBOARD_STICKY_BAR_CLASS}>
+          <div className="h-11 max-w-[220px] flex-1 rounded-xl bg-muted/45 animate-pulse" />
+          <div className="ml-auto flex items-center gap-2">
+            <div className="h-10 w-10 rounded-full bg-muted/45 animate-pulse" />
+            <div className="h-9 w-[5.5rem] rounded-xl bg-muted/45 animate-pulse" />
+          </div>
+        </div>
+        <div className="thai-glass h-28 animate-pulse" style={glassCard} />
+        <div className="thai-glass h-24 animate-pulse" style={glassCard} />
+      </div>
+    </Container>
+  );
+}
+
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refresh: refreshAuth } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [showBecomeModal, setShowBecomeModal] = useState(false);
   const [selectedInvestorCardId, setSelectedInvestorCardId] = useState<number | null>(null);
-  const [becomeForm, setBecomeForm] = useState({
-    name: "",
-    body: "",
-    rate: "",
-    entryDate: new Date().toISOString().split("T")[0],
-    allowMultiple: false,
-  });
   const [withdrawForm, setWithdrawForm] = useState({
     investorId: "",
     type: "interest" as "interest" | "body" | "close",
     amount: "",
     comment: "",
-    requestDate: new Date().toISOString().split("T")[0],
   });
+  const {
+    setInputRef: setWithdrawAmountInputRef,
+    captureFromChangeEvent: captureWithdrawAmountChange,
+    armCursor: armWithdrawAmountCursor,
+  } = useDeskAmountCursorRestore(withdrawForm.amount);
+  const onWithdrawAmountKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const hit = deskAmountBackspaceInSuffix(e, withdrawForm.amount);
+    if (!hit) return;
+    armWithdrawAmountCursor(hit.cursor);
+    setWithdrawForm((prev) => ({ ...prev, amount: hit.nextFormatted }));
+  };
   const [pageVisible, setPageVisible] = useState(true);
+  const [barScrolled, setBarScrolled] = useState(false);
   const notifyPrefs = useSyncExternalStore(
     subscribeNotificationPreferences,
     readNotificationPreferences,
     readNotificationPreferences
   );
+  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
+  const glassCard = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
 
-  function toggleDarkMode() {
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    persistAppTheme("theme-linear", !isDark);
-  }
+  const investorsQueryKey = investorsDashboardListQueryKey(user?.role);
 
-  const parseAmountInput = (value: string) => Number(value.replace(/[^\d]/g, ""));
-  const formatAmountInput = (value: string) => {
-    const amount = parseAmountInput(value);
-    if (!amount) return "";
-    return `${amount.toLocaleString("ru-RU")} ฿`;
-  };
-
-  const { data: investorsData, isLoading: loadingInvestors } = useQuery({
-    queryKey: ["investors", "all"],
-    queryFn: () => apiClient.get<{ investors: InvestorRow[] }>("/api/investors?network=all"),
+  const { data: investorsData, isLoading: loadingInvestors, isError: investorsQueryError } = useQuery({
+    queryKey: investorsQueryKey,
+    queryFn: () =>
+      apiClient.get<{ investors: InvestorRow[] }>(
+        `/api/investors?network=${investorsDashboardNetworkParam(user!.role)}&lean=1`
+      ),
     enabled: !!user,
+    placeholderData: keepPreviousData,
+    /**
+     * INVESTOR: частый опрос позиции.
+     * OWNER: без опроса заявки из другого браузера не появятся (глобально refetchOnWindowFocus: false).
+     * Лёгкий lean-список раз в 45 с + обновление при возврате на вкладку.
+     */
     refetchInterval:
-      user?.role === "INVESTOR"
-        ? notifyPrefs.pollingMode === "fast"
-          ? pageVisible
-            ? 8_000
-            : 20_000
-          : notifyPrefs.pollingMode === "standard"
-            ? pageVisible
-              ? 15_000
-              : 30_000
-            : pageVisible
-              ? 30_000
-              : 60_000
-        : false,
+      user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN"
+        ? 30_000
+        : user?.role === "OWNER"
+          ? 45_000
+          : false,
+    refetchOnWindowFocus: user?.role === "OWNER",
+  });
+
+  const openWeekMondayIso = getPreviousOrCurrentMonday(new Date()).toISOString();
+  const needsWeeklyForecastRate =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN" || user?.role === "OWNER";
+  const { data: investorBusinessRate } = useQuery({
+    queryKey: ["system", "business-rate", openWeekMondayIso] as const,
+    queryFn: () =>
+      apiClient.get<{ success: boolean; current: { rate: number } | null }>(
+        `/api/system/business-rate?at=${encodeURIComponent(openWeekMondayIso)}`
+      ),
+    enabled: !!user && needsWeeklyForecastRate,
+    staleTime: 60_000,
   });
 
   const investors = useMemo(() => investorsData?.investors ?? [], [investorsData]);
@@ -142,7 +229,9 @@ export default function DashboardPage() {
       user?.role === "SUPER_ADMIN"
         ? investors.filter((inv) => !inv.isPrivate && inv.linkedUserId === user.id)
         : user?.role === "OWNER"
-          ? investors.filter((inv) => inv.owner.username === user?.username)
+          ? investors.filter((inv) =>
+              inv.ownerId != null && user?.id != null ? inv.ownerId === user.id : inv.owner.username === user?.username
+            )
           : investors.filter((inv) => inv.investorUserId === user?.id),
     [investors, user]
   );
@@ -157,10 +246,24 @@ export default function DashboardPage() {
       { capital: 0, accrued: 0, paid: 0, due: 0 }
     );
   }, [myInvestors]);
-  const hasLinkedCommonInvestment = useMemo(
-    () => myInvestors.length > 0,
+
+  const forecastPositions = useMemo(
+    () => myInvestors.map((i) => ({ body: i.body, isPrivate: i.isPrivate })),
     [myInvestors]
   );
+
+  const weeklyForecastSumBahtRounded =
+    user?.role === "INVESTOR" || user?.role === "SUPER_ADMIN" || user?.role === "OWNER"
+      ? sumExpectedFullOpenWeekAccrualRounded(forecastPositions, investorBusinessRate?.current?.rate ?? null)
+      : null;
+
+  const bestDueInvestor = useMemo(() => {
+    const list = myInvestors.filter((i) => i.due > 0.005);
+    if (!list.length) return null;
+    return list.reduce((a, b) => (b.due > a.due ? b : a));
+  }, [myInvestors]);
+
+  const canRequestWithdraw = bestDueInvestor != null;
   const selectedInvestorCard = useMemo(
     () => myInvestors.find((inv) => inv.id === selectedInvestorCardId) ?? null,
     [myInvestors, selectedInvestorCardId]
@@ -170,13 +273,73 @@ export default function DashboardPage() {
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const isOwner = user?.role === "OWNER";
   const isInvestor = user?.role === "INVESTOR";
-  const pageSubtitle = isOwner ? "Сводка по общей сети" : isInvestor ? "Кабинет инвестора" : "Мой кабинет инвестора";
-  const metricsSectionTitle = isOwner ? "Показатели сети" : "Мои показатели";
-  const capitalStatTitle = isOwner ? "Тело в сети" : "Баланс";
-  const positionsSectionTitle = isOwner ? "Инвесторы в сети" : "Мои позиции";
-  const positionsEmptyHint = isOwner
-    ? "В общей сети пока нет инвесторов. Добавьте первого в разделе «Управление»."
-    : "У тебя пока нет инвесторов. Когда появятся позиции, они будут отображаться здесь.";
+
+  const buildForecastStrip = useCallback(
+    (sum: number | null): InvestorForecastStrip | null => {
+      if (sum == null || myInvestors.length === 0 || sum < 1) return null;
+      const amt = new Intl.NumberFormat("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(sum);
+      return {
+        amountPlusBaht: `+${amt} ฿`,
+        payoutDate: currentWeek.nextPayout,
+      };
+    },
+    [myInvestors.length, currentWeek.nextPayout]
+  );
+
+  const investorForecastStrip = useMemo(
+    () =>
+      isInvestor || isSuperAdmin ? buildForecastStrip(weeklyForecastSumBahtRounded) : null,
+    [isInvestor, isSuperAdmin, buildForecastStrip, weeklyForecastSumBahtRounded]
+  );
+
+  const ownerForecastStrip = useMemo(
+    () => (isOwner ? buildForecastStrip(weeklyForecastSumBahtRounded) : null),
+    [isOwner, buildForecastStrip, weeklyForecastSumBahtRounded]
+  );
+
+  const latestInvestorWithdrawalMeta = useMemo(() => {
+    if ((!isInvestor && !isSuperAdmin) || investorsQueryError) return null;
+    return pickLatestWithdrawalRequest(myInvestors);
+  }, [isInvestor, isSuperAdmin, investorsQueryError, myInvestors]);
+
+  const latestWithdrawalInvestorName = useMemo(() => {
+    if (!latestInvestorWithdrawalMeta) return undefined;
+    return myInvestors.find((i) => i.id === latestInvestorWithdrawalMeta.investorId)?.name;
+  }, [latestInvestorWithdrawalMeta, myInvestors]);
+
+  const activeInvestorsCount = useMemo(
+    () => myInvestors.filter((i) => i.status === "active").length,
+    [myInvestors]
+  );
+
+  const ownerPendingPayments = useMemo((): OwnerPendingPaymentRow[] => {
+    if (!isOwner) return [];
+    const rows: OwnerPendingPaymentRow[] = [];
+    for (const inv of myInvestors) {
+      for (const p of inv.payments ?? []) {
+        if (p.status !== "requested") continue;
+        rows.push({
+          id: p.id,
+          investorId: inv.id,
+          investorName: inv.name,
+          type: p.type,
+          amount: p.amount,
+          comment: p.comment,
+          createdAt: p.createdAt,
+        });
+      }
+    }
+    return rows.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [isOwner, myInvestors]);
+
+  const headlineLine1 = useMemo(() => {
+    if (!isOwner) return "";
+    return `Моя сеть · ${activeInvestorsCount} активных инвесторов`;
+  }, [isOwner, activeInvestorsCount]);
+
   const paymentStatusRef = useRef<Record<string, string> | null>(null);
 
   useEffect(() => {
@@ -188,14 +351,23 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== "INVESTOR") return;
+    const onScroll = () => {
+      const next = window.scrollY > 10;
+      setBarScrolled((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (user?.role !== "INVESTOR" && user?.role !== "SUPER_ADMIN") return;
     const key = `investor-payment-status-map:${user.id}`;
     const currentMap: Record<string, string> = {};
     for (const inv of myInvestors) {
       for (const p of inv.payments ?? []) currentMap[String(p.id)] = p.status;
     }
 
-    // First hydrate: preload known map without toasts.
     if (paymentStatusRef.current == null) {
       try {
         const raw = localStorage.getItem(key);
@@ -217,7 +389,7 @@ export default function DashboardPage() {
         if (p.status === "rejected") {
           notifyWithAttention("error", `Заявка отклонена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "approved_waiting_accept") {
-          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Отчёты» для решения.`, notifyPrefs);
+          notifyWithAttention("success", `Заявка одобрена: ${inv.name}. Откройте «Финансы» для решения.`, notifyPrefs);
         } else if (p.status === "completed") {
           notifyWithAttention("success", `Выплата завершена: ${inv.name}`, notifyPrefs);
         } else if (p.status === "expired") {
@@ -231,36 +403,15 @@ export default function DashboardPage() {
       localStorage.setItem(key, JSON.stringify(currentMap));
     } catch {}
   }, [user, myInvestors, notifyPrefs]);
-  const becomeMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post("/api/investors/become-semen-investor", {
-        name: becomeForm.name.trim(),
-        body: parseAmountInput(becomeForm.body),
-        rate: Number(becomeForm.rate),
-        entryDate: becomeForm.entryDate,
-        allowMultiple: becomeForm.allowMultiple,
-      }),
-    onSuccess: () => {
-      setShowBecomeModal(false);
-      setBecomeForm({
-        name: "",
-        body: "",
-        rate: "",
-        entryDate: new Date().toISOString().split("T")[0],
-        allowMultiple: false,
-      });
-      queryClient.invalidateQueries({ queryKey: ["investors"] });
-    },
-  });
+
   const requestWithdrawMutation = useMutation({
     mutationFn: () =>
       apiClient.post("/api/payments", {
         action: "request",
         investorId: Number(withdrawForm.investorId),
         type: withdrawForm.type,
-        amount: withdrawForm.type === "close" ? undefined : parseAmountInput(withdrawForm.amount),
+        amount: withdrawForm.type === "close" ? undefined : parseDeskAmountDigits(withdrawForm.amount),
         comment: withdrawForm.comment.trim() || undefined,
-        requestDate: withdrawForm.requestDate,
       }),
     onSuccess: () => {
       setSelectedInvestorCardId(null);
@@ -269,13 +420,13 @@ export default function DashboardPage() {
         type: "interest",
         amount: "",
         comment: "",
-        requestDate: new Date().toISOString().split("T")[0],
       });
       queryClient.invalidateQueries({ queryKey: ["investors"] });
       queryClient.invalidateQueries({ queryKey: ["reports-investors"] });
       toast.success("Запрос на вывод отправлен");
     },
   });
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace("/login");
@@ -288,208 +439,127 @@ export default function DashboardPage() {
     }
   }, [authLoading, user, router]);
 
-  if (authLoading) return <div className="flex items-center justify-center min-h-screen"><Text>Загрузка...</Text></div>;
+  if (authLoading) return <DashboardAuthSkeleton />;
   if (!user) return null;
+
+  function openWithdrawForBestDue() {
+    if (!bestDueInvestor) return;
+    setWithdrawForm((prev) => ({
+      ...prev,
+      investorId: String(bestDueInvestor.id),
+      type: "interest",
+    }));
+    setSelectedInvestorCardId(bestDueInvestor.id);
+  }
+
+  const showDueAction = canRequestWithdraw && stats.due > 0.005;
 
   return (
     <Container>
-      <div className="min-h-screen py-4 pb-28 md:py-8 md:pb-28 space-y-4">
-        <div className={DASHBOARD_STICKY_BAR_CLASS}>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/profile")}
-            className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-muted/60 transition"
-          >
-            <UserAvatar name={user.username} src={user.avatarUrl} size={38} />
-            <span className="truncate text-base font-semibold">{user.username}</span>
-            <span className="text-muted-foreground" aria-hidden>
-              ›
-            </span>
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <NotificationBell />
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              aria-label="Переключить дневную и ночную тему"
-              title="Светлая/тёмная тема"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/70 text-xl transition hover:bg-muted/60"
-            >
-              🇹🇭
-            </button>
-          </div>
-        </div>
-        <Text className="text-xs text-muted-foreground">{pageSubtitle}</Text>
-        {isSuperAdmin && !hasLinkedCommonInvestment ? (
-          <Card className="p-3">
-            <Button size="sm" variant="outline" className="w-full" onClick={() => setShowBecomeModal(true)}>
-              Стать инвестором Семёна
-            </Button>
-          </Card>
-        ) : null}
+      <div
+        className={cn(
+          "thai-dashboard-root py-4 pb-28 md:py-8 md:pb-28",
+          isInvestor || isOwner || isSuperAdmin
+            ? "flex min-h-[calc(100dvh-5.5rem)] flex-col space-y-3 md:space-y-4"
+            : "min-h-screen space-y-4 md:space-y-5"
+        )}
+        style={isDark ? DASHBOARD_DARK_ROOT_STYLE : undefined}
+      >
+        <DashboardTopbar
+          barScrolled={barScrolled}
+          username={user.username}
+          avatarUrl={user.avatarUrl}
+          dashboardPositionsActive={myInvestors.some((i) => i.status === "active")}
+        />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <Card className="p-3 md:p-4 lg:col-span-2">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">{metricsSectionTitle}</Text>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <StatCard title={capitalStatTitle} value={stats.capital} color="text-foreground" />
-              <StatCard title="Начислено" value={stats.accrued} color="text-blue-600" />
-              <StatCard title="К выплате" value={stats.due} color="text-orange-600" />
-              <StatCard title="Выплачено" value={stats.paid} color="text-green-600" />
-            </div>
-          </Card>
-
-          <Card className="p-3 md:p-4">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">Цикл</Text>
-            <InfoRow label="Текущая неделя" value={`${currentWeek.start} - ${currentWeek.end}`} />
-            <div className="mt-2" />
-            <InfoRow label="Следующая выплата" value={currentWeek.nextPayout} />
-          </Card>
-        </div>
-
-        <Card className="p-3 md:p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Text className="text-xs font-semibold text-muted-foreground">{positionsSectionTitle}</Text>
-          </div>
-          {loadingInvestors ? (
-            <div className="py-10 text-center text-muted-foreground">Загрузка данных...</div>
-          ) : myInvestors.length === 0 ? (
-            <div className="py-10 text-center text-muted-foreground">{positionsEmptyHint}</div>
-          ) : (
-            <div className="space-y-2">
-              {myInvestors.map((inv) => (
-                <div
-                  key={inv.id}
-                  onClick={() => router.push(`/dashboard/investors/${inv.id}`)}
-                  className="w-full cursor-pointer rounded-xl border border-border/60 bg-card/70 p-3 text-left hover:bg-muted/20 transition"
-                >
-                  <div className="flex items-center justify-between">
-                    <Text className="font-semibold">{inv.name}</Text>
-                    <Text className="text-xs text-muted-foreground">{inv.status}</Text>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <MiniStat label="Тело" value={formatCurrency(inv.body)} />
-                    <MiniStat label="Начислено" value={formatCurrency(inv.accrued)} valueClass="text-blue-600" />
-                    <MiniStat label="Выплачено" value={formatCurrency(inv.paid)} valueClass="text-green-600" />
-                    <MiniStat
-                      label="К выплате"
-                      value={formatCurrency(inv.due)}
-                      valueClass="text-orange-600"
-                      onQuickAction={() => {
-                        setWithdrawForm((prev) => ({ ...prev, investorId: String(inv.id) }));
-                        setSelectedInvestorCardId(inv.id);
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        
-
-        {showBecomeModal ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-            <Card className="w-full max-w-md p-5 space-y-4">
-              <Text className="text-base font-semibold">Стать инвестором Семёна</Text>
-              <Text className="text-xs text-muted-foreground">
-                Будет создан инвестор в общей сети Семёна и привязан к твоему кабинету.
-              </Text>
-              <form
-                className="space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  becomeMutation.mutate();
+        {isInvestor || isSuperAdmin ? (
+          <InvestorPremiumDashboard
+            glassCard={glassCard}
+            payoutDue={stats.due}
+            canWithdraw={Boolean(showDueAction)}
+            onWithdraw={openWithdrawForBestDue}
+            statsBody={stats.capital}
+            statsAccrued={stats.accrued}
+            statsPaid={stats.paid}
+            forecastStrip={investorForecastStrip}
+            paymentStatusSlot={
+              !investorsQueryError && latestInvestorWithdrawalMeta ? (
+                <InvestorWithdrawalStatusBanner
+                  payment={latestInvestorWithdrawalMeta.payment}
+                  investorId={latestInvestorWithdrawalMeta.investorId}
+                  investorName={latestWithdrawalInvestorName}
+                  onOpenDecision={() =>
+                    router.push(
+                      `/dashboard/finance?investor=${latestInvestorWithdrawalMeta.investorId}&payment=${latestInvestorWithdrawalMeta.payment.id}`
+                    )
+                  }
+                />
+              ) : null
+            }
+            historySlot={
+              <DashboardOperationsHistory
+                embedded
+                enabled
+                glassCard={glassCard}
+                showMultiPositionLabels={myInvestors.length > 1}
+                superAdminLinkedCommonHome={isSuperAdmin}
+                splitPendingActionQueue
+                operationRowPredicate={(item) => item.kind === "payment"}
+                onOperationClick={(item) => {
+                  if (item.kind === "payment") {
+                    router.push(`/dashboard/finance?investor=${item.investorId}&payment=${item.paymentId}`);
+                    return;
+                  }
+                  if (item.kind === "topup") {
+                    const q = new URLSearchParams();
+                    q.set("investor", String(item.investorId));
+                    q.set("topup", String(item.requestId));
+                    router.push(`/dashboard/finance?${q.toString()}`);
+                  }
                 }}
-              >
-                <div className="space-y-1">
-                  <Label>Имя *</Label>
-                  <Input
-                    required
-                    value={becomeForm.name}
-                    onChange={(e) => setBecomeForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Например, Denis"
-                    disabled={becomeMutation.isPending}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Тело (бат) *</Label>
-                  <Input
-                    required
-                    type="text"
-                    value={becomeForm.body}
-                    onChange={(e) =>
-                      setBecomeForm((prev) => ({ ...prev, body: formatAmountInput(e.target.value) }))
-                    }
-                    placeholder="100 000 ฿"
-                    disabled={becomeMutation.isPending}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Ставка входа (%) *</Label>
-                  <Input
-                    required
-                    type="number"
-                    min={0.01}
-                    step={0.01}
-                    value={becomeForm.rate}
-                    onChange={(e) => setBecomeForm((prev) => ({ ...prev, rate: e.target.value }))}
-                    placeholder="10"
-                    disabled={becomeMutation.isPending}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Дата входа *</Label>
-                  <DatePicker
-                    value={becomeForm.entryDate}
-                    onChange={(v) => setBecomeForm((prev) => ({ ...prev, entryDate: v }))}
-                    className={becomeMutation.isPending ? "opacity-60 pointer-events-none" : undefined}
-                    placeholder="Выбери дату"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={becomeForm.allowMultiple}
-                    onChange={(e) => setBecomeForm((prev) => ({ ...prev, allowMultiple: e.target.checked }))}
-                    disabled={becomeMutation.isPending}
-                  />
-                  Разрешить создание второго вклада у Семёна
-                </label>
-                {becomeMutation.error instanceof Error ? (
-                  <Text className="text-xs text-red-500">{becomeMutation.error.message}</Text>
-                ) : null}
-                <div className="flex items-center gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setShowBecomeModal(false)}
-                    disabled={becomeMutation.isPending}
-                  >
-                    Отмена
-                  </Button>
-                  <Button type="submit" className="flex-1" disabled={becomeMutation.isPending}>
-                    {becomeMutation.isPending ? "Создание..." : "Создать"}
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          </div>
+              />
+            }
+          />
+        ) : isOwner ? (
+          <OwnerPremiumDashboard
+            glassCard={glassCard}
+            headline={headlineLine1}
+            nextPayoutLabel={currentWeek.nextPayout}
+            forecastStrip={ownerForecastStrip}
+            stats={stats}
+            investors={myInvestors}
+            pendingPayments={ownerPendingPayments}
+            loading={loadingInvestors}
+            hasData={Boolean(investorsData)}
+            onOpenInvestor={(id) => router.push(`/dashboard/investors/${id}`)}
+            onOpenReports={() => router.push("/dashboard/finance")}
+            onOpenInvestorReports={(id) => router.push(`/dashboard/finance?investor=${id}`)}
+          />
         ) : null}
 
         {selectedInvestorCard ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-            <Card className="w-full max-w-md p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <Text className="text-base font-semibold">{selectedInvestorCard.name}</Text>
-                <Text className="text-xs text-muted-foreground">{selectedInvestorCard.status}</Text>
+          <div className="thai-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="thai-glass w-full max-w-md space-y-4 p-5 shadow-2xl" style={glassCard}>
+              <div className="min-w-0">
+                <InvestorPositionAvatarHeading
+                  name={selectedInvestorCard.name}
+                  avatarInitialsSource={investorDisplayHandle(selectedInvestorCard)}
+                  avatarUrl={selectedInvestorCard.linkedUser?.avatarUrl ?? selectedInvestorCard.investorUser?.avatarUrl ?? null}
+                  status={selectedInvestorCard.status}
+                />
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <MiniStat label="Тело" value={formatCurrency(selectedInvestorCard.body)} />
-                <MiniStat label="Начислено" value={formatCurrency(selectedInvestorCard.accrued)} valueClass="text-blue-600" />
-                <MiniStat label="К выплате" value={formatCurrency(selectedInvestorCard.due)} valueClass="text-orange-600" />
+                <MiniStat label="Тело" value={formatCurrency(selectedInvestorCard.body)} valueStyle={{ color: "var(--thai-color-text-primary)" }} />
+                <MiniStat
+                  label="Начислено"
+                  value={formatCurrency(selectedInvestorCard.accrued)}
+                  valueStyle={{ color: "var(--thai-color-accrued)" }}
+                />
+                <MiniStat
+                  label="К выплате"
+                  value={formatCurrency(selectedInvestorCard.due)}
+                  valueStyle={{ color: "var(--thai-color-due)" }}
+                />
               </div>
               <form
                 className="space-y-3"
@@ -521,42 +591,50 @@ export default function DashboardPage() {
                     <Input
                       required
                       type="text"
+                      ref={setWithdrawAmountInputRef}
                       value={withdrawForm.amount}
-                      onChange={(e) => setWithdrawForm((prev) => ({ ...prev, amount: formatAmountInput(e.target.value) }))}
+                      onChange={(e) =>
+                        setWithdrawForm((prev) => ({
+                          ...prev,
+                          amount: captureWithdrawAmountChange(e),
+                        }))
+                      }
+                      onKeyDown={onWithdrawAmountKeyDown}
                       placeholder="2 500 ฿"
                     />
                     <Text className="text-[11px] text-muted-foreground">
                       Доступно:{" "}
-                      {withdrawForm.type === "interest"
-                        ? formatCurrency(
-                            Math.max(
-                              selectedInvestorCard.accrued -
-                                (selectedInvestorCard.payments ?? [])
-                                  .filter((p) => p.type === "interest" && ["requested", "approved_waiting_accept"].includes(p.status))
-                                  .reduce((sum, p) => sum + p.amount, 0),
-                              0
+                      <span
+                        style={{
+                          color:
+                            withdrawForm.type === "interest"
+                              ? "var(--thai-color-due)"
+                              : "var(--thai-color-text-primary)",
+                        }}
+                      >
+                        {withdrawForm.type === "interest"
+                          ? formatCurrency(
+                              Math.max(
+                                selectedInvestorCard.due -
+                                  (selectedInvestorCard.payments ?? [])
+                                    .filter((p) => p.type === "interest" && ["requested", "approved_waiting_accept"].includes(p.status))
+                                    .reduce((sum, p) => sum + p.amount, 0),
+                                0
+                              )
                             )
-                          )
-                        : formatCurrency(
-                            Math.max(
-                              selectedInvestorCard.body -
-                                (selectedInvestorCard.payments ?? [])
-                                  .filter((p) => p.type === "body" && ["requested", "approved_waiting_accept"].includes(p.status))
-                                  .reduce((sum, p) => sum + p.amount, 0),
-                              0
-                            )
-                          )}
+                          : formatCurrency(
+                              Math.max(
+                                selectedInvestorCard.body -
+                                  (selectedInvestorCard.payments ?? [])
+                                    .filter((p) => p.type === "body" && ["requested", "approved_waiting_accept"].includes(p.status))
+                                    .reduce((sum, p) => sum + p.amount, 0),
+                                0
+                              )
+                            )}
+                      </span>
                     </Text>
                   </div>
                 ) : null}
-                <div className="space-y-1">
-                  <Label>Дата вывода *</Label>
-                  <DatePicker
-                    value={withdrawForm.requestDate}
-                    onChange={(v) => setWithdrawForm((prev) => ({ ...prev, requestDate: v }))}
-                    placeholder="Выбери дату"
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label>Комментарий</Label>
                   <Input
@@ -577,21 +655,21 @@ export default function DashboardPage() {
                   </Button>
                 </div>
               </form>
-              <div className="rounded-xl border border-border/60 bg-card/70 p-3 space-y-2">
+              <div className="thai-glass space-y-2 p-3" style={glassCard}>
                 <Text className="text-xs text-muted-foreground">
-                  История выплат, запросы на пополнение тела и действия по ним (принять, отклонить, спор) — в разделе «Отчёты» для этой позиции.
+                  История выплат, запросы на пополнение тела и действия по ним (принять, отклонить, спор) — в разделе «Финансы» для этой позиции.
                 </Text>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="w-full"
-                  onClick={() => router.push(`/dashboard/reports?investor=${selectedInvestorCard.id}`)}
+                  onClick={() => router.push(`/dashboard/finance?investor=${selectedInvestorCard.id}`)}
                 >
                   Открыть отчёты
                 </Button>
               </div>
-            </Card>
+            </div>
           </div>
         ) : null}
         <MobileBottomNav active="home" />
@@ -600,35 +678,27 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, color }: { title: string; value: number; color: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card/70 p-3">
-      <Text className="text-xs text-muted-foreground mb-1 whitespace-nowrap">{title}</Text>
-      <div className={cn("text-base md:text-2xl font-semibold tracking-tight whitespace-nowrap", color)}>{formatCurrency(value)}</div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card/70 p-2.5">
-      <Text className="text-xs font-medium text-muted-foreground">{label}</Text>
-      <Text className="text-sm font-semibold mt-0.5">{value}</Text>
-    </div>
-  );
-}
-
 function MiniStat({
   label,
   value,
-  valueClass,
+  valueStyle,
   onQuickAction,
+  highlightAction,
 }: {
   label: string;
   value: string;
-  valueClass?: string;
+  valueStyle?: CSSProperties;
   onQuickAction?: () => void;
+  highlightAction?: boolean;
 }) {
+  const isDark = useSyncExternalStore(subscribeHtmlDark, snapshotHtmlDark, serverHtmlDark);
+  const glassStyle = isDark ? GLASS_CARD_DARK : GLASS_CARD_LIGHT;
+  const miniGlass: CSSProperties = { ...glassStyle, borderRadius: "12px", padding: "0.5rem" };
+
+  const actionRing = highlightAction
+    ? "ring-2 ring-[color:color-mix(in_srgb,var(--thai-color-due)_50%,transparent)] shadow-[0_0_14px_-4px_color-mix(in_srgb,var(--thai-color-due)_35%,transparent)]"
+    : "";
+
   if (onQuickAction) {
     return (
       <button
@@ -637,17 +707,25 @@ function MiniStat({
           e.stopPropagation();
           onQuickAction();
         }}
-        className="rounded-lg border border-border/50 bg-background/40 p-2 text-left transition hover:bg-muted/40"
+        className={cn(
+          "thai-glass border-0 text-left transition hover:brightness-[1.03] active:scale-[0.99] dark:hover:brightness-110",
+          actionRing
+        )}
+        style={miniGlass}
       >
         <Text className="text-xs text-muted-foreground">{label}</Text>
-        <Text className={cn("text-sm font-semibold mt-0.5", valueClass)}>{value}</Text>
+        <Text className="mt-0.5 text-sm font-semibold" style={valueStyle}>
+          {value}
+        </Text>
       </button>
     );
   }
   return (
-    <div className="rounded-lg border border-border/50 bg-background/40 p-2">
+    <div className="thai-glass border-0" style={miniGlass}>
       <Text className="text-xs text-muted-foreground">{label}</Text>
-      <Text className={cn("text-sm font-semibold mt-0.5", valueClass)}>{value}</Text>
+      <Text className="mt-0.5 text-sm font-semibold" style={valueStyle}>
+        {value}
+      </Text>
     </div>
   );
 }

@@ -29,3 +29,11 @@ export function formatDate(date: Date | string) {
     year: "numeric",
   }).format(new Date(date));
 }
+
+/** Две буквы для «пустого» аватара (логин / имя пользователя). */
+export function initialsTwoLetters(username: string) {
+  const u = String(username).trim();
+  if (u.length === 0) return "??";
+  if (u.length === 1) return u.toUpperCase() + u.toUpperCase();
+  return u.slice(0, 2).toUpperCase();
+}

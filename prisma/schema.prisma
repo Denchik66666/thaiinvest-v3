@@ -10,6 +10,8 @@ model User {
   id            Int           @id @default(autoincrement())
   username      String        @unique
   password      String
+  /** Публичный URL файла в `/uploads/avatars/…` */
+  avatarUrl     String?
   role          Role          @default(OWNER)
   isSystemOwner Boolean       @default(false)
   isArchived    Boolean       @default(false)
@@ -25,6 +27,25 @@ model User {
   investorAccount Investor?     @relation("InvestorAccount")
   chatSent      ChatMessage[] @relation("ChatSent")
   chatReceived  ChatMessage[] @relation("ChatReceived")
+  dbResetLockout DatabaseResetLockout?
+  correctionProposalsCreated  PaymentCorrectionProposal[] @relation("CorrectionProposalCreatedBy")
+  correctionProposalsAssignee PaymentCorrectionProposal[] @relation("CorrectionProposalAssignee")
+  correctionProposalsDecided  PaymentCorrectionProposal[] @relation("CorrectionProposalDecidedBy")
+}
+
+/** Singleton: пароль для полного сброса БД (хэш), задаётся SUPER_ADMIN в профиле */
+model DatabaseResetConfig {
+  id           Int      @id @default(1)
+  passwordHash String?
+  updatedAt    DateTime @updatedAt
+}
+
+/** Блокировка ввода пароля сброса после 3 неверных попыток (15 мин) */
+model DatabaseResetLockout {
+  userId      Int       @id
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ChatMessage {
@@ -72,6 +93,10 @@ model Investor {
   accruals       Accrual[]
   payments       Payment[]
   topUpRequests  BodyTopUpRequest[]
+
+  @@index([ownerId, isPrivate])
+  @@index([isPrivate, createdAt])
+  @@index([updatedAt])
 }
 
 model BodyTopUpRequest {
@@ -81,6 +106,8 @@ model BodyTopUpRequest {
   amount       Float
   status       String   @default("pending_investor")
   comment      String?
+  /** Календарная дата заявки (выбор при создании); для UI и периодов. Факт создания строки — `createdAt`. */
+  requestDate  DateTime?
   createdById  Int
   createdBy    User     @relation("TopUpRequestCreator", fields: [createdById], references: [id])
   decidedById  Int?
@@ -88,6 +115,8 @@ model BodyTopUpRequest {
   decidedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([investorId, createdAt])
 }
 
 model Accrual {
@@ -114,6 +143,34 @@ model Payment {
   createdAt  DateTime  @default(now())
   approvedAt DateTime?
   acceptedAt DateTime?
+  correctionProposals PaymentCorrectionProposal[]
+
+  /** Lean-дашборд: groupBy / фильтр по investorId + status (+ type для процентов). */
+  @@index([investorId, status])
+  @@index([investorId, status, type])
+  @@index([investorId, createdAt])
+}
+
+/** Запрос правки заявки на выплату: SUPER_ADMIN → согласование адресатом, затем применение. */
+model PaymentCorrectionProposal {
+  id             Int       @id @default(autoincrement())
+  paymentId      Int
+  payment        Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdById    Int
+  createdBy      User      @relation("CorrectionProposalCreatedBy", fields: [createdById], references: [id])
+  assigneeUserId Int
+  assignee       User      @relation("CorrectionProposalAssignee", fields: [assigneeUserId], references: [id])
+  status         String    @default("pending")
+  adminNote      String    @default("")
+  payload        Json
+  decidedById    Int?
+  decidedBy      User?     @relation("CorrectionProposalDecidedBy", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([assigneeUserId, status])
+  @@index([paymentId, status])
 }
 
 model RateHistory {
@@ -125,6 +182,8 @@ model RateHistory {
   effectiveDate DateTime
   comment       String?
   createdAt     DateTime @default(now())
+
+  @@index([effectiveDate, createdAt])
 }
 
 model AuditLog {
@@ -138,4 +197,6 @@ model AuditLog {
   newValue   String?
   ipAddress  String?
   createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, action])
 }

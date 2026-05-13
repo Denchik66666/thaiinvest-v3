@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const adminUser = process.env.E2E_ADMIN_USER ?? "admin";
 const adminPass = process.env.E2E_ADMIN_PASSWORD ?? "admin123";
-const ownerUser = process.env.E2E_OWNER_USER ?? "semen";
+const ownerUser = process.env.E2E_OWNER_USER ?? "Sam";
 const ownerPass = process.env.E2E_OWNER_PASSWORD ?? "admin123";
 
 async function login(page: import("@playwright/test").Page, username: string, password: string) {
@@ -38,7 +38,7 @@ test.describe("Чат: непрочитанные и всплывающее ув
       return adminRow?.id ?? null;
     });
 
-    expect(adminId, "В каталоге чата OWNER должен видеть SUPER_ADMIN (после seed admin/semen)").not.toBeNull();
+    expect(adminId, "В каталоге чата OWNER должен видеть SUPER_ADMIN (после seed admin/Sam)").not.toBeNull();
 
     const body = `E2E toast ${Date.now()}`;
     const sendRes = await ownerPage.evaluate(

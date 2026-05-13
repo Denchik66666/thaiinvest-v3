@@ -9,6 +9,13 @@ import {
   readThemeSnapshot,
   subscribeAppTheme,
 } from "@/lib/app-theme";
+import { cn } from "@/lib/utils";
+
+export type ThemeToggleProps = {
+  /** «Иконка в круге» для шапки логина; полная кнопка — на дашборде */
+  variant?: "default" | "compact";
+  className?: string;
+};
 
 function IconSunMoon() {
   return (
@@ -36,7 +43,7 @@ function IconSunMoon() {
   );
 }
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ variant = "default", className }: ThemeToggleProps) {
   const themeSnap = useSyncExternalStore(subscribeAppTheme, readThemeSnapshot, getThemeServerSnapshot);
   const { theme: currentTheme, dark } = parseThemeSnapshot(themeSnap);
 
@@ -44,20 +51,26 @@ export default function ThemeToggle() {
     persistAppTheme(currentTheme, !dark);
   };
 
+  const isCompact = variant === "compact";
+
   return (
-    <div className="flex items-center">
+    <div className={cn("flex items-center", className)}>
       <button
         type="button"
         onClick={toggleDark}
-        className="
-          h-9 px-3 rounded-xl border border-border/70
-          hover:bg-secondary/70 transition
-          flex items-center gap-2
-        "
-        title="Светлая/темная тема"
+        className={cn(
+          "thai-glass transition duration-200 ease-out touch-manipulation [-webkit-tap-highlight-color:transparent]",
+          isCompact
+            ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border p-0 hover:brightness-[1.03] active:scale-[0.97] dark:hover:brightness-110"
+            : "flex h-10 items-center gap-2 rounded-xl px-3 hover:brightness-[1.03] active:scale-[0.97] dark:hover:brightness-110"
+        )}
+        title="Светлая/тёмная тема"
+        aria-label={dark ? "Переключить на светлую тему" : "Переключить на тёмную тему"}
       >
         <IconSunMoon />
-        <span className="text-xs font-medium hidden sm:inline">{dark ? "Тёмная" : "Светлая"}</span>
+        {!isCompact ? (
+          <span className="text-xs font-medium hidden sm:inline">{dark ? "Тёмная" : "Светлая"}</span>
+        ) : null}
       </button>
     </div>
   );

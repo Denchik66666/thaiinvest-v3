@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface AuthUser {
   id: number;
@@ -8,49 +9,43 @@ export interface AuthUser {
   role: string;
   isSystemOwner: boolean;
   avatarUrl?: string | null;
+  /** ISO 8601, дата регистрации учётной записи */
+  createdAt?: string;
+}
+
+export const AUTH_ME_QUERY_KEY = ["auth", "me"] as const;
+
+/** Общий fetch для `useQuery` и гидрации кеша после логина (без лишнего «пустого» кадра на дашборде). */
+export async function fetchAuthMe(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/me", { cache: "no-store" });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { user: AuthUser };
+  return data.user ?? null;
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: AUTH_ME_QUERY_KEY,
+    queryFn: fetchAuthMe,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/auth/me", { cache: "no-store" });
-    if (!res.ok) {
-      setUser(null);
-      return;
-    }
-    const data = await res.json();
-    setUser(data.user);
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
+  }, [queryClient]);
 
-  useEffect(() => {
-    let isMounted = true;
+  /**
+   * Полноэкранная «загрузка» только до первого завершённого запроса (ещё нет `data` в кеше).
+   * После ответа (в т.ч. `user: null` или гидрация после логина) фоновый refetch не гасит интерфейс.
+   */
+  const loading = query.data === undefined && query.isPending;
 
-    const run = async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error("UNAUTHORIZED");
-        }
-
-        const data = await res.json();
-        if (!isMounted) return;
-        setUser(data.user);
-        setLoading(false);
-      } catch {
-        if (!isMounted) return;
-        setUser(null);
-        setLoading(false);
-      }
-    };
-
-    run();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  return { user, loading, refresh };
+  return {
+    user: query.data ?? null,
+    loading,
+    refresh,
+  };
 }

@@ -1,6 +1,6 @@
 /**
  * Единая точка: localStorage + классы на <html> + событие для useSyncExternalStore
- * (логин, профиль / ThemeToggle, другие вкладки).
+ * (логин, вкладка «Настройки» профиля с ThemeToggle).
  */
 
 export const APP_THEME_EVENT = "thaiinvest-theme-storage";

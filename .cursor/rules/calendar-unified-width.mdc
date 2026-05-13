@@ -1,0 +1,14 @@
+---
+description: Единая ширина календаря; эталон — компактный календарь в «Финансах»
+alwaysApply: true
+---
+
+# Календарь: единая ширина (эталон — «Финансы»)
+
+- В проекте **один** визуальный масштаб ширины календаря относительно эталона: **компактный календарь в ленте «Финансы»** (`HistoryPeriodPopover` / попап с `FinanceMonthCalendar`).
+- Константа **`FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX = 168`** объявлена в **`components/ui/finance-calendar-popover-skin.ts`** и задаёт эталонную «ширину якоря» тулбара для случаев **без реального DOM-якоря** (например встроенная сетка в «Управлении»).
+- **Запрещено** менять значение **`FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX`** без **личного явного разрешения** владельца репозитория (пользователя).
+- **Запрещено** задавать ширину календаря «с боку»: произвольные `width` / `max-w-[…]px` / магические числа в компонентах страниц и модалок. Нужная ширина **только** через API из того же файла:
+  - попапы: **`computeFinanceCalendarPopoverPosition`** / **`computeDatePickerCalendarPopoverPosition`** (они уже считают ширину по правилам ленты «Финансы» от **фактического** `getBoundingClientRect()` якоря);
+  - встроенные сетки и прочие места без якоря: **`financeCalendarPopoverWidthFromAnchorWidth(FINANCE_CALENDAR_REFERENCE_TOOLBAR_ANCHOR_WIDTH_PX)`** (или та же функция с другим якорем, если это согласовано отдельно — но не литералы).
+- Новые экраны: подключать **`DatePicker`** / **`HistoryPeriodPopover`** / обёртки из `finance-calendar-popover-skin.ts`, а не дублировать расчёт ширины.

@@ -1,13 +1,12 @@
-import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
-
-const prisma = new PrismaClient()
+import "dotenv/config";
+import bcrypt from "bcryptjs";
+import { prisma } from "../lib/prisma";
 
 async function resetPassword(username: string, newPassword: string) {
   const hash = bcrypt.hashSync(newPassword, 10)
 
-  const user = await prisma.user.findUnique({
-    where: { username },
+  const user = await prisma.user.findFirst({
+    where: { username: { equals: username, mode: "insensitive" } },
   })
 
   if (!user) {
@@ -16,18 +15,21 @@ async function resetPassword(username: string, newPassword: string) {
   }
 
   await prisma.user.update({
-    where: { username },
+    where: { id: user.id },
     data: {
       password: hash,
+      isArchived: false,
+      archivedAt: null,
     },
   })
 
-  console.log(`✅ Пароль для "${username}" обновлён`)
+  console.log(`✅ Пароль для "${user.username}" обновлён`)
 }
 
 async function main() {
   await resetPassword('admin', 'admin123')
-  await resetPassword('semen', 'admin123')
+  await resetPassword('Sam', 'admin123')
+  await resetPassword('Sega_55RUS', 'qwerty123')
 }
 
 main()

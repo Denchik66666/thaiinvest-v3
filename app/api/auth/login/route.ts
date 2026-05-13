@@ -5,12 +5,18 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { generateToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
+import { formatDbAccessErrorForClient, isTransientDbError, withDbRetry } from '@/lib/db-retry'
 
 import { LoginSchema } from '@/lib/schemas'
 
 export async function POST(request: NextRequest) {
   try {
-    const json = await request.json()
+    let json: unknown
+    try {
+      json = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Некорректный формат запроса' }, { status: 400 })
+    }
     const result = LoginSchema.safeParse(json)
 
     if (!result.success) {
@@ -20,9 +26,11 @@ export async function POST(request: NextRequest) {
     const username = result.data.username.trim()
     const { password } = result.data
 
-    const user = await prisma.user.findFirst({
-      where: { username: { equals: username, mode: "insensitive" } },
-    })
+    const user = await withDbRetry(() =>
+      prisma.user.findFirst({
+        where: { username: { equals: username, mode: "insensitive" } },
+      })
+    )
 
     if (!user || user.isArchived) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -59,6 +67,13 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('LOGIN ERROR:', error)
+    if (isTransientDbError(error)) {
+      return NextResponse.json({ error: 'Временная ошибка БД, повторите вход' }, { status: 503 })
+    }
+    const hint = formatDbAccessErrorForClient(error)
+    if (hint) {
+      return NextResponse.json({ error: hint }, { status: 503 })
+    }
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

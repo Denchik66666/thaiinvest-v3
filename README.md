@@ -1,11 +1,11 @@
-# THAIINVEST v3.1.0
+# THAIINVEST v3.1.1
 
 Private investment operations platform with role-based access, weekly accrual logic, and approval workflow for payouts.
 
 ## Current Release
 
 - Product line: `v3.x`
-- Current technical version: `3.1.0`
+- Current technical version: `3.1.1`
 - Status: `build` and `lint` are green
 
 ## Core Stack
@@ -19,8 +19,9 @@ Private investment operations platform with role-based access, weekly accrual lo
 
 ## Access Model
 
-- `OWNER` - business owner (Semen)
-- `SUPER_ADMIN` - operational control and force-actions
+- `INVESTOR` - investment positions, requests, finance hub
+- `OWNER` - business owner (Semen); operational network and approvals
+- `SUPER_ADMIN` - platform operator: all networks, corrections, database reset
 
 ## Main Screens
 
@@ -34,7 +35,8 @@ Private investment operations platform with role-based access, weekly accrual lo
 - `/api/auth/login`, `/api/auth/me`, `/api/auth/account`, `/api/auth/logout`
 - `/api/investors`
 - `/api/investors/[id]/weekly-ledger`
-- `/api/payments`
+- `/api/investors/operations-history`, `/api/investors/operations-summary`
+- `/api/payments`, `/api/payments/context`
 - `/api/system/business-rate`
 - `/api/system/readiness`
 
@@ -45,6 +47,8 @@ Create `.env` from `.env.example`:
 ```bash
 cp .env.example .env
 ```
+
+**Локальный Docker и облако (Supabase) не должны «путаться»:** на машине разработчика одноимённые переменные из **`.env.local`** перекрывают **`.env`**. Держите в `.env.local` только локальный Postgres (порт хоста **`15432`** в `docker-compose.dev-db.yml`), а строки Supabase — в `.env` или только в Vercel. На продакшене в деплой обычно не попадает `.env.local`; там задаются переменные в панели хостинга.
 
 Required variables:
 
@@ -72,6 +76,19 @@ npm run db:migrate:deploy
 Palette and light/dark mode are stored under `app-theme` and `app-dark-mode` and applied to `<html>`. Shared logic lives in `lib/app-theme.ts` so `/login` and dashboard `ThemeToggle` stay in sync.
 
 ## Local Run
+
+### Stable order (локально, чтобы не «терялись связи»)
+
+0. **Шаблон переменных:** в репозитории лежит `.env.example` — от него отталкиваться; секреты не коммитить.
+1. **Зависимости:** `npm install`
+2. **База в Docker (если нужен локальный Postgres, а не облако):** Docker Desktop запущен → `npm run db:dev:up` → при первом запуске `npm run db:dev:bootstrap` → при необходимости `npm run db:migrate:dev` / `npm run db:seed`
+3. **Переменные:** в **`.env.local`** прописать `DATABASE_URL` и `DIRECT_URL` на `localhost:15432` (см. `.env.example`, вариант A) — они **перекрывают** одноимённые ключи из `.env`
+4. **Сайт:** `npm run dev` — **после любого изменения `.env` или `.env.local` перезапустить** эту команду
+5. Открыть `http://localhost:3000/login`
+
+На **Vercel** в продакшене задаются переменные в панели проекта; файл `.env.local` в деплой обычно не попадает.
+
+### Default quick path (English)
 
 1. Install dependencies:
 
@@ -204,10 +221,10 @@ Removes local build artifacts:
 The agent only has your **workspace + terminal**. It cannot log into your Vercel/Supabase accounts.
 
 1. Copy `.env.example` → `.env` and set **`DIRECT_URL`** to a normal Postgres URL (Supabase **direct** connection on port `5432`). Prisma CLI/migrations (`prisma migrate deploy`) read this from `prisma.config.ts`. If `DIRECT_URL` is missing or only Accelerate is configured for CLI, migrations and local scripts will fail.
-2. Run once: `npx prisma migrate deploy` (and optionally `npx prisma db seed` — создаёт `admin`, `semen`, `Sega`).
-3. Тест оповещения в чате: по умолчанию пишет **от `Sega`**. Пример:  
+2. Run once: `npx prisma migrate deploy` (и при необходимости `npx prisma db seed` **только с вашего явного разрешения** — создаёт `admin`, `Sam`, `Sega_55RUS`; удаляет устаревшего `semen` при наличии).
+3. Тест оповещения в чате: по умолчанию пишет **от `Sega_55RUS`**. Пример:  
    `npm run chat:test-send -- --to admin "текст"`  
-   Опции: `--from Имя` (по умолчанию Sega), `--to Имя` (иначе первый из списка Denchik/admin/semen).
+   Опции: `--from Имя` (по умолчанию `Sega_55RUS`), `--to Имя` (иначе первый из списка `admin` / `Sam`).
 
 Optional: enable **Playwright MCP** or **Chrome DevTools MCP** in Cursor + keep `npm run dev` running if you want browser-level checks on `localhost`.
 

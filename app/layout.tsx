@@ -46,7 +46,7 @@ export default function RootLayout({
         `}
       >
         <Providers>
-          <main style={{ margin: 0, minHeight: "100%", display: "block" }}>{children}</main>
+          <main className="m-0 block min-h-full">{children}</main>
         </Providers>
       </body>
     </html>

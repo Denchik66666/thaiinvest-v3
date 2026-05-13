@@ -5,6 +5,11 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { logAction } from "@/lib/audit";
 import { getNextMonday } from "@/lib/weekly";
+import { isTransientDbError, withDbRetry } from "@/lib/db-retry";
+import { parseCalendarDateOnlyYmd } from "@/lib/calendar-request-date";
+import { moneyRound2 } from "@/lib/money-round";
+import { scheduleBusinessRateRecalc } from "@/lib/business-rate-recalc-queue";
+import { clearOperationsHistoryServerCache } from "@/lib/operations-history-server-cache";
 
 type PaymentType = "interest" | "body" | "close";
 type PaymentAction =
@@ -35,6 +40,7 @@ type PaymentRequestBody =
         | "force_approve"
         | "force_reject";
       paymentId: number;
+    amount?: number;
       comment?: string;
     };
 
@@ -88,11 +94,26 @@ function parsePaymentBody(raw: unknown): PaymentRequestBody | null {
   }
 
   if (typeof raw.paymentId !== "number") return null;
+
+  let amountNum: number | undefined;
+  if (raw.amount !== undefined) {
+    if (typeof raw.amount === "number" && Number.isFinite(raw.amount)) {
+      amountNum = raw.amount;
+    } else if (typeof raw.amount === "string" && raw.amount.trim() !== "") {
+      const n = Number(raw.amount.trim().replace(/\s/g, "").replace(",", "."));
+      if (!Number.isFinite(n)) return null;
+      amountNum = n;
+    } else {
+      return null;
+    }
+  }
+
   if (raw.comment !== undefined && typeof raw.comment !== "string") return null;
 
   return {
     action: raw.action,
     paymentId: raw.paymentId,
+    amount: amountNum,
     comment: raw.comment,
   };
 }
@@ -118,9 +139,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (parsed.action === "request") {
-      const investor = await prisma.investor.findUnique({
+      const investor = await withDbRetry(() => prisma.investor.findUnique({
         where: { id: parsed.investorId },
-      });
+      }));
       if (!investor) return NextResponse.json({ error: "Инвестор не найден" }, { status: 404 });
 
       // Request can be created only by investor side:
@@ -134,12 +155,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Недостаточно прав для запроса вывода" }, { status: 403 });
       }
 
-      const pending = await prisma.payment.findMany({
+      const pending = await withDbRetry(() => prisma.payment.findMany({
         where: {
           investorId: parsed.investorId,
           status: { in: ["requested", "approved_waiting_accept"] },
         },
-      });
+      }));
 
       const pendingInterest = pending.filter((p) => p.type === "interest").reduce((sum, p) => sum + p.amount, 0);
       const pendingBody = pending.filter((p) => p.type === "body").reduce((sum, p) => sum + p.amount, 0);
@@ -181,32 +202,47 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const payment = await prisma.payment.create({
+      /**
+       * Календарную дату в `createdAt` при создании заявки может задать только SUPER_ADMIN (Денис / платформа).
+       * INVESTOR — только запрос без выбора даты (момент отправки на сервере).
+       * OWNER (Семён) заявку здесь не создаёт; решает по ней в owner_approve / owner_reject.
+       */
+      const requestCalendarAt =
+        decoded.role === "SUPER_ADMIN" && parsed.requestDate
+          ? parseCalendarDateOnlyYmd(parsed.requestDate) ?? new Date(parsed.requestDate)
+          : undefined;
+
+      const payment = await withDbRetry(() => prisma.payment.create({
         data: {
           investorId: parsed.investorId,
           type: parsed.type,
           amount,
           status: "requested",
           comment: parsed.comment ?? null,
-          createdAt: parsed.requestDate ? new Date(parsed.requestDate) : undefined,
+          ...(requestCalendarAt ? { createdAt: requestCalendarAt } : {}),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_REQUEST",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(payment),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_REQUEST",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(payment),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT REQUEST AUDIT ERROR:", auditError);
+      }
 
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment });
     }
 
-    const payment = await prisma.payment.findUnique({
+    const payment = await withDbRetry(() => prisma.payment.findUnique({
       where: { id: parsed.paymentId },
       include: { investor: true },
-    });
+    }));
     if (!payment) return NextResponse.json({ error: "Заявка не найдена" }, { status: 404 });
 
     const isManager = decoded.role === "OWNER" || decoded.role === "SUPER_ADMIN";
@@ -221,23 +257,68 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка уже обработана" }, { status: 400 });
       }
 
+      if (parsed.action === "owner_reject") {
+        const rejectNote =
+          typeof parsed.comment === "string" ? parsed.comment.trim() : "";
+        if (!rejectNote) {
+          return NextResponse.json(
+            { error: "Для отклонения заявки укажите комментарий" },
+            { status: 400 }
+          );
+        }
+      }
+
       const nextStatus = parsed.action === "owner_approve" ? "approved_waiting_accept" : "rejected";
-      const updated = await prisma.payment.update({
+
+      let nextAmount = payment.amount;
+      if (parsed.action === "owner_approve" && parsed.amount != null) {
+        const proposed = moneyRound2(parsed.amount);
+        const requestedRound = moneyRound2(payment.amount);
+        if (!Number.isFinite(proposed) || proposed <= 0) {
+          return NextResponse.json({ error: "Некорректная сумма" }, { status: 400 });
+        }
+        // Профессионально и честно: владелец может дать меньше (не больше запрошенного).
+        // Сравнение через moneyRound2 — в БД amount Float, иначе ложные ошибки из‑за двоичного Float.
+        if (proposed > requestedRound) {
+          return NextResponse.json({ error: "Нельзя одобрить сумму больше запрошенной" }, { status: 400 });
+        }
+        // И не больше доступного остатка на момент решения.
+        if (payment.type === "interest" && proposed > moneyRound2(payment.investor.accrued)) {
+          return NextResponse.json({ error: "Недостаточно начисленных процентов" }, { status: 400 });
+        }
+        if (payment.type === "body" && proposed > moneyRound2(payment.investor.body)) {
+          return NextResponse.json({ error: "Недостаточно тела" }, { status: 400 });
+        }
+        if (payment.type === "close") {
+          const cap = moneyRound2(payment.investor.accrued + payment.investor.body);
+          if (proposed > cap) {
+            return NextResponse.json({ error: "Сумма превышает доступное по позиции" }, { status: 400 });
+          }
+        }
+        nextAmount = proposed;
+      }
+      const updated = await withDbRetry(() => prisma.payment.update({
         where: { id: payment.id },
         data: {
+          amount: nextAmount,
           status: nextStatus,
           approvedAt: parsed.action === "owner_approve" ? new Date() : null,
           comment: mergeComment(payment.comment, parsed.comment),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: parsed.action === "owner_approve" ? "PAYMENT_APPROVE" : "PAYMENT_REJECT",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: parsed.action === "owner_approve" ? "PAYMENT_APPROVE" : "PAYMENT_REJECT",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT OWNER DECISION AUDIT ERROR:", auditError);
+      }
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -253,21 +334,26 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка не в статусе ожидания подтверждения" }, { status: 400 });
       }
 
-      const updated = await prisma.payment.update({
+      const updated = await withDbRetry(() => prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: "disputed",
           comment: mergeComment(payment.comment, parsed.comment ?? "Инвестор не согласен"),
         },
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_DISPUTE",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_DISPUTE",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT DISPUTE AUDIT ERROR:", auditError);
+      }
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -289,14 +375,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Заявка не в статусе ожидания подтверждения" }, { status: 400 });
       }
       if (isExpired) {
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: "expired" } });
+        await withDbRetry(() => prisma.payment.update({ where: { id: payment.id }, data: { status: "expired" } }));
+        clearOperationsHistoryServerCache();
         return NextResponse.json(
           { error: "Срок подтверждения истек. Требуется принудительное решение SUPER_ADMIN." },
           { status: 400 }
         );
       }
 
-      const updated = await prisma.$transaction(async (tx: PaymentTxClient) => {
+      const updated = await withDbRetry(() => prisma.$transaction(async (tx: PaymentTxClient) => {
         const freshInvestor = await tx.investor.findUnique({ where: { id: payment.investorId } });
         if (!freshInvestor) throw new Error("INVESTOR_NOT_FOUND");
 
@@ -331,15 +418,21 @@ export async function POST(request: NextRequest) {
             comment: mergeComment(payment.comment, parsed.comment),
           },
         });
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_ACCEPT",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_ACCEPT",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT ACCEPT AUDIT ERROR:", auditError);
+      }
+      scheduleBusinessRateRecalc();
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
@@ -352,24 +445,29 @@ export async function POST(request: NextRequest) {
       }
 
       if (parsed.action === "force_reject") {
-        const updated = await prisma.payment.update({
+        const updated = await withDbRetry(() => prisma.payment.update({
           where: { id: payment.id },
           data: {
             status: "rejected",
             comment: mergeComment(payment.comment, parsed.comment ?? "Force reject by SUPER_ADMIN"),
           },
-        });
-        await logAction({
-          userId: decoded.userId,
-          action: "PAYMENT_FORCE_REJECT",
-          entityType: "Payment",
-          entityId: payment.id,
-          newValue: JSON.stringify(updated),
-        });
+        }));
+        try {
+          await withDbRetry(() => logAction({
+            userId: decoded.userId,
+            action: "PAYMENT_FORCE_REJECT",
+            entityType: "Payment",
+            entityId: payment.id,
+            newValue: JSON.stringify(updated),
+          }));
+        } catch (auditError) {
+          console.error("PAYMENT FORCE REJECT AUDIT ERROR:", auditError);
+        }
+        clearOperationsHistoryServerCache();
         return NextResponse.json({ success: true, payment: updated });
       }
 
-      const updated = await prisma.$transaction(async (tx: PaymentTxClient) => {
+      const updated = await withDbRetry(() => prisma.$transaction(async (tx: PaymentTxClient) => {
         const freshInvestor = await tx.investor.findUnique({ where: { id: payment.investorId } });
         if (!freshInvestor) throw new Error("INVESTOR_NOT_FOUND");
 
@@ -401,21 +499,30 @@ export async function POST(request: NextRequest) {
             comment: mergeComment(payment.comment, parsed.comment ?? "Force approve by SUPER_ADMIN"),
           },
         });
-      });
+      }));
 
-      await logAction({
-        userId: decoded.userId,
-        action: "PAYMENT_FORCE_APPROVE",
-        entityType: "Payment",
-        entityId: payment.id,
-        newValue: JSON.stringify(updated),
-      });
+      try {
+        await withDbRetry(() => logAction({
+          userId: decoded.userId,
+          action: "PAYMENT_FORCE_APPROVE",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: JSON.stringify(updated),
+        }));
+      } catch (auditError) {
+        console.error("PAYMENT FORCE APPROVE AUDIT ERROR:", auditError);
+      }
+      scheduleBusinessRateRecalc();
+      clearOperationsHistoryServerCache();
       return NextResponse.json({ success: true, payment: updated });
     }
 
     return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
   } catch (err) {
     console.error("PAYMENT API ERROR:", err);
+    if (isTransientDbError(err)) {
+      return NextResponse.json({ error: "Временная ошибка БД, повторите операцию" }, { status: 503 });
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

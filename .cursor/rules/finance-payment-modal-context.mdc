@@ -1,0 +1,11 @@
+---
+description: Модалка заявки на выплату — статус и кнопки только с контекста API
+globs: components/dashboard/finance/FinanceOperationDetailModal.tsx
+alwaysApply: false
+---
+
+# Карточка операции (выплата)
+
+- **Не** опирайтесь только на `item.status` из ленты (`FinanceOperationItem`) для кнопок «Одобрить / Принять / Отклонить» и для подписи статуса у блока «Этапы». Кеш ленты может отставать от БД после одобрения владельцем.
+- Используйте **`paymentRowStatus`**: `paymentContext?.payment.status ?? item.status` после загрузки `GET /api/payments/context`.
+- Любое изменение этой логики — прогон **`tests/e2e/finance-payment-modal-investor-accept-regression.spec.ts`** (или добавьте сценарий туда).
