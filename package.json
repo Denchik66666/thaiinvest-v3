@@ -32,7 +32,9 @@
     "backup:full": "node scripts/ensure-local-db.mjs && node scripts/full-backup.mjs",
     "vercel:env:pull:production": "vercel env pull .env.vercel.pull --environment production --yes",
     "db:migrate:vercel-production": "node scripts/run-prisma-migrate-with-env.mjs .env.vercel.pull",
-    "env:sync-vercel-production": "node scripts/sync-dotenv-to-vercel-production.mjs"
+    "env:sync-vercel-production": "node scripts/sync-dotenv-to-vercel-production.mjs",
+    "db:dump:local-docker": "docker exec thaiinvest-dev-db pg_dump -U thaiinvest -d thaiinvest -Fc --no-owner --no-acl -f /tmp/local-snapshot.dump && docker cp thaiinvest-dev-db:/tmp/local-snapshot.dump backups/local-snapshot.dump",
+    "db:restore:supabase-from-dump": "node scripts/restore-local-snapshot-to-supabase.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
