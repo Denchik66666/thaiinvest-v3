@@ -42,6 +42,7 @@ yarn-error.log*
 # Vercel CLI — не коммитить (секреты окружения)
 .env.vercel
 .env.vercel.*
+.env.vercel.pull
 
 # vercel
 .vercel

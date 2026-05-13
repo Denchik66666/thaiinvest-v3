@@ -29,7 +29,9 @@
     "db:migrate:dev:ci": "node scripts/ensure-local-db.mjs && prisma migrate deploy",
     "db:seed": "node scripts/ensure-local-db.mjs && tsx prisma/seed.ts",
     "bench:seed-payment-may5": "tsx scripts/seed-benchmark-payment-5000-may5.ts",
-    "backup:full": "node scripts/ensure-local-db.mjs && node scripts/full-backup.mjs"
+    "backup:full": "node scripts/ensure-local-db.mjs && node scripts/full-backup.mjs",
+    "vercel:env:pull:production": "vercel env pull .env.vercel.pull --environment production --yes",
+    "db:migrate:vercel-production": "node scripts/run-prisma-migrate-with-env.mjs .env.vercel.pull"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
