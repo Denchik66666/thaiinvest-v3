@@ -2,6 +2,18 @@
 
 Краткие записи о зафиксированных договорённостях и заметных изменениях контекста (для агента и людей).
 
+## 2026-05-14 — Аватары на проде через Vercel Blob
+
+- Подключено Blob-хранилище Vercel (**`thaiinvest-v3-avatars`**) для загрузки аватаров на проде.
+- Переменная **`BLOB_READ_WRITE_TOKEN`** добавлена в **Production** и **Preview**.
+- Vercel CLI перезаписал **`.env.local`** — восстановить свои переменные из бэкапа при необходимости.
+- Деплой обновлён; аватары должны работать через **Blob**, а не через **`public/uploads/`**.
+
+## 2026-05-09 — `project-context` §7.6: единый путь расчёта внутри функций
+
+- В **`.cursor/rules/project-context.md`** §7 добавлено **7.6** — запрет дублирования **логики внутри одной функции** при аудите; две ветки «один и тот же расчёт, разные правила» недопустимы; разные сценарии — через **один алгоритм** и разные входы.
+- **Пример в каноне леджера:** ранее **`buildWeeklyLedgerRows`** имела разную инициализацию **`cursor`** при наличии и отсутствии **`acceptedBodyTopUps`**; зафиксировано как антипаттерн. Выравнивание сетки недели по Bangkok — **`bangkokWeekStartMondayContaining`** / **`getNextMondayBangkok`** (`lib/history-period.ts`), см. **`lib/weekly-ledger-rows.ts`**.
+
 ## 2026-05-09 — После restore: сверка accrued/paid
 
 - **Скрипт (только `.env` → прод):** `npm run db:reconcile-investors:prod` (dry-run), `npm run db:reconcile-investors:prod:apply` (запись). Исходник: `scripts/reconcile-all-investors-prod.ts` (импорт `scripts/load-prod-env-only.ts` — **без** `.env.local`).
