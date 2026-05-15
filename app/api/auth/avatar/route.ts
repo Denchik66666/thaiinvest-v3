@@ -1,6 +1,3 @@
-import { mkdir, unlink, writeFile } from "fs/promises";
-import path from "path";
-
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -12,10 +9,6 @@ import { withDbRetry } from "@/lib/db-retry";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png"]);
-
-function avatarDir() {
-  return path.join(process.cwd(), "public", "uploads", "avatars");
-}
 
 export async function POST(request: Request) {
   const cookieStore = await cookies();
@@ -50,46 +43,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Файл больше 2 МБ" }, { status: 400 });
   }
 
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!blobToken) {
+    return NextResponse.json(
+      {
+        error:
+          "Не задан BLOB_READ_WRITE_TOKEN (Vercel Blob read/write token). Добавьте переменную в .env.local / Vercel и подключите Blob store к проекту.",
+      },
+      { status: 503 }
+    );
+  }
+
   const buf = Buffer.from(await file.arrayBuffer());
   const ext = file.type === "image/png" ? "png" : "jpg";
   const userId = decoded.userId;
-  const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
 
   let avatarUrl: string;
-
-  if (blobToken) {
+  try {
     const blob = await put(`avatars/user-${userId}.${ext}`, buf, {
       access: "public",
       token: blobToken,
       addRandomSuffix: false,
       allowOverwrite: true,
     });
+    /** Публичный URL файла в Blob; `BLOB_READ_WRITE_TOKEN` — только ключ API, не префикс URL. */
     avatarUrl = `${blob.url}?v=${Date.now()}`;
-  } else {
-    const dir = avatarDir();
-    await mkdir(dir, { recursive: true });
 
-    for (const e of ["jpg", "jpeg", "png"] as const) {
-      try {
-        await unlink(path.join(dir, `${userId}.${e}`));
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const filename = `${userId}.${ext}`;
-    const filepath = path.join(dir, filename);
-    await writeFile(filepath, buf);
-
-    avatarUrl = `/uploads/avatars/${filename}?v=${Date.now()}`;
+    await withDbRetry(() =>
+      prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl },
+      })
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[avatar] blob upload failed", { userId, msg });
+    return NextResponse.json(
+      {
+        error:
+          "Не удалось сохранить аватар в Vercel Blob. Проверьте BLOB_READ_WRITE_TOKEN и привязку Blob store к проекту.",
+      },
+      { status: 502 }
+    );
   }
-
-  await withDbRetry(() =>
-    prisma.user.update({
-      where: { id: userId },
-      data: { avatarUrl },
-    })
-  );
 
   invalidateAuthMeServerCache(userId);
 
