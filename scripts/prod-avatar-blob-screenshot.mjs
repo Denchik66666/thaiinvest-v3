@@ -1,6 +1,6 @@
 /**
  * Prod smoke: login → upload avatar via Blob API → screenshot topbar with photo.
- * Usage: node scripts/prod-avatar-blob-screenshot.mjs
+ * Usage: npm run smoke:prod:avatar
  */
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -10,8 +10,13 @@ const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "https://thaiinvest-v3.vercel.ap
 const OUT_DIR = "screenshots/compare/2026-05-15_prod-avatar-blob";
 const OUT_FILE = path.join(OUT_DIR, "prod-avatar-working.png");
 
-const USER = process.env.PLAYWRIGHT_LOGIN_USER ?? process.env.PLAYWRIGHT_OWNER_USER ?? "Sam";
+const USER =
+  process.env.PLAYWRIGHT_SUPERADMIN_USER ??
+  process.env.PLAYWRIGHT_LOGIN_USER ??
+  process.env.PLAYWRIGHT_OWNER_USER ??
+  "Den";
 const PASS =
+  process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ??
   process.env.PLAYWRIGHT_LOGIN_PASSWORD ??
   process.env.PLAYWRIGHT_OWNER_PASSWORD ??
   "admin123";
