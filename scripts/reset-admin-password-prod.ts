@@ -1,5 +1,6 @@
 /**
- * Проверка / сброс пароля SUPER_ADMIN (`admin`) на проде (только `.env`, без `.env.local`).
+ * Проверка / сброс пароля SUPER_ADMIN на проде (только `.env`, без `.env.local`).
+ * Канон: username **Den** (или `ADMIN_PASSWORD_RESET_USERNAME`).
  *
  *   npm run db:reset-admin-password:prod
  *   ADMIN_PASSWORD_RESET_NEW='ваш_пароль' ADMIN_PASSWORD_RESET_CONFIRM=yes npm run db:reset-admin-password:prod:apply
@@ -10,7 +11,7 @@ import "./load-prod-env-only";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 
-const USERNAME = process.env.ADMIN_PASSWORD_RESET_USERNAME?.trim() || "admin";
+const USERNAME = process.env.ADMIN_PASSWORD_RESET_USERNAME?.trim() || "Den";
 
 async function main() {
   const apply = process.argv.includes("--apply");

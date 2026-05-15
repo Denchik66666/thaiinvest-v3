@@ -6,7 +6,7 @@
 
 - Документация: **`PROJECT_AUDIT.md`**, **`API_AUDIT.md`**, **`docs/UI_RULES_BACKUP.md`**, комментарий **`User.avatarUrl`** в **`prisma/schema.prisma`** — только Vercel Blob, без `public/uploads`.
 - **`.env.example`**: Blob в Production **и Preview**, e2e-переменные, предупреждение про перезапись `.env.local` после Vercel CLI.
-- Скрипты: **`smoke:prod:avatar`**, **`db:list-stale-avatars:prod`** (`:apply` + `STALE_AVATAR_RESET_CONFIRM=yes`), **`db:reset-admin-password:prod`** (`:apply` + `ADMIN_PASSWORD_RESET_CONFIRM=yes`).
+- Скрипты: **`smoke:prod:avatar`**, **`db:list-stale-avatars:prod`** (`:apply` + `STALE_AVATAR_RESET_CONFIRM=yes`), **`db:reset-admin-password:prod`** (`:apply` + `ADMIN_PASSWORD_RESET_CONFIRM=yes`), **`db:list-prod-users`**, **`smoke:prod:superadmin-login`**, **`env:vercel:playwright-superadmin`**.
 
 ## 2026-05-14 — Аватары на проде через Vercel Blob
 

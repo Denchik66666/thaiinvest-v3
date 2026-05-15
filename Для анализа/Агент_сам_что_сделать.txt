@@ -28,7 +28,7 @@
 
 7) Аватары на Vercel (2026-05):
    - В панели Vercel → Storage: store thaiinvest-v3-avatars, переменная BLOB_READ_WRITE_TOKEN в Production И Preview.
-   - После деплоя: npm run smoke:prod:avatar (нужен логин Sam/admin123 или PLAYWRIGHT_LOGIN_*).
+   - После деплоя: npm run smoke:prod:avatar (по умолчанию Den/admin123 или PLAYWRIGHT_SUPERADMIN_*).
    - Если супер-админ на проде не входит: npm run db:reset-admin-password:prod (проверка), затем с CONFIRM=yes — :apply (см. .env.example).
    - Старые пути /uploads/ в БД: npm run db:list-stale-avatars:prod
 
