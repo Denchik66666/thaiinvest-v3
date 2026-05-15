@@ -37,7 +37,12 @@
     "db:restore:supabase-from-dump": "node scripts/restore-local-snapshot-to-supabase.mjs",
     "db:reconcile-investors:prod": "tsx scripts/reconcile-all-investors-prod.ts",
     "db:reconcile-investors:prod:apply": "tsx scripts/reconcile-all-investors-prod.ts --apply",
-    "verify:payment-delete-sync": "tsx scripts/verify-payment-delete-resyncs-http.ts"
+    "verify:payment-delete-sync": "tsx scripts/verify-payment-delete-resyncs-http.ts",
+    "smoke:prod:avatar": "node scripts/prod-avatar-blob-screenshot.mjs",
+    "db:list-stale-avatars:prod": "tsx scripts/list-stale-avatar-urls-prod.ts",
+    "db:list-stale-avatars:prod:apply": "tsx scripts/list-stale-avatar-urls-prod.ts --apply",
+    "db:reset-admin-password:prod": "tsx scripts/reset-admin-password-prod.ts",
+    "db:reset-admin-password:prod:apply": "tsx scripts/reset-admin-password-prod.ts --apply"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

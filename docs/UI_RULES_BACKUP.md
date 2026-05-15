@@ -58,13 +58,13 @@
 |--------|----------|
 | Форматы | **JPEG**, **PNG** (`image/jpeg`, `image/png`) |
 | Макс. размер | **2 МБ** |
-| Хранение | Файлы **`public/uploads/avatars/{userId}.jpg|png`** (каталог в **`.gitignore`** — в git не коммитить бинарники) |
+| Хранение | **Vercel Blob** (`put` в `app/api/auth/avatar/route.ts`); публичный URL в **`User.avatarUrl`**. Токен **`BLOB_READ_WRITE_TOKEN`** — Production + Preview на Vercel |
 | Поле в БД | Обновляется **`User.avatarUrl`** |
 
 **Бэкап / прод:**
 
 - Включать каталог загрузок в **резервное копирование сервера** (или вынести в объектное хранилище — тогда отдельная политика версий и URL).
-- На Vercel/serverless без постоянного диска — либо внешнее хранилище (S3, Supabase Storage), либо осознанный сброс при редеплое.
+- На Vercel — **Blob store** (см. **`BLOB_READ_WRITE_TOKEN`**); каталог **`public/uploads/`** в API больше не используется.
 
 ---
 

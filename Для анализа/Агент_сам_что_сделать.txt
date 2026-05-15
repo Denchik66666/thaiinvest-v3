@@ -24,4 +24,10 @@
    - не передавать пароли от прод-Supabase/Vercel в чат;
    - для прод-операций — только твои ручные действия или отдельный слабый тестовый проект БД.
 
-Дата заметки: 2026-04-17
+6) Аватары на Vercel (2026-05):
+   - В панели Vercel → Storage: store thaiinvest-v3-avatars, переменная BLOB_READ_WRITE_TOKEN в Production И Preview.
+   - После деплоя: npm run smoke:prod:avatar (нужен логин Sam/admin123 или PLAYWRIGHT_LOGIN_*).
+   - Если admin на проде не входит: npm run db:reset-admin-password:prod (проверка), затем с CONFIRM=yes — :apply (см. .env.example).
+   - Старые пути /uploads/ в БД: npm run db:list-stale-avatars:prod
+
+Дата заметки: 2026-05-15

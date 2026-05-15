@@ -29,7 +29,7 @@
 | **POST** | `/api/auth/logout` | Сброс cookie | Публично | `app/api/auth/logout/route.ts` |
 | **GET** | `/api/auth/me` | Текущий пользователь | Любая роль при валидном JWT | `app/api/auth/me/route.ts` |
 | **PATCH** | `/api/auth/account` | Смена username / пароля | Своя учётка | `app/api/auth/account/route.ts` |
-| **POST** | `/api/auth/avatar` | Загрузка аватара (JPEG/PNG, до 2 МБ) | Любая роль при валидном JWT | `app/api/auth/avatar/route.ts` |
+| **POST** | `/api/auth/avatar` | Загрузка аватара (JPEG/PNG, до 2 МБ) → **Vercel Blob**, обновление **`User.avatarUrl`**; нужен **`BLOB_READ_WRITE_TOKEN`** (**503** без токена) | Любая роль при валидном JWT | `app/api/auth/avatar/route.ts` |
 
 ### Dashboard
 

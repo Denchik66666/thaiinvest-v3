@@ -10,7 +10,7 @@ model User {
   id            Int           @id @default(autoincrement())
   username      String        @unique
   password      String
-  /** Публичный URL файла в `/uploads/avatars/…` */
+  /** Публичный URL фото (Vercel Blob `*.public.blob.vercel-storage.com` или иной HTTPS) */
   avatarUrl     String?
   role          Role          @default(OWNER)
   isSystemOwner Boolean       @default(false)
