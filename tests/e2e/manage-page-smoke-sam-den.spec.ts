@@ -1,16 +1,16 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Визуальная проверка /dashboard/manage для OWNER (Sam) и SUPER_ADMIN (логин по умолчанию `admin` после seed).
+ * Визуальная проверка /dashboard/manage для OWNER (Sam) и SUPER_ADMIN (`Den` / `admin123` после seed).
  * Скриншоты: test-results/manage-smoke-{Sam|Admin}.png
  */
-/** Sam: `admin123`. SUPER_ADMIN: `admin` / `admin123` из seed; переопределение — `PLAYWRIGHT_SUPERADMIN_*`. */
+/** Sam: `admin123`. SUPER_ADMIN: `Den` / `admin123` из seed; переопределение — `PLAYWRIGHT_SUPERADMIN_*`. */
 const samCase = {
   label: "Sam" as const,
   username: "Sam",
   passwords: [process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123"],
 };
-const superAdminUsername = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+const superAdminUsername = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
 const superAdminPasswords = [
   process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD,
   process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123",

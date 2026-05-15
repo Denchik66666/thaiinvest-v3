@@ -4,14 +4,14 @@ import { expect, test, type Browser, devices } from "@playwright/test";
  * Скриншоты топбара: аватар + ник + стрелка должны быть "ghost" без подложек/фонов,
  * визуально вровень с фоном страницы (как кнопки reset/confirm в календаре).
  *
- * Вход: SUPER_ADMIN (`admin` / `admin123` по умолчанию; см. seed и `clean-data.md`).
+ * Вход: SUPER_ADMIN (`Den` / `admin123` по умолчанию; см. seed и `clean-data.md`).
  * PLAYWRIGHT_SUPERADMIN_USER / PLAYWRIGHT_SUPERADMIN_PASSWORD — переопределение.
  * PLAYWRIGHT_SKIP_WEBSERVER=1 — если dev уже запущен.
  */
 const OUT = "screenshots/compare/2026-05-08_topbar-avatar-ghost";
 
 async function newSuperAdminContext(browser: Browser, baseURL: string) {
-  const u = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const u = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
   const p = process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ?? "admin123";
   const ctx = await browser.newContext({ baseURL });
   const loginRes = await ctx.request.post("/api/auth/login", { data: { username: u, password: p } });

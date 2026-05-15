@@ -2,12 +2,12 @@ import { expect, test } from "@playwright/test";
 
 /**
  * Скриншоты страниц дашборда → screenshots/
- * Учётные данные: admin / admin123 (или PLAYWRIGHT_LOGIN_*).
+ * Учётные данные: Den / admin123 (или PLAYWRIGHT_LOGIN_*).
  *
  * При уже запущенном dev:
  *   $env:PLAYWRIGHT_SKIP_WEBSERVER="1"; $env:PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000"; npx playwright test tests/e2e/screenshots-dashboard-pages.spec.ts
  */
-const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "admin";
+const loginUser = process.env.PLAYWRIGHT_LOGIN_USER ?? "Den";
 const loginPassword = process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
 
 test("dashboard pages screenshots", async ({ page, context }) => {

@@ -6,7 +6,7 @@
  * Окружение:
  *   PLAYWRIGHT_BASE_URL / PLAYWRIGHT_SKIP_WEBSERVER — как в прочих e2e.
  *   Пароль: PLAYWRIGHT_SUPERADMIN_PASSWORD | PLAYWRIGHT_DEN_PASSWORD | PLAYWRIGHT_LOGIN_PASSWORD | SUPERADMIN_PASSWORD | по умолчанию admin123 (локальный seed).
- *   Пользователь: PLAYWRIGHT_SUPERADMIN_USER (по умолчанию admin).
+ *   Пользователь: PLAYWRIGHT_SUPERADMIN_USER (по умолчанию Den).
  *   Сумма для поиска: PLAYWRIGHT_FINANCE_DELETE_AMOUNT (по умолчанию 200).
  *   Только дата 05.05 в sortAt/createdAt: PLAYWRIGHT_FINANCE_DELETE_MAY5=1 (среди payment с нужной суммой).
  */
@@ -29,7 +29,7 @@ function superAdminPassword(): string {
 }
 
 async function newLoggedInSuperAdminContext(browser: Browser, baseURL: string, password: string): Promise<BrowserContext> {
-  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
   const ctx = await browser.newContext({ baseURL });
   const loginRes = await ctx.request.post("/api/auth/login", { data: { username: user, password } });
   const loginText = await loginRes.text();

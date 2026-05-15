@@ -3,7 +3,7 @@
  * НЕ создавая новых пользователей.
  *
  * По умолчанию:
- * - username: admin
+ * - username: Den
  * - password: admin123
  *
  * Можно переопределить:
@@ -18,7 +18,7 @@ dotenv.config({ path: path.join(process.cwd(), ".env.local"), override: true });
 import { hashPassword } from "../lib/auth";
 
 async function main() {
-  const username = (process.env.GOD_USERNAME ?? "admin").trim();
+  const username = (process.env.GOD_USERNAME ?? "Den").trim();
   const password = process.env.GOD_PASSWORD ?? "admin123";
   if (!username) throw new Error("GOD_USERNAME empty");
   if (!password) throw new Error("GOD_PASSWORD empty");

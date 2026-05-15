@@ -12,7 +12,7 @@ async function newContextOwner(browser: Browser, baseURL: string) {
     ? [{ u: explicit, p: process.env.PLAYWRIGHT_OWNER_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
         { u: "Sam", p: "admin123" },
-        { u: "admin", p: "admin123" },
+        { u: "Den", p: "admin123" },
       ];
   for (const { u, p } of candidates) {
     const ctx = await browser.newContext({ baseURL });
@@ -67,7 +67,7 @@ async function newContextInvestor(browser: Browser, baseURL: string) {
 }
 
 async function newContextSuperAdmin(browser: Browser, baseURL: string) {
-  const u = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? process.env.PLAYWRIGHT_LOGIN_USER ?? "admin";
+  const u = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? process.env.PLAYWRIGHT_LOGIN_USER ?? "Den";
   const p = process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
   const ctx = await browser.newContext({ baseURL });
   const loginRes = await ctx.request.post("/api/auth/login", { data: { username: u, password: p } });

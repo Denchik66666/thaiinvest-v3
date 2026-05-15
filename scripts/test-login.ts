@@ -1,30 +1,30 @@
-import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 async function test() {
-  const user = await prisma.user.findUnique({
-    where: { username: 'admin' },
-  })
+  const user =
+    (await prisma.user.findUnique({ where: { username: "Den" }, select: { username: true, password: true } })) ??
+    (await prisma.user.findUnique({ where: { username: "admin" }, select: { username: true, password: true } }));
 
   if (!user) {
-    console.log('❌ user not found')
-    return
+    console.log("❌ SUPER_ADMIN user (Den/admin) not found");
+    return;
   }
 
-  console.log('✅ user found:', user.username)
+  console.log("✅ user found:", user.username);
 
-  const ok = bcrypt.compareSync('admin123', user.password)
-  console.log('bcrypt compare result:', ok)
+  const ok = bcrypt.compareSync("admin123", user.password);
+  console.log("bcrypt compare result:", ok);
 }
 
-;(async () => {
+(async () => {
   try {
-    await test()
+    await test();
   } catch (e) {
-    console.error('❌ error:', e)
+    console.error("❌ error:", e);
   } finally {
-    await prisma.$disconnect()
+    await prisma.$disconnect();
   }
-})()
+})();

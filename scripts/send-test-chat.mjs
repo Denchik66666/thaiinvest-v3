@@ -66,7 +66,7 @@ async function main() {
       process.exit(1);
     }
   } else {
-    const preferRecipients = ["admin", "Sam"];
+    const preferRecipients = ["Den", "Sam"];
     const recipients = await prisma.user.findMany({
       where: {
         isArchived: false,
@@ -87,6 +87,7 @@ async function main() {
       process.exit(1);
     }
     recipient =
+      recipients.find((u) => u.username.toLowerCase() === "den") ??
       recipients.find((u) => u.username.toLowerCase() === "denchik") ??
       recipients.find((u) => u.username.toLowerCase() === "admin") ??
       recipients.find((u) => u.username.toLowerCase() === "sam") ??

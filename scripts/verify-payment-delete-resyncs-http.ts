@@ -106,7 +106,7 @@ async function prismaPathDeleteThenSync(investorId: number) {
 }
 
 async function httpPathDelete(investorId: number): Promise<boolean> {
-  const user = process.env.VERIFY_HTTP_USERNAME ?? "admin";
+  const user = process.env.VERIFY_HTTP_USERNAME ?? "Den";
   const pass = process.env.VERIFY_HTTP_PASSWORD ?? "admin123";
   const loginRes = await fetch(`${BASE}/api/auth/login`, {
     method: "POST",

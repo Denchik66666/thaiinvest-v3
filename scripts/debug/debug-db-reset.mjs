@@ -1,5 +1,5 @@
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
-const USERNAME = process.env.RESET_USER || "admin";
+const USERNAME = process.env.RESET_USER || "Den";
 const PASSWORD = process.env.RESET_USER_PASSWORD || "admin123";
 const RESET_PASSWORD = process.env.RESET_PASSWORD || "18121985";
 

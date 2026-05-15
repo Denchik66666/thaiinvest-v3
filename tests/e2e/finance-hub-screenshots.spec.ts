@@ -12,7 +12,7 @@ async function newBrowserContextWithManagerSession(browser: Browser, baseURL: st
     ? [{ u: process.env.PLAYWRIGHT_LOGIN_USER, p: process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123" }]
     : [
         { u: "Sam", p: "admin123" },
-        { u: "admin", p: "admin123" },
+        { u: "Den", p: "admin123" },
       ];
   for (const { u, p } of candidates) {
     const ctx = await browser.newContext({ baseURL });

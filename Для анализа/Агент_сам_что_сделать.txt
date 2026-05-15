@@ -14,7 +14,7 @@
    npm run chat:test-send -- Проверка от агента
    npm run lint
    npm run build
-   npm run test:e2e   (нужен запущенный npm run dev и пользователи из seed / переменных E2E_*)
+   npm run test:e2e   (нужен запущенный npm run dev; SUPER_ADMIN по умолчанию Den / admin123 — см. clean-data.md)
 
 4) Чтобы агент «как пользователь» кликал по сайту:
    в настройках Cursor подключи Playwright MCP или Chrome DevTools MCP,
@@ -24,10 +24,12 @@
    - не передавать пароли от прод-Supabase/Vercel в чат;
    - для прод-операций — только твои ручные действия или отдельный слабый тестовый проект БД.
 
-6) Аватары на Vercel (2026-05):
+6) E2e на проде / Vercel: PLAYWRIGHT_SUPERADMIN_USER=Den, PLAYWRIGHT_SUPERADMIN_PASSWORD=admin123.
+
+7) Аватары на Vercel (2026-05):
    - В панели Vercel → Storage: store thaiinvest-v3-avatars, переменная BLOB_READ_WRITE_TOKEN в Production И Preview.
    - После деплоя: npm run smoke:prod:avatar (нужен логин Sam/admin123 или PLAYWRIGHT_LOGIN_*).
-   - Если admin на проде не входит: npm run db:reset-admin-password:prod (проверка), затем с CONFIRM=yes — :apply (см. .env.example).
+   - Если супер-админ на проде не входит: npm run db:reset-admin-password:prod (проверка), затем с CONFIRM=yes — :apply (см. .env.example).
    - Старые пути /uploads/ в БД: npm run db:list-stale-avatars:prod
 
 Дата заметки: 2026-05-15

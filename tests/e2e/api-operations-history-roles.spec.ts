@@ -70,7 +70,7 @@ test("GET /api/investors/operations-history?network=all — SUPER_ADMIN: meta и
     "admin123";
 
   const b = baseURL ?? "http://127.0.0.1:3000";
-  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const user = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
   const ctx = await newContextWithLogin(browser, b, user, password!);
   try {
     const res = await ctx.request.get("/api/investors/operations-history?network=all", { timeout: 150_000 });
