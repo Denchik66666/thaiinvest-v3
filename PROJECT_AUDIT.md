@@ -196,7 +196,7 @@
 ## 8. Уже сделано (после прошлых аудитов)
 
 - **Безопасность API:** уточнены фильтры **`GET /api/dashboard/investors`**; проверка доступа **INVESTOR** для **`/api/investors/[id]/weekly-ledger`**; **`GET /api/body-topup-requests`** для **SUPER_ADMIN**; **`canChatWithPeer`** для **`GET/POST /api/chat/messages`** и **`PATCH /api/chat/read`**.  
-- **`POST /api/auth/avatar`:** реализована загрузка **JPG/PNG** до **2 МБ**, запись в **`public/uploads/avatars/{userId}.(jpg|png)`**, обновление **`User.avatarUrl`**, ответ **200** с **`avatarUrl`** (не заглушка **503**).  
+- **`POST /api/auth/avatar`:** загрузка **JPG/PNG** до **2 МБ** в **Vercel Blob** (`BLOB_READ_WRITE_TOKEN`), обновление **`User.avatarUrl`**, ответ **200** с публичным **`avatarUrl`**; без токена — **503** (fallback на `public/uploads` снят).  
 - **Единая тема:** удалён отдельный переключатель логина; **`ThemeToggle`** + **`AppThemeSync`** + **`lib/app-theme`**; логин на Tailwind для полей/кнопки; часть специфичных CSS логина убрана из `thai-design-system.css`.  
 - **Инвесторский дашборд (UX/UI):** **`InvestorPremiumDashboard`** — компактный герой, «тихая» полоса прогноза, шкала недели (`.thai-investor-thermo-*`), плотная строка «Доступно к выводу», кнопка вывода **`thai-investor-glass-btn--dense`**; **`DashboardOperationsHistory`** — период и чипы фильтра в одной строке, исправлено обрезание чипов (**`z-index` / отступы**), на узких экранах метрики в сетке; **`HistoryPeriodPopover`** — режим **`compact`** для триггера.  
 - **Шапка инвестора:** матовый янтарно-золотой ник (**`thai-dashboard-nick-matte-gold`**); **`UserAvatar`** — две буквы инициалов, масштаб шрифта от размера; экспорт **`initialsTwoLetters`** из **`lib/utils.ts`**.  
@@ -212,7 +212,7 @@
 
 | Тема | Детали |
 |------|--------|
-| **Аватары в проде** | Файлы лежат на диске в **`public/uploads/avatars/`** — для деплоя нужны персистентный том / объектное хранилище и исключение из «эфемерного» контейнера без тома. |
+| **Аватары в проде** | **Vercel Blob** + **`BLOB_READ_WRITE_TOKEN`** в **Production** и **Preview**; smoke: `npm run smoke:prod:avatar`. Устаревшие `/uploads/…` в БД: `npm run db:list-stale-avatars:prod` / `:apply`. |
 | **Зависимость `jose`** | В `package.json` есть; в `lib/auth.ts` основной JWT-поток — через `jsonwebtoken`. Пакет установлен, но по коду не используется — кандидат на удаление, если хотите сузить зависимости. |
 | **`console.error` в API** | Широко используется в `catch` — норм для отладки; при проде стоит согласовать структурированный логгер. |
 | **ESLint (прогон 2026-05-08)** | Ошибок нет (lint проходит), остаются предупреждения: неиспользуемые импорты/переменные в **`app/dashboard/chat/page.tsx`**, **`app/dashboard/page.tsx`**, **`components/dashboard/OwnerNetworkInvestorsCompact.tsx`**, **`components/dashboard/SuperAdminNetworkOverviewCard.tsx`**, **`components/investors/EditInvestorModal.tsx`**, **`components/investors/InvestorCardPremium.tsx`**. Компонент **`BusinessRateMonthCalendar`** удалён (календарь плана — через **`FinanceMonthCalendar`** в **`BusinessRateControlCenter`**). |
