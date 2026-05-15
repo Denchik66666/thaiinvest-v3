@@ -2,6 +2,12 @@
 
 Краткие записи о зафиксированных договорённостях и заметных изменениях контекста (для агента и людей).
 
+## 2026-05-15 — Сопровождение Blob-аватаров (доки и скрипты)
+
+- Документация: **`PROJECT_AUDIT.md`**, **`API_AUDIT.md`**, **`docs/UI_RULES_BACKUP.md`**, комментарий **`User.avatarUrl`** в **`prisma/schema.prisma`** — только Vercel Blob, без `public/uploads`.
+- **`.env.example`**: Blob в Production **и Preview**, e2e-переменные, предупреждение про перезапись `.env.local` после Vercel CLI.
+- Скрипты: **`smoke:prod:avatar`**, **`db:list-stale-avatars:prod`** (`:apply` + `STALE_AVATAR_RESET_CONFIRM=yes`), **`db:reset-admin-password:prod`** (`:apply` + `ADMIN_PASSWORD_RESET_CONFIRM=yes`).
+
 ## 2026-05-14 — Аватары на проде через Vercel Blob
 
 - Подключено Blob-хранилище Vercel (**`thaiinvest-v3-avatars`**) для загрузки аватаров на проде.
