@@ -10,7 +10,7 @@ async function main() {
   const login = await fetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: "admin123" }),
+    body: JSON.stringify({ username: "Den", password: "admin123" }),
   });
   const cookie = login.headers.get("set-cookie") ?? "";
   const m = /token=([^;]+)/.exec(cookie);

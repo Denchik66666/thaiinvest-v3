@@ -32,7 +32,7 @@ test("dashboard + finance screenshots admin Sam Sega", async ({ page, context })
     window.dispatchEvent(new Event("thaiinvest-theme-storage"));
   });
 
-  const superAdminUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const superAdminUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
   const superAdminPw = [
     process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD,
     process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123",

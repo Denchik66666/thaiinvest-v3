@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const adminUser = process.env.E2E_ADMIN_USER ?? "admin";
+const adminUser = process.env.E2E_ADMIN_USER ?? "Den";
 const adminPass = process.env.E2E_ADMIN_PASSWORD ?? "admin123";
 const ownerUser = process.env.E2E_OWNER_USER ?? "Sam";
 const ownerPass = process.env.E2E_OWNER_PASSWORD ?? "admin123";
@@ -34,7 +34,7 @@ test.describe("Чат: непрочитанные и всплывающее ув
       };
       if (!data.users?.length) return null;
       const adminRow =
-        data.users.find((u) => u.role === "SUPER_ADMIN") ?? data.users.find((u) => u.username === "admin");
+        data.users.find((u) => u.role === "SUPER_ADMIN") ?? data.users.find((u) => u.username === "Den");
       return adminRow?.id ?? null;
     });
 

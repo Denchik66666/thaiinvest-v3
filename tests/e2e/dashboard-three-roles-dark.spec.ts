@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
  *   $env:PLAYWRIGHT_SKIP_WEBSERVER="1"; $env:PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000"; npx playwright test tests/e2e/dashboard-three-roles-dark.spec.ts
  */
 const SESSIONS = [
-  { file: "dashboard-super-admin", username: "admin", password: "admin123" },
+  { file: "dashboard-super-admin", username: "Den", password: "admin123" },
   { file: "dashboard-owner", username: "Sam", password: "admin123" },
   { file: "dashboard-investor", username: "Sega_55RUS", password: "qwerty123" },
 ] as const;

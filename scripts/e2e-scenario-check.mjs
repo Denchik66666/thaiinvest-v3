@@ -128,7 +128,7 @@ function assertStep(results, name, condition, details = "") {
 
 async function run() {
   const results = [];
-  const superCandidates = ["admin"];
+  const superCandidates = ["Den", "admin"];
   let superCookie = null;
   let superUser = null;
   for (const username of superCandidates) {

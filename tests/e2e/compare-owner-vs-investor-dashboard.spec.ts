@@ -12,7 +12,7 @@ import { expect, test, type Browser } from "@playwright/test";
 const OUT = "screenshots/compare/2026-05-05_compact-hero-history_owner-vs-investor";
 
 const CREDS = {
-  admin: { u: "admin", p: "admin123" }, // SUPER_ADMIN
+  admin: { u: "Den", p: "admin123" }, // SUPER_ADMIN
   owner: { u: "Sam", p: "admin123" }, // OWNER (Семён)
   investor: { u: "Sega_55RUS", p: "qwerty123" }, // INVESTOR
 } as const;

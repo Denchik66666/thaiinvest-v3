@@ -17,7 +17,7 @@ test("OWNER investors registry + SUPER_ADMIN finance nick → investor card", as
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const samPw = process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
-  const superAdminUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "admin";
+  const superAdminUser = process.env.PLAYWRIGHT_SUPERADMIN_USER ?? "Den";
   const superAdminPw =
     process.env.PLAYWRIGHT_SUPERADMIN_PASSWORD ?? process.env.PLAYWRIGHT_LOGIN_PASSWORD ?? "admin123";
 
